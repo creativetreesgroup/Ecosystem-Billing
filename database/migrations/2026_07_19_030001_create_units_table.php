@@ -24,6 +24,16 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['outlet_id', 'code']);
+
+            // Satu perangkat fisik hanya boleh dipegang satu unit. Tanpa ini dua
+            // unit bisa menunjuk control_ref yang sama, dan menutup sesi di unit B
+            // ikut MEMATIKAN TV unit A yang pelanggannya masih bermain & ditagih.
+            //
+            // MySQL mengizinkan NULL berulang di unique index, jadi unit
+            // ber-driver manual (control_ref NULL) tidak terpengaruh. Di-scope ke
+            // outlet_id karena tiap outlet punya Home Assistant/broker sendiri —
+            // control_ref sama di outlet berbeda adalah perangkat berbeda.
+            $table->unique(['outlet_id', 'control_ref'], 'uq_unit_control_ref');
         });
     }
 

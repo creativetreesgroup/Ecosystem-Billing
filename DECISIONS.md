@@ -848,6 +848,25 @@ audit `git diff` sebelum commit, dan pastikan file scratch mereka dihapus.
 - Uji restore backup terakhir dilakukan di mesin dev; **wajib diulang di server
   production sungguhan** sebagai bagian UAT §14.
 
+## Migrasi: `uq_unit_control_ref` dilebur ke migrasi utama
+
+- **`add_unique_control_ref_to_units_table` dihapus, index-nya dipindah ke
+  `create_units_table`.**
+  *Why boleh dilebur:* V1 ini BELUM pernah dideploy dan belum pernah menyimpan
+  data sungguhan (UAT fisik §14 belum dijalankan). Selama belum ada DB
+  production yang sudah menjalankan migrasi lama, melebur `add_` ke `create_`
+  aman dan membuat skema terbaca sekali jalan. Setelah production hidup,
+  aturannya berbalik: migrasi yang sudah pernah jalan TIDAK BOLEH diubah lagi,
+  perubahan skema harus jadi migrasi baru.
+  *Diverifikasi:* `migrate:fresh --seed` dari nol lalu `SHOW INDEX FROM units`
+  membuktikan `uq_unit_control_ref` benar-benar terbentuk (bukan sekadar file
+  yang rapi), dan 147 test tetap hijau di atas skema hasil rebuild.
+
+- **Tiga migrasi `*_activity_log_table` SENGAJA tidak ikut dilebur.** Itu
+  migrasi terbitan `spatie/laravel-activitylog`, bukan tulisan kami.
+  Menggabungkannya berarti menyimpang dari set migrasi resmi paket dan
+  berpotensi bentrok saat paketnya di-upgrade.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)
