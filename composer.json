@@ -11,6 +11,7 @@
         "laravel/framework": "^13.8",
         "laravel/reverb": "^1.10",
         "laravel/tinker": "^3.0",
+        "leandrocfe/filament-apex-charts": "^5.1",
         "php-mqtt/client": "^2.3",
         "spatie/laravel-activitylog": "^4.12"
     },

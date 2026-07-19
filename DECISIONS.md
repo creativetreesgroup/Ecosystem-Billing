@@ -913,6 +913,52 @@ masalah baru.**
   tapi tabel Sesi/Alert/Unit masih UTC — sesi yang sama tertulis beda hari di
   dua layar. Semua kolom waktu kini pakai `timezone: config('app.display_timezone')`.
 
+## Ringkasan laporan: widget statistik native + grafik ApexCharts
+
+- **DEPENDENCY BARU: `leandrocfe/filament-apex-charts` ^5.1.** §2 mewajibkan
+  justifikasi tertulis untuk dependency di luar stack terkunci.
+  *Justifikasi:* diminta eksplisit oleh pemilik produk. Sebelum dipasang,
+  kompatibilitasnya dicek dulu (`composer show --all` → ada seri 5.x untuk
+  Filament v5) dan di-`--dry-run` (resolusi bersih, tanpa konflik, tanpa
+  security advisory). Filament sendiri tidak punya widget grafik bawaan yang
+  setara; alternatifnya menulis pembungkus Chart.js sendiri — lebih banyak
+  kode untuk hasil lebih buruk, dan proyek ini sengaja tidak punya build step
+  frontend. Plugin ini WAJIB didaftarkan di panel
+  (`->plugin(FilamentApexChartsPlugin::make())`); tanpa itu view-nya melempar
+  `LogicException` — ketahuan dari test, bukan dari membaca dokumentasi.
+
+- **Blok "Ringkasan" (grid TextEntry) diganti `SalesStatsWidget`** yang
+  extends `StatsOverviewWidget` bawaan Filament — kartu statistik standar
+  lengkap dengan ikon, deskripsi, warna, dan sparkline 14 hari terakhir.
+  Sebelumnya tiga TextEntry dalam Grid: informatif tapi bukan komponen
+  statistik, jadi tidak dapat gaya kartu maupun sparkline.
+
+- **`SalesSummary` dibuat sebagai satu-satunya sumber angka rekap.**
+  *Why:* begitu halaman Laporan, kartu statistik, dan grafik sama-sama butuh
+  angka yang sama, tanpa ini rumus + konversi timezone akan tersalin TIGA
+  kali. Persis pola masalah yang sudah pernah terjadi antara estimasi
+  dashboard dan tagihan sungguhan (lihat `SessionTotal`). Halaman Laporan
+  kini hanya memanggilnya, tidak lagi query sendiri.
+
+- **Grafik memakai satu titik per hari termasuk hari kosong**, dibatasi 366
+  titik. Garis yang melompati hari tanpa transaksi membuat tren terlihat
+  lebih ramai dari kenyataan; batas 366 mencegah rentang sangat lebar
+  menggambar ribuan titik.
+
+- **Formatter sumbu Y & tooltip lewat `extraJsOptions()` (RawJs), bukan
+  `getOptions()`.** Nilai string di `getOptions()` dikirim sebagai teks, bukan
+  fungsi JavaScript. Sumbu Y disingkat "rb"/"jt" karena rupiah penuh membuat
+  labelnya sangat lebar; tooltip tetap menampilkan angka utuh.
+
+- **BUG DITEMUKAN SAAT VERIFIKASI: `canView() => false` SALAH untuk
+  menyembunyikan widget dari dasbor.** Percobaan pertama memakai itu supaya
+  widget laporan tidak ikut ter-discover ke Dasbor — hasilnya halaman Laporan
+  balas **403**, karena `Widget\Concerns\CanAuthorizeAccess` memakai
+  `abort_unless(static::canView(), 403)` saat widget di-mount. Solusi yang
+  benar: `App\Filament\Pages\Dashboard` menyebut widgetnya secara EKSPLISIT
+  lewat `getWidgets()`. Ketahuan dari browser, bukan dari test — test-nya
+  hijau karena tidak ada yang merender halaman Laporan secara nyata saat itu.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

@@ -2,6 +2,7 @@
 
 use App\Domain\Billing\PaymentMethod;
 use App\Filament\Pages\SalesReport;
+use App\Filament\Widgets\SalesStatsWidget;
 use App\Models\RentalSession;
 use App\Models\Unit;
 use App\Models\UnitType;
@@ -86,10 +87,12 @@ test('it identifies the hour with the most sessions', function () {
         'ended_at' => Carbon::parse('2026-03-05 09:30', 'Asia/Jakarta')->utc(),
     ]);
 
-    Livewire::actingAs($this->owner)->test(SalesReport::class)
-        ->set('data.start_date', '2026-03-01')
-        ->set('data.end_date', '2026-03-31')
-        ->assertSee('20:00–21:00');
+    // Jam tersibuk kini dirender SalesStatsWidget (kartu statistik bawaan
+    // Filament), bukan lagi di HTML halaman — jadi diuji langsung ke widgetnya.
+    Livewire::actingAs($this->owner)->test(SalesStatsWidget::class, [
+        'startDate' => '2026-03-01',
+        'endDate' => '2026-03-31',
+    ])->assertSee('20:00–21:00');
 });
 
 test('csv export contains the exact rows for the selected range', function () {
