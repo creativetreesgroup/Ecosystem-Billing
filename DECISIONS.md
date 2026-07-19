@@ -135,6 +135,47 @@ Format: keputusan, alasan (*why*), dan trade-off yang ditolak. Diurutkan per fas
   (salah catat pembayaran, dsb) sama validnya dengan membatalkan sesi yang masih
   aktif. Kalau sesi masih aktif saat di-void, TV tetap diperintah mati.
 
+## Fase 3 — Panel Filament
+
+- **Dashboard kasir dibangun sebagai `TableWidget` native di atas `Filament\Pages\Dashboard`
+  bawaan**, bukan custom Page dengan Blade tangan.
+  *Why:* diminta eksplisit untuk full-native Filament. `contentGrid()` + layout
+  `Split`/`Stack` merender grid kartu unit; empat aksi sesi (Mulai/Perpanjang/
+  Stop & Bayar/Nyalakan-Matikan TV) jadi native record action — Filament yang
+  urus authorize, loading state, dan modal wiring, bukan `wire:click` manual.
+  Diverifikasi ke dokumentasi resmi Filament (contentGrid/Split/Stack,
+  TableWidget) via WebFetch, bukan ditebak dari memori.
+  *Trade-off yang ditolak:* custom `Filament\Pages\Page` dengan grid Blade tangan
+  (draf awal) — ditolak setelah diminta karena kurang "native", dan ternyata
+  memang lebih rapuh (wire:click manual, tidak dapat authorize/loading state
+  bawaan Filament).
+
+- **Dua bug nyata ditemukan lewat browser sungguhan, bukan cuma test otomatis:**
+  1. Closure `visible()`/`formatStateUsing()` di level KOLOM (bukan action)
+     ternyata dipanggil sekali tanpa konteks record (structural check), jadi
+     parameter `Unit $record` yang strict-typed crash dengan TypeError. Semua
+     closure yang menerima `$record` di kolom dibuat nullable (`?Unit $record`).
+  2. `Select::options(PaymentMethod::class)` (native enum support Filament)
+     sudah mengembalikan instance enum langsung ke `$data`, bukan string —
+     memanggil `PaymentMethod::from()` lagi di atasnya melempar TypeError.
+     Ditambahkan `resolvePaymentMethod()` yang menerima instance ATAU scalar.
+  *Why dicatat:* bukti bahwa "test hijau" tidak cukup untuk fitur UI — dua bug
+  ini lolos dari test otomatis (yang memanggil Action lewat kode langsung,
+  bukan lewat siklus render Livewire sungguhan) dan hanya ketahuan setelah
+  benar-benar diklik di browser. Alur penuh (mulai → modal → submit → kartu
+  ter-update → stop & bayar → total benar → riwayat sesi tercatat) diverifikasi
+  end-to-end, termasuk policy: nav ter-filter per role, dan akses langsung ke
+  URL owner-only dari akun kasir memberi 403 sungguhan (bukan cuma nav tersembunyi).
+
+- **`RentalSessionResource` & `DeviceAlertResource` tidak punya halaman
+  Create/Edit.** Sesi hanya bermutasi lewat action domain (Fase 2); alert hanya
+  dibuat sistem lewat driver. Form edit mentah akan melewati kalkulasi billing
+  dan activity log — sengaja tidak disediakan, bukan kelalaian.
+
+- **`SettingResource` tanpa Create/Delete**, hanya Edit, memetakan `value.minutes`
+  langsung (dot-notation form state Filament) supaya owner mengedit angka polos,
+  bukan JSON mentah.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)
