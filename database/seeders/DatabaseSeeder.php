@@ -1,0 +1,124 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Domain\Billing\PaymentMethod;
+use App\Domain\Devices\ControlDriver;
+use App\Domain\Sessions\SessionStatus;
+use App\Domain\Sessions\SessionType;
+use App\Models\Outlet;
+use App\Models\Package;
+use App\Models\RentalSession;
+use App\Models\Setting;
+use App\Models\Unit;
+use App\Models\UnitType;
+use App\Models\User;
+use App\Models\UserRole;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
+
+class DatabaseSeeder extends Seeder
+{
+    use WithoutModelEvents;
+
+    public function run(): void
+    {
+        $outlet = Outlet::create([
+            'name' => 'Creative Trees Billing Game - Outlet Utama',
+            'timezone' => 'Asia/Jakarta',
+            'is_active' => true,
+        ]);
+
+        $owner = User::factory()->owner()->create([
+            'outlet_id' => $outlet->id,
+            'name' => 'Owner',
+            'email' => 'owner@creativetrees.test',
+        ]);
+
+        $kasir = User::factory()->create([
+            'outlet_id' => $outlet->id,
+            'name' => 'Kasir',
+            'email' => 'kasir@creativetrees.test',
+        ]);
+
+        Setting::create(['key' => 'billing_increment_minutes', 'value' => ['minutes' => 1]]);
+        Setting::create(['key' => 'warning_before_minutes', 'value' => ['minutes' => 5]]);
+
+        $nonVip = UnitType::create([
+            'outlet_id' => $outlet->id,
+            'name' => 'Non-VIP',
+            'hourly_rate' => 5000,
+            'sort_order' => 1,
+        ]);
+
+        $vip = UnitType::create([
+            'outlet_id' => $outlet->id,
+            'name' => 'VIP',
+            'hourly_rate' => 8000,
+            'sort_order' => 2,
+        ]);
+
+        $sultan = UnitType::create([
+            'outlet_id' => $outlet->id,
+            'name' => 'Sultan',
+            'hourly_rate' => 12000,
+            'sort_order' => 3,
+        ]);
+
+        foreach ([$nonVip, $vip, $sultan] as $unitType) {
+            foreach ([1, 2, 3, 5] as $hours) {
+                Package::create([
+                    'unit_type_id' => $unitType->id,
+                    'name' => "{$hours} Jam",
+                    'duration_minutes' => $hours * 60,
+                    'price' => $hours * $unitType->hourly_rate,
+                    'is_active' => true,
+                ]);
+            }
+        }
+
+        // Driver dicampur untuk membuktikan abstraksi TvControl bekerja untuk
+        // ketiganya, meski deployment nyata saat ini seluruhnya Android TV (home_assistant).
+        $units = [
+            ['code' => 'PS-01', 'unit_type_id' => $nonVip->id, 'control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.ps_01_androidtv'],
+            ['code' => 'PS-02', 'unit_type_id' => $nonVip->id, 'control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.ps_02_androidtv'],
+            ['code' => 'PS-03', 'unit_type_id' => $nonVip->id, 'control_driver' => ControlDriver::Tasmota, 'control_ref' => 'ps03plug'],
+            ['code' => 'PS-04', 'unit_type_id' => $vip->id, 'control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.ps_04_androidtv'],
+            ['code' => 'PS-05', 'unit_type_id' => $vip->id, 'control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.ps_05_androidtv'],
+            ['code' => 'PS-06', 'unit_type_id' => $sultan->id, 'control_driver' => ControlDriver::Manual, 'control_ref' => null],
+        ];
+
+        $createdUnits = collect($units)->map(fn (array $data) => Unit::create([
+            'outlet_id' => $outlet->id,
+            'unit_type_id' => $data['unit_type_id'],
+            'code' => $data['code'],
+            'control_driver' => $data['control_driver'],
+            'control_ref' => $data['control_ref'],
+            'is_active' => true,
+        ]));
+
+        // Beberapa sesi historis untuk demo laporan.
+        foreach (range(1, 8) as $i) {
+            $unit = $createdUnits->random();
+            $hours = fake()->randomElement([1, 2, 3]);
+            $startedAt = now()->subDays(fake()->numberBetween(1, 14))->setTime(fake()->numberBetween(10, 20), 0);
+            $amount = $hours * $unit->unitType->hourly_rate;
+
+            RentalSession::create([
+                'unit_id' => $unit->id,
+                'opened_by' => $kasir->id,
+                'customer_name' => fake()->firstName(),
+                'type' => SessionType::Open,
+                'started_at' => $startedAt,
+                'ended_at' => $startedAt->copy()->addHours($hours),
+                'status' => SessionStatus::Completed,
+                'expiry_token' => (string) Str::uuid(),
+                'base_amount' => $amount,
+                'total_amount' => $amount,
+                'payment_method' => fake()->randomElement(PaymentMethod::cases()),
+                'paid_at' => $startedAt->copy()->addHours($hours),
+            ]);
+        }
+    }
+}
