@@ -3,11 +3,13 @@
 namespace App\Filament\Resources\Users\Schemas;
 
 use App\Models\Outlet;
+use App\Models\User;
 use App\Models\UserRole;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\Auth;
 
 class UserForm
 {
@@ -25,12 +27,19 @@ class UserForm
                     ->required()
                     ->maxLength(255)
                     ->unique(ignoreRecord: true),
+                // Owner tidak boleh mengubah peran/keaktifan AKUNNYA SENDIRI:
+                // menurunkan diri jadi kasir atau menonaktifkan diri sendiri
+                // langsung mengunci keluar dari panel, dan tidak ada jalur
+                // pemulihan di dalam aplikasi (harus lewat tinker di server).
                 Select::make('role')
                     ->label('Peran')
                     ->options(UserRole::class)
                     ->default(UserRole::Kasir)
                     ->required()
-                    ->helperText('Kasir: operasi sesi & unit. Owner: semuanya, termasuk laporan, void, dan pengaturan.'),
+                    ->disabled(fn (?User $record): bool => self::isSelf($record))
+                    ->helperText(fn (?User $record): string => self::isSelf($record)
+                        ? 'Peran akun sendiri tidak bisa diubah dari sini.'
+                        : 'Kasir: operasi sesi & unit. Owner: semuanya, termasuk laporan, void, dan pengaturan.'),
                 Select::make('outlet_id')
                     ->label('Outlet')
                     ->relationship('outlet', 'name')
@@ -52,7 +61,15 @@ class UserForm
                 Toggle::make('is_active')
                     ->label('Aktif')
                     ->default(true)
-                    ->helperText('Akun nonaktif langsung ditolak saat login — dipakai sebagai ganti menghapus akun.'),
+                    ->disabled(fn (?User $record): bool => self::isSelf($record))
+                    ->helperText(fn (?User $record): string => self::isSelf($record)
+                        ? 'Akun sendiri tidak bisa dinonaktifkan dari sini.'
+                        : 'Akun nonaktif langsung ditolak saat login — dipakai sebagai ganti menghapus akun.'),
             ]);
+    }
+
+    private static function isSelf(?User $record): bool
+    {
+        return $record !== null && $record->is(Auth::user());
     }
 }

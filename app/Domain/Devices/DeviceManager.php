@@ -101,11 +101,7 @@ class DeviceManager
         UnitPowerStateChanged::dispatch($unit->id);
 
         if ($state === PowerState::Unreachable) {
-            DeviceAlert::create([
-                'unit_id' => $unit->id,
-                'type' => DeviceAlertType::DeviceOffline,
-                'message' => "Unit {$unit->code} tidak bisa dihubungi.",
-            ]);
+            DeviceAlert::raiseOnce($unit->id, DeviceAlertType::DeviceOffline, "Unit {$unit->code} tidak bisa dihubungi.");
         }
     }
 }

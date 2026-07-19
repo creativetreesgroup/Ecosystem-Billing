@@ -26,11 +26,11 @@ class ManualDriver implements TvControl
 
     public function powerOff(Unit $unit): CommandResult
     {
-        DeviceAlert::create([
-            'unit_id' => $unit->id,
-            'type' => DeviceAlertType::PowerOffFailed,
-            'message' => 'Matikan TV secara manual — unit ini tidak punya kontrol jaringan.',
-        ]);
+        DeviceAlert::raiseOnce(
+            $unit->id,
+            DeviceAlertType::PowerOffFailed,
+            'Matikan TV secara manual — unit ini tidak punya kontrol jaringan.',
+        );
 
         return CommandResult::success('Manual: matikan TV secara fisik.');
     }

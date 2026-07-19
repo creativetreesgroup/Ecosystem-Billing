@@ -34,7 +34,7 @@ class DeviceAlertsTable
                     ->placeholder('-'),
                 TextColumn::make('created_at')
                     ->label('Waktu')
-                    ->dateTime('d/m/Y H:i')
+                    ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
                     ->sortable(),
             ])
             ->filters([

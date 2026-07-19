@@ -62,6 +62,17 @@ class UnitForm
                     ->helperText('Entity ID Home Assistant (terisi otomatis dari pilihan di atas), atau topic Tasmota seperti plug-ps01.')
                     ->required(fn (Get $get) => self::driverOf($get('control_driver')) !== ControlDriver::Manual)
                     ->visible(fn (Get $get) => self::driverOf($get('control_driver')) !== ControlDriver::Manual)
+                    // Filament TIDAK menyimpan field yang sedang tersembunyi.
+                    // Tanpa dua baris ini, mengubah unit ke driver Manual
+                    // meninggalkan control_ref lama di DB — dan karena ada unique
+                    // index, TV itu terkunci selamanya: tidak dipakai unit ini
+                    // (driver-nya manual) tapi juga tidak bisa dipakai unit lain.
+                    // dehydratedWhenHidden(), BUKAN dehydrated(): untuk field yang
+                    // sedang disembunyikan, dehydrated() saja tidak berlaku —
+                    // isDehydrated() lebih dulu gugur lewat
+                    // isHiddenAndNotDehydratedWhenHidden().
+                    ->dehydratedWhenHidden()
+                    ->dehydrateStateUsing(fn (Get $get, ?string $state) => self::driverOf($get('control_driver')) === ControlDriver::Manual ? null : $state)
                     // Cermin dari unique index uq_unit_control_ref di DB: dua unit
                     // menunjuk perangkat yang sama berarti menutup sesi di satu unit
                     // ikut mematikan TV unit lain yang masih dipakai & ditagih.

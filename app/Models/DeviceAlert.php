@@ -26,6 +26,27 @@ class DeviceAlert extends Model
         ];
     }
 
+    /**
+     * Buat alert HANYA kalau belum ada alert terbuka dengan tipe yang sama
+     * untuk unit itu. Kasir cukup diberi tahu sekali per masalah — Home
+     * Assistant yang mati semalaman kalau tidak akan membuat satu alert per
+     * penutupan sesi dan menenggelamkan alert lain yang benar-benar baru.
+     */
+    public static function raiseOnce(int $unitId, DeviceAlertType $type, string $message): ?self
+    {
+        $alreadyOpen = static::query()
+            ->where('unit_id', $unitId)
+            ->where('type', $type)
+            ->where('status', DeviceAlertStatus::Open)
+            ->exists();
+
+        return $alreadyOpen ? null : static::create([
+            'unit_id' => $unitId,
+            'type' => $type,
+            'message' => $message,
+        ]);
+    }
+
     public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class);

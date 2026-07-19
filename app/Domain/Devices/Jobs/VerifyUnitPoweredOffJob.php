@@ -59,12 +59,12 @@ class VerifyUnitPoweredOffJob implements ShouldQueue
             return;
         }
 
-        DeviceAlert::create([
-            'unit_id' => $unit->id,
-            'type' => DeviceAlertType::PowerOffFailed,
-            'message' => $state === PowerState::On
+        DeviceAlert::raiseOnce(
+            $unit->id,
+            DeviceAlertType::PowerOffFailed,
+            $state === PowerState::On
                 ? "TV unit {$unit->code} masih menyala 10 detik setelah perintah power-off dikirim."
                 : "Status TV unit {$unit->code} tidak bisa dipastikan mati setelah perintah power-off — cek fisik.",
-        ]);
+        );
     }
 }

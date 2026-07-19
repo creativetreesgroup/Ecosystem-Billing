@@ -867,6 +867,52 @@ audit `git diff` sebelum commit, dan pastikan file scratch mereka dihapus.
   Menggabungkannya berarti menyimpang dari set migrasi resmi paket dan
   berpotensi bentrok saat paketnya di-upgrade.
 
+## Ronde verifikasi: regresi yang DIPERKENALKAN oleh perbaikan sebelumnya
+
+Review kedua sengaja hanya menyasar commit `517136d..HEAD` — yaitu perbaikan
+yang baru saya buat sendiri — dengan asumsi eksplisit "penulisnya terlalu
+percaya diri". Terbukti berguna: **tiga dari perbaikan itu memperkenalkan
+masalah baru.**
+
+- **Tanggal default laporan mundur sehari (regresi dari perbaikan timezone).**
+  `range()` diubah membaca tanggal sebagai jam dinding outlet, tapi `mount()`
+  masih membuat tanggalnya dengan `now()` (UTC). Antara 00:00-07:00 WIB kedua
+  sisi berselisih 7 jam: laporan default berhenti SEBELUM "sekarang", dan
+  pendapatan malam yang baru saja terjadi hilang tanpa tanda apa pun. Di
+  tanggal 1 lebih parah — laporan menampilkan seluruh bulan LALU. Ironisnya
+  sebelum perbaikan timezone, kedua sisi sama-sama UTC jadi setidaknya
+  konsisten. *Pelajaran:* mengubah satu sisi dari pasangan produsen/konsumen
+  tanpa mengubah pasangannya justru membuat keadaan lebih buruk.
+- **Mengubah unit ke driver Manual mengunci TV-nya selamanya (regresi dari
+  gabungan `visible()` + unique index).** Filament tidak menyimpan field yang
+  sedang tersembunyi, jadi `control_ref` lama tertinggal di DB. Karena ada
+  `uq_unit_control_ref`, TV itu jadi tidak dipakai unit tersebut (driver-nya
+  manual) TAPI juga tidak bisa dipakai unit lain. Diperbaiki dengan
+  `->dehydratedWhenHidden()` + `->dehydrateStateUsing()`.
+  *Catatan API:* `->dehydrated()` saja TIDAK cukup untuk field tersembunyi —
+  `isDehydrated()` lebih dulu gugur lewat `isHiddenAndNotDehydratedWhenHidden()`.
+  Ini ketahuan karena test-nya gagal, bukan karena membaca kode.
+- **Owner bisa mengunci dirinya sendiri keluar (regresi dari UserResource
+  baru).** Form membiarkan owner menurunkan perannya sendiri jadi kasir atau
+  menonaktifkan akunnya sendiri; tidak ada jalur pemulihan di dalam aplikasi
+  (harus `tinker` di server). Field peran & keaktifan kini dinonaktifkan untuk
+  akun sendiri.
+
+### Diperbaiki sekalian (bukan regresi, tapi ikut terungkap)
+
+- **`HA_BASE_URL` kosong membuat halaman tambah/ubah unit MATI** dengan
+  TypeError, karena form memanggil discovery saat render dan
+  `HomeAssistantDriver` menerima `string` (bukan `?string`). Diberi default di
+  `config/services.php` supaya yang terjadi hanya "daftar TV kosong".
+- **Banjir alert.** Setelah verifikasi power-off dibuat fail-loud, Home
+  Assistant yang mati semalaman akan membuat SATU alert per penutupan sesi dan
+  menenggelamkan alert lain. Ditambah `DeviceAlert::raiseOnce()`: satu alert
+  terbuka per (unit, tipe); alert baru muncul lagi setelah yang lama
+  di-acknowledge. Dipakai ketiga tempat pembuat alert.
+- **Tanggal berbeda antar layar.** Laporan sudah pakai jam dinding outlet,
+  tapi tabel Sesi/Alert/Unit masih UTC — sesi yang sama tertulis beda hari di
+  dua layar. Semua kolom waktu kini pakai `timezone: config('app.display_timezone')`.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

@@ -43,11 +43,11 @@ class RentalSessionsTable
                     ->placeholder('-'),
                 TextColumn::make('started_at')
                     ->label('Mulai')
-                    ->dateTime('d/m/Y H:i')
+                    ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
                     ->sortable(),
                 TextColumn::make('ended_at')
                     ->label('Selesai')
-                    ->dateTime('d/m/Y H:i')
+                    ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
                     ->placeholder('-')
                     ->sortable(),
                 TextColumn::make('status')

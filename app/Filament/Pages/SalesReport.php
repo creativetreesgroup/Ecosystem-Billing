@@ -64,9 +64,15 @@ class SalesReport extends Page implements HasTable
 
     public function mount(): void
     {
+        // WAJIB pakai now($tz): range() membaca kedua tanggal ini sebagai jam
+        // dinding outlet. Kalau di-generate pakai now() (UTC), antara 00:00-07:00
+        // WIB tanggalnya mundur sehari dan laporan default diam-diam membuang
+        // pendapatan malam yang baru saja terjadi.
+        $tz = self::displayTimezone();
+
         $this->form->fill([
-            'start_date' => now()->startOfMonth()->toDateString(),
-            'end_date' => now()->toDateString(),
+            'start_date' => now($tz)->startOfMonth()->toDateString(),
+            'end_date' => now($tz)->toDateString(),
         ]);
     }
 

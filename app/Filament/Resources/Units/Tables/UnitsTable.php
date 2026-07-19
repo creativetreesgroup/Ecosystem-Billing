@@ -30,7 +30,7 @@ class UnitsTable
                     ->badge(),
                 TextColumn::make('last_seen_at')
                     ->label('Terakhir terlihat')
-                    ->dateTime('d/m/Y H:i')
+                    ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
                     ->placeholder('-')
                     ->sortable(),
                 IconColumn::make('is_active')

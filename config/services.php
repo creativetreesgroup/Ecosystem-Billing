@@ -35,9 +35,13 @@ return [
         ],
     ],
 
+    // Default non-null: HomeAssistantDriver menerima string (bukan ?string), dan
+    // form Unit memanggil discovery saat dirender — HA_BASE_URL kosong dulu
+    // membuat halaman tambah/ubah unit mati dengan TypeError, bukan sekadar
+    // daftar TV yang kosong.
     'home_assistant' => [
-        'base_url' => env('HA_BASE_URL'),
-        'token' => env('HA_TOKEN'),
+        'base_url' => env('HA_BASE_URL', 'http://localhost:8123'),
+        'token' => env('HA_TOKEN', ''),
     ],
 
     'mqtt' => [
