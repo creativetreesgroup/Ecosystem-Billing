@@ -101,7 +101,14 @@ class DatabaseSeeder extends Seeder
         foreach (range(1, 8) as $i) {
             $unit = $createdUnits->random();
             $hours = fake()->randomElement([1, 2, 3]);
-            $startedAt = now()->subDays(fake()->numberBetween(1, 14))->setTime(fake()->numberBetween(10, 20), 0);
+            // Jam operasional ditulis di zona outlet lalu dikonversi ke UTC untuk
+            // disimpan — kalau tidak, sesi "jam 17" tersimpan 17:00 UTC yang
+            // berarti tengah malam WIB, dan laporan melaporkan jam sibuk 00:00.
+            $tz = config('app.display_timezone', config('app.timezone'));
+            $startedAt = now($tz)
+                ->subDays(fake()->numberBetween(1, 14))
+                ->setTime(fake()->numberBetween(10, 20), 0)
+                ->utc();
             $amount = $hours * $unit->unitType->hourly_rate;
 
             RentalSession::create([
