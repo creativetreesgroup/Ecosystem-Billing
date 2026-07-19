@@ -8,6 +8,7 @@ use App\Domain\Devices\Drivers\TasmotaDriver;
 use App\Domain\Devices\Events\UnitPowerStateChanged;
 use App\Domain\Devices\Jobs\VerifyUnitPoweredOffJob;
 use App\Models\DeviceAlert;
+use App\Models\Integration;
 use App\Models\Unit;
 use Closure;
 use Illuminate\Contracts\Container\Container;
@@ -30,12 +31,23 @@ class DeviceManager
     /**
      * Dipakai driverFor() dan juga discovery TV — discovery tidak terikat ke
      * satu Unit (justru dipakai saat unit-nya belum punya control_ref).
+     *
+     * Kredensial dibaca dari DATABASE dulu, .env sebagai cadangan. Urutannya
+     * bukan selera: outlet yang sudah berjalan tidak boleh kehilangan koneksi
+     * hanya karena barisnya belum diisi, dan pemilik yang mengisi lewat panel
+     * harus menang atas nilai .env lama yang mungkin sudah kedaluwarsa.
      */
     public function homeAssistant(): HomeAssistantDriver
     {
+        $integration = Integration::for(IntegrationKey::HomeAssistant);
+
         return new HomeAssistantDriver(
-            baseUrl: config('services.home_assistant.base_url'),
-            token: config('services.home_assistant.token'),
+            baseUrl: $integration?->is_active && filled($integration->base_url)
+                ? $integration->base_url
+                : (string) config('services.home_assistant.base_url'),
+            token: $integration?->is_active && filled($integration->token)
+                ? $integration->token
+                : (string) config('services.home_assistant.token'),
         );
     }
 

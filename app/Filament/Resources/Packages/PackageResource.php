@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Packages;
 
+use App\Filament\NavigationGroup;
 use App\Filament\Resources\Packages\Pages\CreatePackage;
 use App\Filament\Resources\Packages\Pages\EditPackage;
 use App\Filament\Resources\Packages\Pages\ListPackages;
@@ -13,12 +14,17 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use UnitEnum;
 
 class PackageResource extends Resource
 {
     protected static ?string $model = Package::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTicket;
+
+    protected static string|UnitEnum|null $navigationGroup = NavigationGroup::MasterData;
+
+    protected static ?int $navigationSort = 3;
 
     protected static ?string $navigationLabel = 'Paket';
 

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\UnitTypes;
 
+use App\Filament\NavigationGroup;
 use App\Filament\Resources\UnitTypes\Pages\CreateUnitType;
 use App\Filament\Resources\UnitTypes\Pages\EditUnitType;
 use App\Filament\Resources\UnitTypes\Pages\ListUnitTypes;
@@ -13,12 +14,17 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use UnitEnum;
 
 class UnitTypeResource extends Resource
 {
     protected static ?string $model = UnitType::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSquares2x2;
+
+    protected static string|UnitEnum|null $navigationGroup = NavigationGroup::MasterData;
+
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $navigationLabel = 'Tipe Unit';
 

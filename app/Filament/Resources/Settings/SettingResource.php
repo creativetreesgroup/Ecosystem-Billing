@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Settings;
 
+use App\Filament\NavigationGroup;
 use App\Filament\Resources\Settings\Pages\EditSetting;
 use App\Filament\Resources\Settings\Pages\ListSettings;
 use App\Filament\Resources\Settings\Schemas\SettingForm;
@@ -12,12 +13,17 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use UnitEnum;
 
 class SettingResource extends Resource
 {
     protected static ?string $model = Setting::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCog6Tooth;
+
+    protected static string|UnitEnum|null $navigationGroup = NavigationGroup::Sistem;
+
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $navigationLabel = 'Pengaturan';
 

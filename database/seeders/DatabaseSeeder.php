@@ -4,8 +4,10 @@ namespace Database\Seeders;
 
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Devices\ControlDriver;
+use App\Domain\Devices\IntegrationKey;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
+use App\Models\Integration;
 use App\Models\Outlet;
 use App\Models\Package;
 use App\Models\RentalSession;
@@ -43,6 +45,17 @@ class DatabaseSeeder extends Seeder
 
         Setting::create(['key' => 'billing_increment_minutes', 'value' => ['minutes' => 1]]);
         Setting::create(['key' => 'warning_before_minutes', 'value' => ['minutes' => 5]]);
+
+        // Barisnya dibuat KOSONG, bukan diisi contoh: sampai pemilik menempel
+        // tokennya sendiri dari Home Assistant, sistem tetap memakai .env.
+        // Baris berisi token palsu justru akan menang atas .env dan membuat
+        // integrasi yang tadinya jalan mendadak gagal otentikasi.
+        Integration::create([
+            'key' => IntegrationKey::HomeAssistant,
+            'base_url' => null,
+            'token' => null,
+            'is_active' => true,
+        ]);
 
         $nonVip = UnitType::create([
             'outlet_id' => $outlet->id,
