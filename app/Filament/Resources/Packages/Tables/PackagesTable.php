@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Packages\Tables;
 
+use App\Domain\Billing\Rupiah;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -28,7 +29,7 @@ class PackagesTable
                     ->sortable(),
                 TextColumn::make('price')
                     ->label('Harga')
-                    ->money('IDR', locale: 'id')
+                    ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->sortable(),
                 IconColumn::make('is_active')
                     ->label('Aktif')

@@ -627,6 +627,61 @@ unreachable → badge berubah + `device_alert` muncul" bekerja live: unit
 ber-driver HA berubah jadi `unreachable` + badge `1 alert` **tanpa reload**,
 didorong `units:poll-state` → `DeviceManager::reportState()` → Reverb.
 
+## Polish tampilan — enum berlabel & kartu dashboard
+
+Diminta user untuk memantau sistem berjalan dan membereskan yang "kurang enak
+dipandang". Ditelusuri semua halaman panel satu per satu di browser:
+
+- **Semua enum sekarang implement `HasLabel` + `HasColor` bawaan Filament.**
+  *Masalahnya:* nilai mentah bocor ke UI di mana-mana — tabel Riwayat Sesi
+  menampilkan `open`, `completed`, `cash`; Alert menampilkan `device_offline`;
+  Unit menampilkan `home_assistant`. Selain jelek, ini melanggar §8 yang minta
+  UI berbahasa Indonesia.
+  *Why lewat kontrak enum, bukan `formatStateUsing()` per kolom:* satu
+  perubahan di enum otomatis berlaku di SEMUA tempat — badge tabel, filter,
+  dropdown `Select::options(PaymentMethod::class)`, sampai form — tanpa perlu
+  diingat-ingat di tiap file. Sekaligus **menghapus duplikasi nyata**: peta
+  warna `PowerState` sebelumnya disalin di DUA file (`UnitsTable` dan
+  `UnitGridWidget`) dan bisa drift; sekarang satu-satunya sumber ada di
+  enumnya. Total tiga blok `match` warna manual terhapus.
+  Delapan enum: `SessionStatus` (Aktif/Selesai/Dibatalkan), `SessionType`
+  (Open Play/Paket), `PaymentMethod` (Tunai/QRIS/Transfer), `PowerState`
+  (Menyala/Standby/Tidak terhubung/Belum diketahui), `DeviceAlertType`,
+  `DeviceAlertStatus`, `ControlDriver`, `UserRole`.
+
+- **Kartu unit di dashboard tingginya tidak seragam** — badge "1 alert" dulu
+  jadi baris sendiri di tengah kartu, jadi unit yang punya alert lebih tinggi
+  dari yang tidak, dan grid terlihat bergerigi.
+  *Fix:* badge alert dipindah ke baris judul (jadi ikon + angka di sebelah
+  badge power), sehingga isi kartu selalu punya jumlah baris yang sama.
+
+- **Tombol aksi kasir dibuat `->button()`**, sebelumnya link teks kecil.
+  *Why:* ini dashboard yang dipakai kasir sepanjang hari, sering di layar
+  sentuh — target sentuh sebesar tombol jauh lebih layak daripada teks
+  setinggi ~16px. Sekalian grid diturunkan dari maksimal 4 kolom ke 3 supaya
+  kartu lebih lebar dan tombol tidak berdesakan.
+
+- **Timer dibuat elemen paling menonjol di kartu** (`TextSize::Large` +
+  `FontWeight::Bold` + ikon jam; hijau untuk open play, kuning untuk sisa
+  waktu paket) — ini angka yang paling sering dilihat kasir, sebelumnya
+  ukurannya sama dengan teks lain.
+
+- **Format rupiah disatukan ke `Rupiah::format()`.** Tabel Sesi/Paket/Tipe Unit
+  dulu memakai `->money('IDR', locale: 'id')` yang menghasilkan `Rp 167`
+  (pakai spasi), sementara halaman Laporan dan notifikasi dashboard memakai
+  `Rupiah::format()` yang menghasilkan `Rp167`. Dua format berbeda untuk hal
+  yang sama di satu aplikasi.
+
+- **Judul halaman vs label navigasi disamakan** lewat `$pluralModelLabel` —
+  navigasi bilang "Riwayat Sesi"/"Alert Perangkat" tapi judul & breadcrumb
+  halamannya cuma "Sesi"/"Alert".
+
+- **Kunci setting tidak lagi tampil mentah.** `billing_increment_minutes` kini
+  tampil sebagai "Pembulatan billing" dengan kunci teknisnya jadi subtitle
+  kecil (`->description()`), dan nilainya jadi badge "1 menit". Petanya
+  statis di `Setting::LABELS` — aman karena daftar kunci memang ditentukan
+  sistem (`SettingPolicy::create()` selalu `false`, owner hanya mengubah nilai).
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

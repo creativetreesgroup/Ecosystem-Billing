@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Settings\Schemas;
 
+use App\Models\Setting;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
 
@@ -12,11 +13,13 @@ class SettingForm
         return $schema
             ->components([
                 TextInput::make('key')
-                    ->label('Kunci')
-                    ->disabled()
-                    ->dehydrated(),
+                    ->label('Pengaturan')
+                    ->formatStateUsing(fn (?Setting $record): ?string => $record?->label())
+                    ->helperText(fn (?Setting $record): ?string => $record?->key)
+                    ->disabled(),
                 TextInput::make('value.minutes')
-                    ->label('Nilai (menit)')
+                    ->label('Nilai')
+                    ->suffix('menit')
                     ->numeric()
                     ->minValue(0)
                     ->required(),

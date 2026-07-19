@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\Units\Tables;
 
-use App\Domain\Devices\PowerState;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -30,13 +29,7 @@ class UnitsTable
                     ->badge(),
                 TextColumn::make('power_state')
                     ->label('Status TV')
-                    ->badge()
-                    ->color(fn (PowerState $state) => match ($state) {
-                        PowerState::On => 'success',
-                        PowerState::Standby => 'gray',
-                        PowerState::Unreachable => 'danger',
-                        PowerState::Unknown => 'warning',
-                    }),
+                    ->badge(),
                 TextColumn::make('last_seen_at')
                     ->label('Terakhir terlihat')
                     ->dateTime('d/m/Y H:i')

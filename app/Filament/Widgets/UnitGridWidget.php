@@ -24,6 +24,9 @@ use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Support\Enums\FontWeight;
+use Filament\Support\Enums\Size;
+use Filament\Support\Enums\TextSize;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\Layout\Split;
 use Filament\Tables\Columns\Layout\Stack;
 use Filament\Tables\Columns\TextColumn;
@@ -67,52 +70,63 @@ class UnitGridWidget extends TableWidget
                     ->with(['unitType', 'activeSession.package', 'activeSession.openedBy'])
                     ->withCount(['deviceAlerts as open_alerts_count' => fn (Builder $query) => $query->where('status', DeviceAlertStatus::Open)])
             )
+            // Maksimal 3 kolom (bukan 4): kartu jadi lebih lebar sehingga nama
+            // pelanggan & tombol aksi punya ruang layak untuk ditekan kasir.
             ->contentGrid([
                 'md' => 2,
                 'xl' => 3,
-                '2xl' => 4,
             ])
             ->paginated(false)
             ->poll('15s')
             ->defaultSort('code')
             ->columns([
                 Stack::make([
+                    // Badge alert ikut di baris judul (bukan baris sendiri di
+                    // tengah kartu) supaya tinggi kartu tetap seragam antara
+                    // unit yang punya alert dan yang tidak.
                     Split::make([
                         TextColumn::make('code')
                             ->weight(FontWeight::Bold)
-                            ->size('lg'),
-                        TextColumn::make('power_state')
+                            ->size(TextSize::Large),
+                        TextColumn::make('open_alerts_count')
                             ->badge()
-                            ->color(fn (?PowerState $state) => match ($state) {
-                                PowerState::On => 'success',
-                                PowerState::Standby => 'gray',
-                                PowerState::Unreachable => 'danger',
-                                default => 'warning',
-                            }),
+                            ->color('danger')
+                            ->icon(Heroicon::OutlinedExclamationTriangle)
+                            ->tooltip(fn (?Unit $record) => "{$record?->open_alerts_count} alert belum ditangani")
+                            ->visible(fn (?Unit $record) => $record?->open_alerts_count > 0),
+                        TextColumn::make('power_state')
+                            ->badge(),
                     ]),
                     TextColumn::make('unitType.name')
                         ->color('gray')
-                        ->size('sm'),
-                    TextColumn::make('open_alerts_count')
-                        ->label('Alert')
-                        ->badge()
-                        ->color('danger')
-                        ->formatStateUsing(fn (?int $state) => "{$state} alert")
-                        ->visible(fn (?Unit $record) => $record?->open_alerts_count > 0),
+                        ->size(TextSize::Small),
                     TextColumn::make('activeSession.customer_name')
                         ->label('Pelanggan')
-                        ->placeholder('-')
+                        ->icon(Heroicon::OutlinedUser)
+                        ->weight(FontWeight::Medium)
+                        ->placeholder('Tanpa nama')
                         ->visible(fn (?Unit $record) => $record?->activeSession !== null),
                     TextColumn::make('activeSession.type')
                         ->label('Tipe')
-                        ->formatStateUsing(fn (?Unit $record) => $record?->activeSession?->type === SessionType::Package
-                            ? 'Paket ('.$record->activeSession->package?->name.')'
-                            : 'Open Play')
+                        ->color('gray')
+                        ->size(TextSize::Small)
+                        ->formatStateUsing(function (?Unit $record): ?string {
+                            $session = $record?->activeSession;
+
+                            return $session?->type === SessionType::Package
+                                ? $session->type->getLabel().' — '.$session->package?->name
+                                : $session?->type?->getLabel();
+                        })
                         ->visible(fn (?Unit $record) => $record?->activeSession !== null),
+                    // Timer adalah angka yang paling sering dilihat kasir —
+                    // dibuat paling menonjol di dalam kartu.
                     TextColumn::make('activeSession.ends_at')
                         ->label('Sisa waktu')
+                        ->icon(Heroicon::OutlinedClock)
+                        ->size(TextSize::Large)
+                        ->weight(FontWeight::Bold)
+                        ->color('warning')
                         ->formatStateUsing(fn (?Unit $record) => $record?->activeSession?->ends_at?->format('H:i'))
-                        ->placeholder('—')
                         ->extraAttributes(fn (?Unit $record) => $record?->activeSession?->ends_at
                             ? [
                                 'x-data' => "countdown('".$record->activeSession->ends_at->toIso8601String()."')",
@@ -122,6 +136,10 @@ class UnitGridWidget extends TableWidget
                         ->visible(fn (?Unit $record) => $record?->activeSession?->ends_at !== null),
                     TextColumn::make('activeSession.started_at')
                         ->label('Berjalan')
+                        ->icon(Heroicon::OutlinedClock)
+                        ->size(TextSize::Large)
+                        ->weight(FontWeight::Bold)
+                        ->color('success')
                         ->formatStateUsing(fn (?Unit $record) => $record?->activeSession?->started_at?->format('H:i'))
                         ->extraAttributes(fn (?Unit $record) => $record?->activeSession
                             ? [
@@ -134,8 +152,9 @@ class UnitGridWidget extends TableWidget
                         ->label('')
                         ->state('Unit kosong')
                         ->color('gray')
+                        ->size(TextSize::Small)
                         ->visible(fn (?Unit $record) => $record?->activeSession === null),
-                ])->space(1),
+                ])->space(2),
             ])
             ->recordActions([
                 $this->startSessionAction(),
@@ -149,6 +168,8 @@ class UnitGridWidget extends TableWidget
     protected function startSessionAction(): Action
     {
         return Action::make('start')
+            ->button()
+            ->size(Size::Small)
             ->label('Mulai')
             ->color('success')
             ->icon('heroicon-o-play')
@@ -195,6 +216,8 @@ class UnitGridWidget extends TableWidget
     protected function extendSessionAction(): Action
     {
         return Action::make('extend')
+            ->button()
+            ->size(Size::Small)
             ->label('Perpanjang')
             ->color('warning')
             ->icon('heroicon-o-clock')
@@ -226,6 +249,8 @@ class UnitGridWidget extends TableWidget
     protected function stopSessionAction(): Action
     {
         return Action::make('stop')
+            ->button()
+            ->size(Size::Small)
             ->label('Stop & Bayar')
             ->color('danger')
             ->icon('heroicon-o-stop')
@@ -261,6 +286,8 @@ class UnitGridWidget extends TableWidget
     protected function togglePowerAction(): Action
     {
         return Action::make('togglePower')
+            ->button()
+            ->size(Size::Small)
             ->label(fn (?Unit $record) => $record?->power_state === PowerState::On ? 'Matikan TV' : 'Nyalakan TV')
             ->color('gray')
             ->icon('heroicon-o-power')

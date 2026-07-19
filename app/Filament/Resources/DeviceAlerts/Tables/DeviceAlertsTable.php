@@ -28,8 +28,7 @@ class DeviceAlertsTable
                     ->wrap(),
                 TextColumn::make('status')
                     ->label('Status')
-                    ->badge()
-                    ->color(fn (DeviceAlertStatus $state) => $state === DeviceAlertStatus::Open ? 'danger' : 'success'),
+                    ->badge(),
                 TextColumn::make('acknowledgedBy.name')
                     ->label('Ditangani oleh')
                     ->placeholder('-'),

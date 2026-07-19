@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\UnitTypes\Tables;
 
+use App\Domain\Billing\Rupiah;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -23,7 +24,7 @@ class UnitTypesTable
                     ->searchable(),
                 TextColumn::make('hourly_rate')
                     ->label('Tarif per jam')
-                    ->money('IDR', locale: 'id')
+                    ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->sortable(),
                 TextColumn::make('sort_order')
                     ->label('Urutan')

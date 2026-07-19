@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\RentalSessions\Tables;
 
+use App\Domain\Billing\Rupiah;
 use App\Domain\Sessions\Actions\VoidSessionAction;
 use App\Domain\Sessions\SessionStatus;
 use App\Models\RentalSession;
@@ -51,15 +52,10 @@ class RentalSessionsTable
                     ->sortable(),
                 TextColumn::make('status')
                     ->label('Status')
-                    ->badge()
-                    ->color(fn (SessionStatus $state) => match ($state) {
-                        SessionStatus::Active => 'success',
-                        SessionStatus::Completed => 'gray',
-                        SessionStatus::Voided => 'danger',
-                    }),
+                    ->badge(),
                 TextColumn::make('total_amount')
                     ->label('Total')
-                    ->money('IDR', locale: 'id')
+                    ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->placeholder('-')
                     ->sortable(),
                 TextColumn::make('payment_method')

@@ -20,6 +20,8 @@ class RentalSessionResource extends Resource
 
     protected static ?string $modelLabel = 'sesi';
 
+    protected static ?string $pluralModelLabel = 'Riwayat Sesi';
+
     public static function table(Table $table): Table
     {
         return RentalSessionsTable::configure($table);

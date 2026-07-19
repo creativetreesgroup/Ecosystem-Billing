@@ -2,9 +2,29 @@
 
 namespace App\Domain\Devices;
 
-enum DeviceAlertType: string
+use Filament\Support\Contracts\HasColor;
+use Filament\Support\Contracts\HasLabel;
+
+enum DeviceAlertType: string implements HasColor, HasLabel
 {
     case PowerOffFailed = 'power_off_failed';
     case DeviceOffline = 'device_offline';
     case StateMismatch = 'state_mismatch';
+
+    public function getLabel(): string
+    {
+        return match ($this) {
+            self::PowerOffFailed => 'TV gagal dimatikan',
+            self::DeviceOffline => 'Perangkat offline',
+            self::StateMismatch => 'Status tidak cocok',
+        };
+    }
+
+    public function getColor(): string
+    {
+        return match ($this) {
+            self::PowerOffFailed => 'danger',
+            self::DeviceOffline, self::StateMismatch => 'warning',
+        };
+    }
 }

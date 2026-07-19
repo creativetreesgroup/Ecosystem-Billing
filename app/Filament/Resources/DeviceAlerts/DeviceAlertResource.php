@@ -21,6 +21,8 @@ class DeviceAlertResource extends Resource
 
     protected static ?string $modelLabel = 'alert';
 
+    protected static ?string $pluralModelLabel = 'Alert Perangkat';
+
     public static function table(Table $table): Table
     {
         return DeviceAlertsTable::configure($table);

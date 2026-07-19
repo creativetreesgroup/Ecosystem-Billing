@@ -183,7 +183,7 @@ class SalesReport extends Page implements HasTable
      */
     public function getRevenueByPaymentMethod(): array
     {
-        return $this->summarize(fn (RentalSession $session) => $session->payment_method?->name ?? 'Tidak diketahui');
+        return $this->summarize(fn (RentalSession $session) => $session->payment_method?->getLabel() ?? 'Tidak diketahui');
     }
 
     /**
