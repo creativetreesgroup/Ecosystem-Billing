@@ -164,13 +164,18 @@ class SalesReport extends Page implements HasTable
     {
         return $schema
             ->components([
-                DatePicker::make('start_date')->label('Dari tanggal')->native(false)
+                DatePicker::make('start_date')->label('Dari tanggal')
                     ->live()->afterStateUpdated(fn () => $this->broadcastRange()),
-                DatePicker::make('end_date')->label('Sampai tanggal')->native(false)
+                DatePicker::make('end_date')->label('Sampai tanggal')
                     ->live()->afterStateUpdated(fn () => $this->broadcastRange()),
             ])
             ->statePath('data')
-            ->columns(2);
+            // ['default' => 2], BUKAN columns(2): columns(2) di Filament berarti
+            // ['lg' => 2], jadi kedua tanggal baru berdampingan mulai 1024px dan
+            // di bawah itu menumpuk. Dua tanggal pendek muat berdampingan di
+            // layar mana pun, dan "Dari - Sampai" memang dibaca sebagai satu
+            // rentang — bukan dua isian terpisah.
+            ->columns(['default' => 2]);
     }
 
     public function table(Table $table): Table

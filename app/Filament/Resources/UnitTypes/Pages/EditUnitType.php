@@ -2,18 +2,13 @@
 
 namespace App\Filament\Resources\UnitTypes\Pages;
 
+use App\Filament\Concerns\DeletesFromFormFooter;
 use App\Filament\Resources\UnitTypes\UnitTypeResource;
-use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditUnitType extends EditRecord
 {
-    protected static string $resource = UnitTypeResource::class;
+    use DeletesFromFormFooter;
 
-    protected function getHeaderActions(): array
-    {
-        return [
-            DeleteAction::make(),
-        ];
-    }
+    protected static string $resource = UnitTypeResource::class;
 }
