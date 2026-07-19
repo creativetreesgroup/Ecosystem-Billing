@@ -87,8 +87,11 @@ mysql ... -e "SELECT COUNT(*) FROM rental_sessions;"   # ulangi untuk users, uni
 
 ## Prosedur menambah unit baru
 
-1. **Provisioning fisik** (tugas manusia, §14 di bawah): DHCP reservation, setting TV, pairing HA / flash Tasmota, kabel LAN.
-2. Tambah baris di tabel `units` lewat panel Filament (`Units` resource, owner-only): `code`, `unit_type_id`, `control_driver`, `control_ref` (entity_id HA persis seperti di HA, atau topic Tasmota persis seperti di-flash), `tv_mac` (opsional, untuk Wake-on-LAN).
+1. **Provisioning fisik** (tugas manusia, §14 di bawah): setting TV, pairing HA / flash Tasmota, kabel LAN. DHCP reservation **opsional** untuk jalur Home Assistant — lihat catatan deteksi otomatis di bawah.
+2. Tambah unit lewat panel Filament (menu **Unit**, owner-only). Untuk `control_driver = home_assistant`, field **"TV terdeteksi di jaringan"** memuat sendiri semua TV yang sudah ditemukan Home Assistant di WiFi/LAN yang sama — cukup pilih, `Referensi kontrol` terisi otomatis. Tidak perlu tahu IP maupun mengetik entity_id.
+   Dari CLI, daftar yang sama bisa dilihat dengan `php artisan units:discover`, lengkap dengan penanda TV mana yang belum dipasangkan ke unit.
+
+   > **Kenapa DHCP reservation tidak wajib untuk jalur HA:** Home Assistant menemukan TV lewat mDNS/SSDP dan mengacu ke `entity_id`, bukan ke IP. IP boleh berubah-ubah dari DHCP; `entity_id` tetap. DHCP reservation tetap **disarankan** untuk server, dan tetap **wajib** untuk plug Tasmota (jalur MQTT mengacu ke topic yang di-flash, dan brokernya perlu alamat yang stabil).
 3. Kalau `control_driver=tasmota`: tambah kredensial device di `docker/mosquitto/config/passwordfile` + blok ACL baru di `docker/mosquitto/config/acl.conf` (lihat komentar di file itu), lalu `docker compose -f docker-compose.devices.yml restart mosquitto`.
 4. Uji dari dashboard: tombol Power On/Off manual harus benar-benar menyalakan/mematikan TV secara fisik sebelum unit dipakai pelanggan sungguhan.
 
@@ -123,7 +126,7 @@ Jangan pernah expose port 80/443/8080/3306/1883/8123 langsung ke internet.
 
 *(dicantumkan apa adanya dari spesifikasi awal proyek — AI tidak pernah mengklaim bisa mengerjakan ini, dan tidak ada kode di repo ini yang berpura-pura menggantikannya)*
 
-- DHCP reservation di router untuk server, tiap TV, dan tiap plug (catat MAC).
+- DHCP reservation di router untuk server dan tiap plug Tasmota (catat MAC). *Catatan: untuk TV ber-driver Home Assistant ini tidak lagi wajib — HA menemukannya otomatis lewat mDNS/SSDP dan mengacu ke `entity_id`, bukan IP. Lihat "Prosedur menambah unit baru".*
 - Setting di tiap TV: networked standby / power-on-via-network, HDMI-CEC aktif, nama perangkat = kode unit, auto-update firmware & eco timer dimatikan.
 - Instalasi Home Assistant + pairing tiap TV (konfirmasi fisik di layar) + pembuatan long-lived access token.
 - Flash Tasmota + kredensial & ACL MQTT per plug (jalur Tasmota).

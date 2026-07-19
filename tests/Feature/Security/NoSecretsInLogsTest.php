@@ -23,8 +23,12 @@ test('the home assistant token never appears in application logs when a device c
     Log::getLogger()->pushHandler($handler);
 
     $unit = Unit::factory()->create(['control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.tv_ps01']);
-    app(DeviceManager::class)->attempt($unit, fn ($driver) => $driver->powerOn($unit));
-    app(DeviceManager::class)->attempt($unit, fn ($driver) => $driver->state($unit));
+    $devices = app(DeviceManager::class);
+    // state() dipanggil langsung, bukan lewat attempt(): attempt() bertipe
+    // kembalian ?CommandResult, jadi membungkus state() (yang mengembalikan
+    // PowerState) justru memicu TypeError dan menguji jalur yang salah.
+    $devices->attempt($unit, fn ($driver) => $driver->powerOn($unit));
+    $devices->driverFor($unit)->state($unit);
 
     expect(json_encode($handler->getRecords()))->not->toContain($secretToken);
 });

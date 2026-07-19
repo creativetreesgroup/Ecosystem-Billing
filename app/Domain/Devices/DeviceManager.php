@@ -22,10 +22,7 @@ class DeviceManager
     {
         return match ($unit->control_driver) {
             ControlDriver::Manual => $this->container->make(ManualDriver::class),
-            ControlDriver::HomeAssistant => new HomeAssistantDriver(
-                baseUrl: config('services.home_assistant.base_url'),
-                token: config('services.home_assistant.token'),
-            ),
+            ControlDriver::HomeAssistant => $this->homeAssistant(),
             ControlDriver::Tasmota => new TasmotaDriver(
                 host: config('services.mqtt.host'),
                 port: config('services.mqtt.port'),
@@ -33,6 +30,18 @@ class DeviceManager
                 password: config('services.mqtt.password'),
             ),
         };
+    }
+
+    /**
+     * Dipakai driverFor() dan juga discovery TV — discovery tidak terikat ke
+     * satu Unit (justru dipakai saat unit-nya belum punya control_ref).
+     */
+    public function homeAssistant(): HomeAssistantDriver
+    {
+        return new HomeAssistantDriver(
+            baseUrl: config('services.home_assistant.base_url'),
+            token: config('services.home_assistant.token'),
+        );
     }
 
     /**

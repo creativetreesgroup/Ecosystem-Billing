@@ -72,6 +72,39 @@ class HomeAssistantDriver implements TvControl
         return in_array($capability->value, $unit->capabilities ?? [], true);
     }
 
+    /**
+     * Semua TV yang sudah ditemukan Home Assistant di jaringan yang sama —
+     * HA-lah yang menjalankan discovery mDNS/SSDP-nya, jadi begitu sebuah TV
+     * menyala di WiFi/LAN yang sama ia otomatis muncul di sini tanpa perlu
+     * tahu IP-nya sama sekali (IP boleh berubah; entity_id tidak).
+     *
+     * @return array<string, string> entity_id => nama yang tampil di HA
+     */
+    public function discoverMediaPlayers(): array
+    {
+        try {
+            $response = Http::withToken($this->token)
+                ->timeout(5)
+                ->get("{$this->baseUrl}/api/states");
+
+            if (! $response->successful()) {
+                return [];
+            }
+        } catch (ConnectionException $e) {
+            Log::warning('Home Assistant tidak bisa dihubungi saat discovery TV.', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        return collect($response->json())
+            ->filter(fn (array $entity) => str_starts_with($entity['entity_id'] ?? '', 'media_player.'))
+            ->mapWithKeys(fn (array $entity) => [
+                $entity['entity_id'] => $entity['attributes']['friendly_name'] ?? $entity['entity_id'],
+            ])
+            ->sort()
+            ->all();
+    }
+
     public function notify(Unit $unit, string $message): CommandResult
     {
         if (! $this->supports($unit, Capability::Notify)) {

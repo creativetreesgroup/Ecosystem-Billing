@@ -682,6 +682,77 @@ dipandang". Ditelusuri semua halaman panel satu per satu di browser:
   statis di `Setting::LABELS` — aman karena daftar kunci memang ditentukan
   sistem (`SettingPolicy::create()` selalu `false`, owner hanya mengubah nilai).
 
+## Deteksi TV otomatis + resource Pengguna
+
+- **`UserResource` (owner-only) ditambahkan — sebelumnya TIDAK ADA sama sekali.**
+  *Kenapa ini celah nyata:* `RUNBOOK.md` menyuruh "buat user sungguhan lewat
+  panel (owner-only) dan nonaktifkan/hapus akun seeder sebelum sistem
+  menangani uang sungguhan" — instruksi yang **mustahil dijalankan** karena
+  panel tidak punya cara membuat user. Ditemukan saat menyisir model mana
+  yang belum punya resource Filament.
+  *Detail:* kata sandi wajib saat create, opsional saat edit (kosong =
+  dipertahankan, lewat `->dehydrated(fn ($state) => filled($state))`; hashing
+  oleh cast `hashed` di model). `UserPolicy::delete()` selalu `false` dan
+  `DeleteAction`/bulk-delete dihapus dari halamannya — `rental_sessions`
+  menyimpan FK `opened_by`/`voided_by` dengan `restrictOnDelete`, jadi
+  menghapus kasir yang pernah membuka sesi akan gagal di level DB sekaligus
+  merusak jejak audit. Nonaktifkan lewat `is_active` (langsung ditolak
+  `canAccessPanel()`).
+  *Model tanpa resource yang memang disengaja:* `Outlet` (V1 single-outlet,
+  tidak ada UI ganti-outlet) dan `SessionExtension` (baris anak sesi, sudah
+  terlihat lewat riwayat sesi).
+
+- **Deteksi TV otomatis di jaringan — `HomeAssistantDriver::discoverMediaPlayers()`.**
+  Permintaan user: mendeteksi sendiri TV yang tersambung ke WiFi/jaringan yang
+  sama, tidak hanya mengandalkan DHCP reservation.
+  *Why lewat Home Assistant, bukan scanning jaringan sendiri:* HA **sudah**
+  menjalankan discovery mDNS/SSDP dan sudah jadi dependency kita untuk
+  kontrol TV. Menulis ulang penemuan perangkat (mDNS/ARP/port-scan) berarti
+  menambah kompleksitas, dependency, dan permukaan keamanan untuk hasil yang
+  lebih buruk — cukup tanya `GET /api/states` (bentuk responsnya diverifikasi
+  ke dokumentasi resmi HA sebelum ditulis) lalu saring `media_player.*`.
+  *Konsekuensi yang penting untuk operasional:* karena HA mengacu ke
+  `entity_id` dan bukan IP, **DHCP reservation jadi tidak wajib** untuk TV
+  jalur HA — IP boleh berubah, `entity_id` tetap. `RUNBOOK.md` §14 sudah
+  dikoreksi (sebelumnya menuntut DHCP reservation untuk *tiap TV*); untuk
+  plug Tasmota reservation tetap disarankan karena jalurnya lewat broker MQTT.
+  *Antarmuka:* di form Unit muncul Select "TV terdeteksi di jaringan" yang
+  mengisi `control_ref` otomatis, plus `php artisan units:discover` untuk CLI
+  yang sekaligus menandai TV mana yang belum dipasangkan ke unit mana pun.
+  Gagal terhubung ke HA mengembalikan daftar kosong (bukan exception), jadi
+  form tetap bisa dipakai dan `control_ref` tetap bisa diisi manual.
+
+- **BUG DITEMUKAN & DIPERBAIKI saat verifikasi form di browser: dua komponen
+  bernama sama (`control_ref`) membuat KEDUANYA hilang.** Percobaan pertama
+  memakai `Select::make('control_ref')` untuk HA dan
+  `TextInput::make('control_ref')` untuk Tasmota di schema yang sama — hasilnya
+  tidak ada field `control_ref` yang ter-render sama sekali. Diperbaiki jadi
+  satu `TextInput` `control_ref` + satu Select bantu `discovered_tv` yang
+  `->dehydrated(false)` dan hanya mengisi `control_ref` lewat `Set`.
+  *Pelajaran:* nama komponen dalam satu schema Filament harus unik; kalau
+  tidak, kegagalannya diam-diam (tidak ada error, field-nya hanya lenyap).
+
+- **BUG LAMA IKUT KETAHUAN: `$get()` mengembalikan instance enum, bukan string.**
+  Kode lama `->visible(fn ($get) => $get('control_driver') !== ControlDriver::Manual->value)`
+  membandingkan instance `ControlDriver` dengan string `'manual'` — hasilnya
+  **selalu true**, jadi field "Referensi kontrol" ikut tampil untuk driver
+  Manual, padahal driver manual justru yang tidak punya referensi kontrol.
+  Sebelumnya tidak kelihatan karena perbandingannya `!==` (selalu lolos);
+  baru ketahuan setelah dipakai `===` untuk kondisi baru dan field-nya tidak
+  pernah muncul. Diperbaiki dengan helper `UnitForm::driverOf()` yang
+  menormalkan kedua bentuk (string maupun enum) — pola yang sama dengan
+  `UnitGridWidget::resolvePaymentMethod()`. Diverifikasi ketiga driver di
+  browser: `home_assistant` → picker + referensi, `tasmota` → referensi saja,
+  `manual` → tidak ada keduanya.
+
+- **`DeviceManager::attempt()` dipakai salah di satu test** — dibungkuskan ke
+  `state()` yang mengembalikan `PowerState`, padahal `attempt()` bertipe
+  kembalian `?CommandResult`. TypeError-nya ditelan `catch (Throwable)` di
+  dalam `attempt()` dan hanya muncul sebagai baris log "Perintah device
+  gagal", sehingga test-nya lulus tapi menguji jalur yang salah. Ketahuan
+  saat membaca `storage/logs/laravel.log` untuk keperluan lain. Test
+  diperbaiki memanggil `driverFor($unit)->state($unit)` langsung.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

@@ -57,3 +57,15 @@ test('no one creates rental sessions or device alerts directly through a form', 
         ->and($this->kasir->can('create', DeviceAlert::class))->toBeFalse()
         ->and($this->owner->can('create', DeviceAlert::class))->toBeFalse();
 });
+
+test('only owner can manage user accounts', function () {
+    expect($this->kasir->can('viewAny', User::class))->toBeFalse()
+        ->and($this->kasir->can('create', User::class))->toBeFalse()
+        ->and($this->owner->can('viewAny', User::class))->toBeTrue()
+        ->and($this->owner->can('create', User::class))->toBeTrue();
+});
+
+test('nobody can delete a user account, since sessions reference it', function () {
+    expect($this->owner->can('delete', $this->kasir))->toBeFalse()
+        ->and($this->kasir->can('delete', $this->owner))->toBeFalse();
+});
