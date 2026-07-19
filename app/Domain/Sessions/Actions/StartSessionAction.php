@@ -39,6 +39,14 @@ class StartSessionAction
             throw new InvalidArgumentException('Metode pembayaran wajib dipilih — paket dibayar di muka.');
         }
 
+        // §8: jangan percaya state Livewire sebagai fakta — dropdown paket di
+        // widget sudah difilter per unit_type, tapi itu cuma UI. Tanpa cek ini,
+        // request yang di-tamper bisa memasang harga paket tipe unit lain
+        // (mis. paket Non-VIP murah di unit Sultan) langsung ke base_amount.
+        if ($package && $package->unit_type_id !== $unit->unit_type_id) {
+            throw new InvalidArgumentException("Paket \"{$package->name}\" bukan untuk tipe unit {$unit->code}.");
+        }
+
         $session = DB::transaction(function () use ($unit, $openedBy, $type, $package, $customerName, $paymentMethod) {
             $lockedUnit = Unit::query()->whereKey($unit->id)->lockForUpdate()->firstOrFail();
 

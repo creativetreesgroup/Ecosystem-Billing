@@ -501,6 +501,56 @@ Diminta eksplisit oleh user: cek ulang apakah v1 benar-benar lengkap & profesion
   `RUNBOOK.md` "Akses remote"). Dicatat eksplisit dengan alasan yang sama
   seperti poin di atas.
 
+## Audit kelengkapan v1, ronde 2 — celah integritas billing
+
+Diminta lagi oleh user untuk mengecek ulang. Kali ini fokus spesifik ke
+peringatan §8 yang belum pernah diverifikasi eksplisit: *"aman terhadap
+Livewire state tampering — jangan percaya property Livewire sebagai fakta;
+validasi & authorize ulang server-side di setiap aksi."* Ditelusuri ke
+empat action di `UnitGridWidget` satu per satu.
+
+- **`StartSessionAction` tidak pernah memvalidasi `$package->unit_type_id`
+  cocok dengan `$unit->unit_type_id` — DITEMUKAN & DIPERBAIKI.**
+  *Skenario nyata:* dropdown "Paket" di modal Mulai Sesi sudah difilter ke
+  paket milik tipe unit yang benar (`Package::query()->where('unit_type_id',
+  $record?->unit_type_id)`), tapi itu FILTER UI, bukan validasi server.
+  Request Livewire yang di-tamper (atau bug UI state yang stale) bisa
+  mengirim `package_id` milik tipe unit LAIN — action-nya menerima begitu
+  saja dan menulis `base_amount = $package->price`, yaitu **harga yang
+  salah** untuk unit itu. Ini persis kelas bug yang diperingatkan §8, dan
+  soal duit — kategori paling sensitif di sistem ini.
+  *Fix:* satu guard clause di awal `StartSessionAction::handle()`, menolak
+  dengan `InvalidArgumentException` kalau `$package->unit_type_id !==
+  $unit->unit_type_id`. Test baru membuktikan reject-nya nyata: memanggil
+  action langsung dengan paket dari `unit_type` lain (bukan cuma lewat UI
+  yang toh sudah menyaring), meniru persis skenario "state Livewire yang
+  ditamper" yang tidak lewat filter dropdown sama sekali.
+  *Kenapa tidak ketahuan di audit-audit sebelumnya:* checklist DoD §10
+  tidak menyebutnya, dan semua test `StartSessionActionTest` yang sudah ada
+  sejak Fase 2 selalu memakai `Package::factory()->for($unit->unitType)` —
+  skenario "cocok" doang, tidak ada yang pernah mencoba skenario mismatch.
+
+- **Tiga action lain di `UnitGridWidget` (`extend`, `stop`, `togglePower`)
+  DICEK dan sudah aman** — tidak perlu diubah, dicatat supaya tidak dicek
+  ulang tanpa perlu di audit berikutnya:
+  - `extend`: `$record->activeSession` diresolusi server-side dari relasi
+    Eloquent (bukan ID sesi kiriman klien) — kasir tidak bisa memperpanjang
+    sesi unit lain lewat ID tebakan. `amount` memang input manual kasir per
+    desain §5.3 (bukan nilai turunan yang bisa "dipalsukan" karena tidak
+    ada nilai benar yang dilewati).
+  - `stop`: total tagihan yang ditampilkan di modal murni display
+    (`estimasi_total`), TIDAK pernah dikirim balik ke server — total
+    sungguhan selalu dihitung ulang di `CompleteSessionAction` dari
+    `started_at`/tarif/increment saat itu juga.
+  - `togglePower`: tidak ada perbedaan hak akses kasir/owner untuk
+    power on/off manual (§8 mendaftarkannya sebagai aksi kasir juga), jadi
+    tidak butuh `->authorize()` berbasis role.
+  - Action `void` (satu-satunya yang OWNER-ONLY di antara semua aksi sesi)
+    sudah benar memakai `->authorize(fn ($record) => auth()->user()->can('void',
+    $record))` di `RentalSessionsTable`, dan sama sekali tidak ada
+    jalurnya dari dashboard kasir (`UnitGridWidget`) — dicek eksplisit
+    tidak ketemu.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

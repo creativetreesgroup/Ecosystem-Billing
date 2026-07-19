@@ -77,6 +77,20 @@ test('rejects a package session without a payment method since packages are prep
     startAction()->handle($unit, $kasir, SessionType::Package, package: $package);
 })->throws(InvalidArgumentException::class);
 
+test('rejects a package that belongs to a different unit type, even if the caller supplies it directly', function () {
+    $unit = Unit::factory()->create(['control_driver' => ControlDriver::Manual]);
+    $kasir = User::factory()->create();
+    $packageForAnotherUnitType = Package::factory()->create();
+
+    startAction()->handle(
+        $unit,
+        $kasir,
+        SessionType::Package,
+        package: $packageForAnotherUnitType,
+        paymentMethod: PaymentMethod::Cash,
+    );
+})->throws(InvalidArgumentException::class);
+
 test('broadcasts SessionStarted', function () {
     Event::fake([SessionStarted::class]);
 
