@@ -1,5 +1,19 @@
-# Instal: crontab -u www-data deploy/backup/crontab
-# (atau tempel baris di bawah ke crontab yang sudah ada untuk user itu)
+# ---------------------------------------------------------------------------
+# WAJIB dijalankan SEKALI sebagai root sebelum memasang cron ini, kalau tidak
+# backup tidak akan pernah jalan: /var/backups dan /var/log dimiliki root,
+# sementara cron di bawah berjalan sebagai www-data.
 #
+#   sudo mkdir -p /var/backups/creative-trees-billing
+#   sudo chown www-data:www-data /var/backups/creative-trees-billing
+#   sudo chmod 750 /var/backups/creative-trees-billing
+#
+# Log sengaja diarahkan ke storage/logs aplikasi (sudah milik www-data),
+# BUKAN /var/log — redirect ke direktori root-only membuat cron gagal
+# sebelum script-nya sempat jalan, dan gagalnya tidak terlihat di mana pun.
+#
+# Pasang: sudo crontab -u www-data deploy/backup/crontab
+# Verifikasi setelah 1 hari: ls -l /var/backups/creative-trees-billing
+# ---------------------------------------------------------------------------
+
 # Backup harian jam 03:00 — di luar jam operasional outlet manapun.
-0 3 * * * /var/www/creative-trees-billing/deploy/backup/backup-database.sh >> /var/log/creative-trees-billing-backup.log 2>&1
+0 3 * * * /var/www/creative-trees-billing/deploy/backup/backup-database.sh >> /var/www/creative-trees-billing/storage/logs/backup.log 2>&1

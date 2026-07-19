@@ -753,6 +753,101 @@ dipandang". Ditelusuri semua halaman panel satu per satu di browser:
   saat membaca `storage/logs/laravel.log` untuk keperluan lain. Test
   diperbaiki memanggil `driverFor($unit)->state($unit)` langsung.
 
+## Review tim adversarial — penutupan V1
+
+Dijalankan 63 agent (6 dimensi × reviewer, tiap temuan diserang 2 skeptik
+independen: satu diminta MEMBANTAH, satu diminta MEREPRODUKSI). 28 temuan
+mentah, 44 dari 56 verdict bertahan.
+
+**Catatan proses yang penting:** agent review MENGUBAH source code saat
+bereksperimen — satu menghapus `lockForUpdate()` di `StartSessionAction`,
+satu menulis mutasi `whereNot('status', Active)` di query pendapatan laporan
+(yang akan menghitung sesi VOID sebagai pendapatan). Keduanya terdeteksi
+lewat `git diff` dan dipulihkan sebelum commit. *Pelajaran:* jangan pernah
+percaya working tree setelah menjalankan agent yang boleh menulis file —
+audit `git diff` sebelum commit, dan pastikan file scratch mereka dihapus.
+
+### Diperbaiki (uang & otorisasi)
+
+- **Pembulatan billing 0 bisa disimpan → `DivisionByZeroError` saat menagih.**
+  Sesi jadi TIDAK BISA ditutup sama sekali. Dijaga dua lapis: `max(1, …)` di
+  `OpenPlayBillingCalculator` (otoritatif, melindungi data lama yang sudah
+  terlanjur 0) dan `minValue(1)` di form.
+- **Fencing token hanya dicek DI LUAR lock.** Urutan yang merugikan: sweep
+  membaca daftar sesi kedaluwarsa → kasir menerima uang perpanjangan →
+  sweep menutup sesi itu. Pelanggan bayar, waktunya hangus. Token sekarang
+  dicek ULANG di dalam transaksi (`expectedExpiryToken`), diteruskan oleh
+  kedua pemanggil otomatis; penutupan manual kasir sengaja tidak mengirim
+  token supaya tidak pernah ter-fence.
+- **Kasir bisa bulk-delete unit.** Filament menanyakan ability `deleteAny`
+  (BUKAN `delete`) untuk bulk action; `UnitPolicy` tidak pernah punya method
+  itu, Gate mengembalikan "tidak terdefinisi", dan Filament menganggapnya
+  diizinkan. Ditutup di semua lapis + `DeleteAction` di halaman edit dibuang
+  (FK `restrictOnDelete` membuatnya melempar QueryException mentah).
+- **Dua unit bisa menunjuk TV fisik yang sama** → menutup sesi unit B ikut
+  mematikan TV unit A yang masih dipakai & ditagih. Dicegah unique index
+  `uq_unit_control_ref`, dicerminkan validasi form, dan TV yang sudah dipakai
+  disembunyikan dari daftar discovery.
+
+### Diperbaiki (device & laporan)
+
+- **HA melaporkan `playing`/`paused`/`idle`/`buffering` untuk TV yang MENYALA**
+  — semuanya dulu jatuh ke `Unknown`, jadi verifikasi power-off tidak pernah
+  membuat alert untuk TV yang jelas menyala.
+- **Verifikasi power-off hanya beralert saat state persis `On`** — plug
+  Tasmota yang offline menghasilkan `Unknown`, jadi verifikasinya MATI TOTAL
+  dan kasir tidak pernah diberi tahu. Sekarang apa pun yang tidak bisa
+  dipastikan mati ikut dilaporkan (fail loud, §3.5); unit manual dikecualikan
+  karena `ManualDriver` sudah beralert sendiri.
+- **Wake-on-LAN membatalkan perintah yang seharusnya ia bantu** —
+  `socket_sendto()` memunculkan E_WARNING yang diubah Laravel jadi
+  ErrorException, sehingga `media_player.turn_on` di bawahnya tidak pernah
+  jalan. Dibungkus try/catch: best-effort sungguhan.
+- **Laporan menghitung hari Jakarta memakai UTC.** `APP_DISPLAY_TIMEZONE` ada
+  di `.env` sejak Fase 1 tapi **tidak pernah dibaca kode mana pun**. Sekarang
+  di-wire ke `config('app.display_timezone')` dan dipakai untuk batas hari,
+  jam tersibuk, grouping harian, serta timestamp & nama file CSV.
+  *Catatan fixture:* Carbon ber-timezone Jakarta yang disimpan tanpa `->utc()`
+  menulis jam dindingnya apa adanya ke kolom — test-nya kini eksplisit.
+- **MQTT bridge menelan semua exception**: php-mqtt/client menangkap Throwable
+  dari callback lalu mengirimnya ke logger internal yang tidak diisi. Dibungkus
+  `guard()` sendiri supaya tercatat di log aplikasi tanpa mematikan daemon.
+- **LWT `Online` menyegarkan `last_seen_at` tanpa membawa status relay**,
+  padahal kolom itu satu-satunya penanda kesegaran yang dipakai
+  `TasmotaDriver::state()` — power_state lama jadi terlihat "masih valid".
+  Sekarang bridge meminta status sebenarnya (`queryState()`, publish payload
+  kosong ke `cmnd/<ref>/POWER`) dan membiarkan `stat/+/POWER` yang menyegarkan.
+
+### Diperbaiki (kualitas & dokumentasi)
+
+- **Rumus total sesi punya DUA salinan** — `CompleteSessionAction` (yang
+  menagih) dan `UnitGridWidget::estimateTotal` (yang ditampilkan). Angka di
+  layar dan angka yang ditagih bisa menyimpang diam-diam. Disatukan ke
+  `App\Domain\Billing\SessionTotal`; `OpenPlayBillingCalculator` tetap murni.
+- **`UnitGridWidget` — dashboard penerima uang — nol coverage.** Ditambah test,
+  termasuk yang membuktikan estimasi == tagihan sungguhan.
+- **Backup harian tidak akan pernah jalan**: cron dipasang untuk `www-data`
+  tapi `/var/backups` dan `/var/log` milik root, sehingga redirect-nya gagal
+  sebelum script sempat jalan — dan gagalnya tak terlihat di mana pun. Log
+  dipindah ke `storage/logs/` (sudah milik www-data), script gagal keras
+  dengan perintah perbaikan yang bisa langsung disalin, dan langkah
+  `chown` sekali-jalan ditulis di header crontab.
+- **`REVERB_HOST=localhost`** di `.env.example` tanpa peringatan — itu alamat
+  yang dipakai BROWSER KASIR, jadi di outlet realtime diam-diam mati (jatuh ke
+  polling 15 detik). Diberi komentar eksplisit.
+- Koreksi dokumentasi: `state_mismatch` yang tidak pernah diproduksi kode,
+  latensi sweep (~90 detik, bukan 30), `supervisorctl restart ctb-queue-worker:*`
+  (numprocs=2 = grup), `php artisan test` juga menjalankan suite Concurrency,
+  dan instruksi "hapus akun seeder" yang mustahil (akun sengaja tak bisa dihapus).
+
+### Belum dikerjakan (sadar, bukan terlewat)
+
+- `DeviceAlertType::StateMismatch` kini nilai enum yang tidak pernah diproduksi
+  kode mana pun. Dibiarkan di schema (nilai kolom tetap valid) — menghapusnya
+  butuh migrasi enum tanpa manfaat nyata di V1.
+- Uji restore backup terakhir dilakukan di mesin dev; **wajib diulang di server
+  production sungguhan** sebagai bagian UAT §14.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

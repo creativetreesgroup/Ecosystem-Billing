@@ -42,6 +42,17 @@ class TasmotaDriver implements TvControl
         return $this->publish($unit, 'OFF');
     }
 
+    /**
+     * Minta plug melaporkan status relay-nya sekarang. Tasmota membalas
+     * `cmnd/<ref>/POWER` berpayload kosong dengan `stat/<ref>/POWER`, yang
+     * ditangkap bridge:mqtt-listen dan masuk lewat DeviceManager::reportState().
+     * Dipakai saat plug baru online (LWT) — LWT sendiri tidak membawa status relay.
+     */
+    public function queryState(Unit $unit): CommandResult
+    {
+        return $this->publish($unit, '');
+    }
+
     public function state(Unit $unit): PowerState
     {
         if (! $unit->last_seen_at || $unit->last_seen_at->diffInSeconds(now()) > self::STALE_AFTER_SECONDS) {

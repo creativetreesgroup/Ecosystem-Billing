@@ -178,7 +178,7 @@ sequenceDiagram
     Note over Verify: 10 detik kemudian
     Verify->>Driver: state(unit)
     alt masih On
-        Verify->>DB: create device_alert (state_mismatch)
+        Verify->>DB: create device_alert (power_off_failed)
         DB-->>Reverb: broadcast DeviceAlertRaised
         Reverb-->>Dash: badge alert muncul
     else Standby/Off
@@ -202,7 +202,7 @@ Unit dengan `control_driver=manual` tidak butuh Home Assistant/Mosquitto apa pun
 ## Test
 
 ```bash
-php artisan test              # Feature + Unit
+php artisan test              # Unit + Feature + Concurrency
 php artisan test --testsuite=Concurrency   # butuh DB nyata, bukan transaksi in-memory
 ```
 

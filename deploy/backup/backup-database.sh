@@ -19,7 +19,15 @@ set -a
 source "${APP_DIR}/.env"
 set +a
 
-mkdir -p "${BACKUP_DIR}"
+# Gagal keras & jelas kalau direktori tujuan tidak bisa ditulis. Sebelumnya
+# `mkdir -p` di direktori milik root cuma membuat `set -e` menghentikan script
+# tanpa pesan, sehingga backup yang tidak pernah jalan terlihat seperti sukses.
+if ! mkdir -p "${BACKUP_DIR}" 2>/dev/null || [ ! -w "${BACKUP_DIR}" ]; then
+  echo "FATAL: ${BACKUP_DIR} tidak bisa ditulis oleh $(id -un)." >&2
+  echo "Jalankan sekali sebagai root:" >&2
+  echo "  sudo mkdir -p ${BACKUP_DIR} && sudo chown $(id -un):$(id -gn) ${BACKUP_DIR} && sudo chmod 750 ${BACKUP_DIR}" >&2
+  exit 1
+fi
 
 # --defaults-extra-file (bukan --password= di argumen CLI) supaya kredensial
 # DB tidak terlihat siapa pun yang menjalankan `ps aux` selama dump berjalan

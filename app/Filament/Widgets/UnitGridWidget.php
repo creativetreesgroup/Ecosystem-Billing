@@ -2,9 +2,9 @@
 
 namespace App\Filament\Widgets;
 
-use App\Domain\Billing\OpenPlayBillingCalculator;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\Rupiah;
+use App\Domain\Billing\SessionTotal;
 use App\Domain\Devices\DeviceAlertStatus;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
@@ -14,7 +14,6 @@ use App\Domain\Sessions\Actions\StartSessionAction;
 use App\Domain\Sessions\SessionType;
 use App\Models\Package;
 use App\Models\RentalSession;
-use App\Models\Setting;
 use App\Models\Unit;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Placeholder;
@@ -307,17 +306,14 @@ class UnitGridWidget extends TableWidget
             });
     }
 
+    /**
+     * Estimasi yang ditampilkan di modal Stop & Bayar. Sengaja memakai sumber
+     * yang SAMA dengan penagihan sungguhan (SessionTotal) supaya angka di layar
+     * tidak pernah menyimpang dari yang benar-benar ditagih.
+     */
     public static function estimateTotal(RentalSession $session): int
     {
-        if ($session->type === SessionType::Package) {
-            return $session->base_amount + $session->extra_amount;
-        }
-
-        return OpenPlayBillingCalculator::calculate(
-            $session->started_at->diffInSeconds(now()),
-            $session->unit->unitType->hourly_rate,
-            Setting::get('billing_increment_minutes')['minutes'] ?? 1,
-        );
+        return SessionTotal::for($session, now());
     }
 
     /**

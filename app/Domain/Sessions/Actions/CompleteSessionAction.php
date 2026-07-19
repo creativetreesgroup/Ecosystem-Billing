@@ -2,14 +2,13 @@
 
 namespace App\Domain\Sessions\Actions;
 
-use App\Domain\Billing\OpenPlayBillingCalculator;
 use App\Domain\Billing\PaymentMethod;
+use App\Domain\Billing\SessionTotal;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Sessions\Events\SessionEnded;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Models\RentalSession;
-use App\Models\Setting;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -55,13 +54,7 @@ class CompleteSessionAction
 
             $endedAt = now();
 
-            $totalAmount = $locked->type === SessionType::Open
-                ? OpenPlayBillingCalculator::calculate(
-                    elapsedSeconds: $locked->started_at->diffInSeconds($endedAt),
-                    hourlyRateRupiah: $locked->unit->unitType->hourly_rate,
-                    incrementMinutes: Setting::get('billing_increment_minutes')['minutes'] ?? 1,
-                )
-                : $locked->base_amount + $locked->extra_amount;
+            $totalAmount = SessionTotal::for($locked, $endedAt);
 
             $locked->update([
                 'ended_at' => $endedAt,

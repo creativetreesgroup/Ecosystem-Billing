@@ -67,8 +67,21 @@ class MqttBridgeListen extends Command
 
         $client->connect($settings, true);
 
-        $client->subscribe(TasmotaTopic::power('+'), fn (string $topic, string $message) => $this->handlePowerMessage($topic, $message), MqttClient::QOS_AT_LEAST_ONCE);
-        $client->subscribe(TasmotaTopic::availability('+'), fn (string $topic, string $message) => $this->handleAvailabilityMessage($topic, $message), MqttClient::QOS_AT_LEAST_ONCE);
+        // php-mqtt/client menangkap Throwable dari callback lalu mengirimnya ke
+        // logger internalnya, yang di sini TIDAK diisi — artinya error saat
+        // memproses pesan hilang tanpa jejak sama sekali. Dibungkus sendiri
+        // supaya kegagalan tetap tercatat di log aplikasi (fail loud, §3.5)
+        // tanpa mematikan daemon-nya.
+        $client->subscribe(
+            TasmotaTopic::power('+'),
+            fn (string $topic, string $message) => $this->guard($topic, $message, fn () => $this->handlePowerMessage($topic, $message)),
+            MqttClient::QOS_AT_LEAST_ONCE,
+        );
+        $client->subscribe(
+            TasmotaTopic::availability('+'),
+            fn (string $topic, string $message) => $this->guard($topic, $message, fn () => $this->handleAvailabilityMessage($topic, $message)),
+            MqttClient::QOS_AT_LEAST_ONCE,
+        );
 
         $this->info('bridge:mqtt-listen tersambung ke '.config('services.mqtt.host').', mendengarkan...');
 
@@ -100,7 +113,38 @@ class MqttBridgeListen extends Command
             return;
         }
 
-        $unit->update(['last_seen_at' => now()]);
+        // LWT "Online" hanya bilang plug-nya hidup — TIDAK membawa status relay.
+        // Dulu baris ini menyegarkan last_seen_at, padahal itu satu-satunya
+        // penanda kesegaran yang dipakai TasmotaDriver::state(): power_state
+        // lama jadi terlihat "masih valid" tanpa ada yang memverifikasinya.
+        // Sekarang kita minta status sebenarnya, dan biarkan stat/+/POWER yang
+        // menyegarkan last_seen_at lewat reportState().
+        $this->requestPowerState($unit);
+    }
+
+    /**
+     * Tanya status relay ke plug (cmnd/<ref>/POWER tanpa payload = query).
+     * Jawabannya datang sebagai stat/<ref>/POWER dan diproses seperti biasa.
+     */
+    private function requestPowerState(Unit $unit): void
+    {
+        $this->devices->tasmota()->queryState($unit);
+    }
+
+    /**
+     * @param  callable():void  $handler
+     */
+    private function guard(string $topic, string $message, callable $handler): void
+    {
+        try {
+            $handler();
+        } catch (Throwable $e) {
+            Log::error('Gagal memproses pesan MQTT.', [
+                'topic' => $topic,
+                'message' => $message,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function unitForTopic(string $topic): ?Unit

@@ -23,12 +23,7 @@ class DeviceManager
         return match ($unit->control_driver) {
             ControlDriver::Manual => $this->container->make(ManualDriver::class),
             ControlDriver::HomeAssistant => $this->homeAssistant(),
-            ControlDriver::Tasmota => new TasmotaDriver(
-                host: config('services.mqtt.host'),
-                port: config('services.mqtt.port'),
-                username: config('services.mqtt.username'),
-                password: config('services.mqtt.password'),
-            ),
+            ControlDriver::Tasmota => $this->tasmota(),
         };
     }
 
@@ -41,6 +36,16 @@ class DeviceManager
         return new HomeAssistantDriver(
             baseUrl: config('services.home_assistant.base_url'),
             token: config('services.home_assistant.token'),
+        );
+    }
+
+    public function tasmota(): TasmotaDriver
+    {
+        return new TasmotaDriver(
+            host: config('services.mqtt.host'),
+            port: config('services.mqtt.port'),
+            username: config('services.mqtt.username'),
+            password: config('services.mqtt.password'),
         );
     }
 

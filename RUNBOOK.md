@@ -15,12 +15,15 @@ Dikelola Supervisor (`deploy/supervisor/*.conf`):
 | MQTT bridge | `bridge:mqtt-listen` | Unit Tasmota berhenti update `power_state` |
 
 Cek status: `sudo supervisorctl status`. Restart satu proses: `sudo supervisorctl restart ctb-<nama>`.
+(Queue worker berjalan sebagai grup karena `numprocs=2`, jadi perintahnya
+`sudo supervisorctl restart ctb-queue-worker:*` — tanpa `:*` supervisor menjawab
+"no such process".)
 
 ---
 
 ## Insiden: TV tidak mati saat sesi habis
 
-1. Cek dashboard — kalau ada badge alert merah di kartu unit, klik untuk baca pesannya (`power_off_failed` atau `state_mismatch`, ditulis oleh `VerifyUnitPoweredOffJob` 10 detik setelah setiap perintah power-off, lihat `DECISIONS.md` Fase 5).
+1. Cek dashboard — kalau ada badge alert merah di kartu unit, klik untuk baca pesannya (`power_off_failed`, ditulis oleh `VerifyUnitPoweredOffJob` 10 detik setelah setiap perintah power-off, lihat `DECISIONS.md` Fase 5).
 2. Kalau alertnya `power_off_failed` dari unit `control_driver=manual`: **matikan TV manual** — driver ini tidak pernah bisa mengontrol TV, itu memang cara kerjanya.
 3. Kalau unit `home_assistant`: buka Home Assistant (`http://<host>:8123`), cari entity `media_player.*` unit terkait, cek statusnya. Kalau HA sendiri tidak bisa mematikan, TV kemungkinan hilang dari jaringan — cek TV menyala & terhubung WiFi/LAN.
 4. Kalau unit `tasmota`: cek plug menyala (LED status), cek `bridge:mqtt-listen` masih hidup (`supervisorctl status`), cek Mosquitto masih hidup (`docker compose -f docker-compose.devices.yml ps`).
@@ -42,7 +45,7 @@ Cek status: `sudo supervisorctl status`. Restart satu proses: `sudo supervisorct
 
 ## Insiden: Queue worker mati
 
-- Sesi paket yang harusnya berakhir otomatis akan TERLAMBAT (bergantung expiry job), tapi `sessions:sweep-expired` (scheduler, tiap menit) akan menutupnya paling lambat 30 detik setelah `ends_at` — **selama scheduler masih hidup**. Kalau scheduler JUGA mati, sesi paket menumpuk tanpa auto-close sampai kasir stop manual.
+- Sesi paket yang harusnya berakhir otomatis akan TERLAMBAT (bergantung expiry job), tapi `sessions:sweep-expired` (scheduler, tiap menit) akan menutupnya paling lambat ~90 detik setelah `ends_at` (sweep jalan tiap menit dan hanya mengambil sesi yang sudah lewat >30 detik) — **selama scheduler masih hidup**. Kalau scheduler JUGA mati, sesi paket menumpuk tanpa auto-close sampai kasir stop manual.
 - Restart: `sudo supervisorctl restart ctb-queue-worker`.
 - Setelah restart, job yang tertunda di tabel `jobs` akan diproses ulang otomatis — tidak ada data yang hilang (queue driver `database`, bukan in-memory).
 
@@ -118,7 +121,7 @@ Jangan pernah expose port 80/443/8080/3306/1883/8123 langsung ke internet.
 | Owner | `owner@creativetrees.test` | `password` |
 | Kasir | `kasir@creativetrees.test` | `password` |
 
-**Jangan pernah dipakai di production.** Buat user sungguhan lewat panel (owner-only) dan nonaktifkan/hapus akun seeder sebelum sistem menangani uang sungguhan.
+**Jangan pernah dipakai di production.** Buat user sungguhan lewat menu **Pengguna** (owner-only), lalu **nonaktifkan** akun seeder lewat toggle "Aktif" — akun sengaja tidak bisa dihapus karena `rental_sessions` menyimpan FK ke user (lihat `UserPolicy::delete()`).
 
 ---
 
