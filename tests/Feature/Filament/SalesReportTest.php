@@ -6,6 +6,7 @@ use App\Models\RentalSession;
 use App\Models\Unit;
 use App\Models\UnitType;
 use App\Models\User;
+use Carbon\Carbon;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -69,22 +70,26 @@ test('it summarizes completed sessions within the selected date range only', fun
 test('it identifies the hour with the most sessions', function () {
     $unit = reportUnit('Non-VIP');
 
+    // Ditulis dalam jam dinding outlet (WIB) lalu ->utc() eksplisit: kolom
+    // datetime menyimpan UTC, dan Carbon ber-timezone Jakarta kalau tidak
+    // dikonversi akan menulis jam dindingnya apa adanya. Laporan harus
+    // melaporkan kembali jam WIB-nya.
     RentalSession::factory()->completed()->count(2)->create([
         'unit_id' => $unit->id,
-        'started_at' => '2026-03-05 14:10:00',
-        'ended_at' => '2026-03-05 15:00:00',
+        'started_at' => Carbon::parse('2026-03-05 20:10', 'Asia/Jakarta')->utc(),
+        'ended_at' => Carbon::parse('2026-03-05 21:00', 'Asia/Jakarta')->utc(),
     ]);
 
     RentalSession::factory()->completed()->create([
         'unit_id' => $unit->id,
-        'started_at' => '2026-03-05 09:00:00',
-        'ended_at' => '2026-03-05 09:30:00',
+        'started_at' => Carbon::parse('2026-03-05 09:00', 'Asia/Jakarta')->utc(),
+        'ended_at' => Carbon::parse('2026-03-05 09:30', 'Asia/Jakarta')->utc(),
     ]);
 
     Livewire::actingAs($this->owner)->test(SalesReport::class)
         ->set('data.start_date', '2026-03-01')
         ->set('data.end_date', '2026-03-31')
-        ->assertSee('14:00–15:00');
+        ->assertSee('20:00–21:00');
 });
 
 test('csv export contains the exact rows for the selected range', function () {
@@ -102,7 +107,7 @@ test('csv export contains the exact rows for the selected range', function () {
     $handle = fopen('php://temp', 'r+');
     fputcsv($handle, ['Tanggal Selesai', 'Unit', 'Tipe Unit', 'Pelanggan', 'Tipe Sesi', 'Metode Bayar', 'Total (Rp)']);
     fputcsv($handle, [
-        $session->ended_at->format('Y-m-d H:i'),
+        $session->ended_at->setTimezone('Asia/Jakarta')->format('Y-m-d H:i'),
         $unit->code,
         'Non-VIP',
         'Budi',
@@ -119,4 +124,27 @@ test('csv export contains the exact rows for the selected range', function () {
         ->set('data.end_date', '2026-04-30')
         ->callAction('exportCsv')
         ->assertFileDownloaded('laporan-2026-04-01-2026-04-30.csv', $expected);
+});
+
+// Sesi jam 06:00 WIB tanggal 2 Juli tersimpan sebagai 23:00 UTC tanggal 1 Juli.
+// Kalau batas hari dihitung di UTC, sesi ini bocor ke laporan tanggal 1.
+test('day boundaries follow the outlet wall clock, not UTC', function () {
+    $unit = reportUnit('Non-VIP');
+
+    RentalSession::factory()->completed()->create([
+        'unit_id' => $unit->id,
+        'total_amount' => 77000,
+        'started_at' => Carbon::parse('2026-07-02 05:00', 'Asia/Jakarta')->utc(),
+        'ended_at' => Carbon::parse('2026-07-02 06:00', 'Asia/Jakarta')->utc(),
+    ]);
+
+    Livewire::actingAs($this->owner)->test(SalesReport::class)
+        ->set('data.start_date', '2026-07-01')
+        ->set('data.end_date', '2026-07-01')
+        ->assertDontSee('Rp77.000');
+
+    Livewire::actingAs($this->owner)->test(SalesReport::class)
+        ->set('data.start_date', '2026-07-02')
+        ->set('data.end_date', '2026-07-02')
+        ->assertSee('Rp77.000');
 });

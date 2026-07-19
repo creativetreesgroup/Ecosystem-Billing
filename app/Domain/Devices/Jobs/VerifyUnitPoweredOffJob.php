@@ -2,6 +2,7 @@
 
 namespace App\Domain\Devices\Jobs;
 
+use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\DeviceAlertType;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
@@ -43,14 +44,27 @@ class VerifyUnitPoweredOffJob implements ShouldQueue
             return;
         }
 
-        if ($state !== PowerState::On) {
+        // Hanya Standby yang berarti "terbukti mati". Sebelumnya alert cuma
+        // dibuat saat state persis On, sehingga verifikasi ini MATI TOTAL untuk
+        // unit Tasmota yang plug-nya offline (state()-nya jadi Unknown, bukan
+        // On) — kasir tidak pernah diberi tahu bahwa TV mungkin masih menyala.
+        // Fail loud (prinsip arsitektur #5): tidak bisa memastikan = laporkan.
+        if ($state === PowerState::Standby) {
+            return;
+        }
+
+        // Unit manual memang tidak pernah bisa dipastikan, dan ManualDriver
+        // sudah membuat alert-nya sendiri saat powerOff() — jangan digandakan.
+        if ($state !== PowerState::On && $unit->control_driver === ControlDriver::Manual) {
             return;
         }
 
         DeviceAlert::create([
             'unit_id' => $unit->id,
             'type' => DeviceAlertType::PowerOffFailed,
-            'message' => "TV unit {$unit->code} masih menyala 10 detik setelah perintah power-off dikirim.",
+            'message' => $state === PowerState::On
+                ? "TV unit {$unit->code} masih menyala 10 detik setelah perintah power-off dikirim."
+                : "Status TV unit {$unit->code} tidak bisa dipastikan mati setelah perintah power-off — cek fisik.",
         ]);
     }
 }

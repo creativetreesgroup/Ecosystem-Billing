@@ -11,6 +11,7 @@ use App\Models\Unit;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * REST API Home Assistant. entity_id (control_ref) dikontrol lewat domain
@@ -28,7 +29,18 @@ class HomeAssistantDriver implements TvControl
     public function powerOn(Unit $unit): CommandResult
     {
         if ($unit->tv_mac) {
-            WakeOnLan::send($unit->tv_mac);
+            // Best-effort sungguhan: socket_sendto() memunculkan E_WARNING yang
+            // diubah Laravel jadi ErrorException, dan dulu itu membatalkan
+            // perintah turn_on di bawahnya — WoL yang cuma cadangan malah
+            // menggagalkan jalur utamanya.
+            try {
+                WakeOnLan::send($unit->tv_mac);
+            } catch (Throwable $e) {
+                Log::warning('Wake-on-LAN gagal, lanjut ke perintah Home Assistant.', [
+                    'unit_id' => $unit->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return $this->callService('media_player', 'turn_on', $unit->control_ref);
@@ -51,8 +63,13 @@ class HomeAssistantDriver implements TvControl
                 return PowerState::Unreachable;
             }
 
+            // media_player TIDAK hanya melaporkan 'on'. Android TV/Chromecast/
+            // webOS melaporkan playing/paused/idle/buffering saat TV MENYALA —
+            // dulu semuanya jatuh ke Unknown, sehingga verifikasi power-off
+            // menganggap TV yang jelas menyala sebagai "tidak diketahui" dan
+            // tidak pernah membuat alert.
             return match ($response->json('state')) {
-                'on' => PowerState::On,
+                'on', 'playing', 'paused', 'idle', 'buffering' => PowerState::On,
                 'off', 'standby' => PowerState::Standby,
                 'unavailable' => PowerState::Unreachable,
                 default => PowerState::Unknown,

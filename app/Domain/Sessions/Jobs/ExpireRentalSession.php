@@ -32,6 +32,8 @@ class ExpireRentalSession implements ShouldQueue
             return;
         }
 
-        $completeSession->handle($session);
+        // Token diteruskan supaya dicek ULANG di dalam lock — perpanjangan
+        // yang commit setelah pengecekan di atas tidak boleh ikut tertutup.
+        $completeSession->handle($session, expectedExpiryToken: $this->expiryToken);
     }
 }

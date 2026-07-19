@@ -17,7 +17,12 @@ class CompleteSessionAction
 {
     public function __construct(private readonly DeviceManager $devices) {}
 
-    public function handle(RentalSession $session, ?PaymentMethod $paymentMethod = null): RentalSession
+    /**
+     * $expectedExpiryToken diisi oleh pemanggil OTOMATIS (job expiry & sweep),
+     * dan dibiarkan null oleh penutupan manual kasir. Lihat komentar fencing
+     * di dalam transaksi.
+     */
+    public function handle(RentalSession $session, ?PaymentMethod $paymentMethod = null, ?string $expectedExpiryToken = null): RentalSession
     {
         if ($session->type === SessionType::Open && ! $session->payment_method && ! $paymentMethod) {
             throw new InvalidArgumentException('Metode pembayaran wajib dipilih untuk sesi open play.');
@@ -25,13 +30,24 @@ class CompleteSessionAction
 
         $justCompleted = false;
 
-        $completed = DB::transaction(function () use ($session, $paymentMethod, &$justCompleted) {
+        $completed = DB::transaction(function () use ($session, $paymentMethod, $expectedExpiryToken, &$justCompleted) {
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== SessionStatus::Active) {
                 // Idempotent: job expiry dan sweep bisa balapan menyelesaikan sesi
                 // yang sama — panggilan kedua tidak boleh mengubah apa pun, termasuk
                 // tidak mengirim ulang perintah TV off atau broadcast SessionEnded.
+                return $locked;
+            }
+
+            // Fencing token WAJIB dicek ULANG di dalam lock, bukan cuma di
+            // pemanggil. Kalau hanya dicek di luar, urutan ini merugikan
+            // pelanggan secara nyata: sweep membaca daftar sesi kedaluwarsa →
+            // kasir menerima uang perpanjangan (ExtendSessionAction memutar
+            // expiry_token & memajukan ends_at, commit) → sweep baru sampai ke
+            // sesi itu, melihat status masih Active, lalu MENUTUPNYA. Pelanggan
+            // sudah membayar perpanjangan tapi waktunya langsung hangus.
+            if ($expectedExpiryToken !== null && $locked->expiry_token !== $expectedExpiryToken) {
                 return $locked;
             }
 

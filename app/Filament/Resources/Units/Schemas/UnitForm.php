@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Units\Schemas;
 use App\Domain\Devices\Capability;
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\DeviceManager;
+use App\Models\Unit;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -12,6 +13,7 @@ use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Validation\Rules\Unique;
 
 class UnitForm
 {
@@ -46,20 +48,28 @@ class UnitForm
                 // manual kalau perlu.
                 Select::make('discovered_tv')
                     ->label('TV terdeteksi di jaringan')
-                    ->options(fn (): array => app(DeviceManager::class)->homeAssistant()->discoverMediaPlayers())
+                    ->options(fn (?Unit $record): array => self::availableTvs($record))
                     ->searchable()
                     ->native(false)
                     ->live()
                     ->dehydrated(false)
                     ->placeholder('Pilih TV yang terdeteksi')
-                    ->helperText('Dipindai langsung dari Home Assistant. TV yang mati atau belum tersambung ke jaringan yang sama tidak akan muncul.')
+                    ->helperText('Dipindai langsung dari Home Assistant. TV yang sudah dipakai unit lain, atau yang mati / tidak satu jaringan, tidak muncul di daftar ini.')
                     ->afterStateUpdated(fn (?string $state, Set $set) => filled($state) ? $set('control_ref', $state) : null)
                     ->visible(fn (Get $get) => self::driverOf($get('control_driver')) === ControlDriver::HomeAssistant),
                 TextInput::make('control_ref')
                     ->label('Referensi kontrol')
                     ->helperText('Entity ID Home Assistant (terisi otomatis dari pilihan di atas), atau topic Tasmota seperti plug-ps01.')
                     ->required(fn (Get $get) => self::driverOf($get('control_driver')) !== ControlDriver::Manual)
-                    ->visible(fn (Get $get) => self::driverOf($get('control_driver')) !== ControlDriver::Manual),
+                    ->visible(fn (Get $get) => self::driverOf($get('control_driver')) !== ControlDriver::Manual)
+                    // Cermin dari unique index uq_unit_control_ref di DB: dua unit
+                    // menunjuk perangkat yang sama berarti menutup sesi di satu unit
+                    // ikut mematikan TV unit lain yang masih dipakai & ditagih.
+                    ->unique(
+                        ignoreRecord: true,
+                        modifyRuleUsing: fn (Unique $rule, Get $get) => $rule->where('outlet_id', $get('outlet_id')),
+                    )
+                    ->validationMessages(['unique' => 'Perangkat ini sudah dipakai unit lain.']),
                 TextInput::make('tv_mac')
                     ->label('MAC address TV')
                     ->helperText('Untuk Wake-on-LAN (opsional).'),
@@ -87,5 +97,27 @@ class UnitForm
     private static function driverOf(mixed $state): ?ControlDriver
     {
         return $state instanceof ControlDriver ? $state : ControlDriver::tryFrom((string) $state);
+    }
+
+    /**
+     * TV hasil discovery yang belum dipegang unit lain. Menyaring di sumbernya
+     * jauh lebih baik daripada menolak setelah disubmit: operator tidak pernah
+     * melihat pilihan yang akan gagal. Unit yang sedang diedit tetap boleh
+     * melihat perangkatnya sendiri supaya tidak hilang dari daftar.
+     *
+     * @return array<string, string>
+     */
+    private static function availableTvs(?Unit $record): array
+    {
+        $taken = Unit::query()
+            ->whereNotNull('control_ref')
+            ->when($record, fn ($query) => $query->whereKeyNot($record->getKey()))
+            ->pluck('control_ref')
+            ->all();
+
+        return array_diff_key(
+            app(DeviceManager::class)->homeAssistant()->discoverMediaPlayers(),
+            array_flip($taken),
+        );
     }
 }

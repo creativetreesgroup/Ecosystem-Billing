@@ -28,7 +28,10 @@ class SweepExpiredSessions extends Command
             ->get();
 
         foreach ($sessions as $session) {
-            $completeSession->handle($session);
+            // Token dibaca dari snapshot lalu dicek ulang di dalam lock: kalau
+            // kasir memperpanjang sesi ini setelah snapshot diambil, tokennya
+            // sudah berputar dan sesi TIDAK jadi ditutup (lihat CompleteSessionAction).
+            $completeSession->handle($session, expectedExpiryToken: $session->expiry_token);
         }
 
         $this->info("Sweep selesai: {$sessions->count()} sesi terlewat diselesaikan.");

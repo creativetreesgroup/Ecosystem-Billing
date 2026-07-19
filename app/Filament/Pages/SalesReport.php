@@ -141,10 +141,25 @@ class SalesReport extends Page implements HasTable
      */
     protected function range(): array
     {
-        $start = Carbon::parse($this->data['start_date'] ?? now()->startOfMonth())->startOfDay();
-        $end = Carbon::parse($this->data['end_date'] ?? now())->endOfDay();
+        // Tanggal yang dipilih owner adalah tanggal DINDING outlet (WIB), tapi
+        // kolom ended_at disimpan UTC. Batas hari harus dibentuk di zona outlet
+        // lalu dikonversi ke UTC — kalau tidak, "19 Jul" sebenarnya mencakup
+        // 19 Jul 07:00 s/d 20 Jul 07:00 WIB dan pendapatan bocor antar hari.
+        $tz = self::displayTimezone();
 
-        return $end->lt($start) ? [$start, $start->copy()->endOfDay()] : [$start, $end];
+        $start = Carbon::parse($this->data['start_date'] ?? now($tz)->startOfMonth(), $tz)->startOfDay();
+        $end = Carbon::parse($this->data['end_date'] ?? now($tz), $tz)->endOfDay();
+
+        if ($end->lt($start)) {
+            $end = $start->copy()->endOfDay();
+        }
+
+        return [$start->utc(), $end->utc()];
+    }
+
+    private static function displayTimezone(): string
+    {
+        return config('app.display_timezone', config('app.timezone'));
     }
 
     /**
@@ -211,7 +226,7 @@ class SalesReport extends Page implements HasTable
 
     public function getBusiestHour(): ?string
     {
-        $byHour = $this->completedSessions()->groupBy(fn (RentalSession $session) => $session->started_at->format('H'));
+        $byHour = $this->completedSessions()->groupBy(fn (RentalSession $session) => $session->started_at->setTimezone(self::displayTimezone())->format('H'));
 
         if ($byHour->isEmpty()) {
             return null;
@@ -226,7 +241,7 @@ class SalesReport extends Page implements HasTable
     {
         return $table
             ->records(fn (): SupportCollection => $this->completedSessions()
-                ->groupBy(fn (RentalSession $session) => $session->ended_at->toDateString())
+                ->groupBy(fn (RentalSession $session) => $session->ended_at->setTimezone(self::displayTimezone())->toDateString())
                 ->map(fn (Collection $group, string $date) => [
                     'date' => $date,
                     'sessions' => $group->count(),
@@ -264,7 +279,7 @@ class SalesReport extends Page implements HasTable
 
             foreach ($this->completedSessions()->sortBy('ended_at') as $session) {
                 fputcsv($handle, [
-                    $session->ended_at->format('Y-m-d H:i'),
+                    $session->ended_at->setTimezone(self::displayTimezone())->format('Y-m-d H:i'),
                     $session->unit->code,
                     $session->unit->unitType->name,
                     $session->customer_name ?? '-',
@@ -275,6 +290,6 @@ class SalesReport extends Page implements HasTable
             }
 
             fclose($handle);
-        }, "laporan-{$start->toDateString()}-{$end->toDateString()}.csv");
+        }, 'laporan-'.$start->setTimezone(self::displayTimezone())->toDateString().'-'.$end->setTimezone(self::displayTimezone())->toDateString().'.csv');
     }
 }

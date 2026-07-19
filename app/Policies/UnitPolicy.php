@@ -28,9 +28,24 @@ class UnitPolicy
         return $user->role === UserRole::Owner;
     }
 
+    /**
+     * Unit tidak pernah dihapus: rental_sessions menyimpan FK unit_id dengan
+     * restrictOnDelete, jadi menghapus unit yang pernah dipakai gagal di DB
+     * sekaligus merusak riwayat penagihan. Nonaktifkan lewat `is_active`.
+     */
     public function delete(User $user, Unit $unit): bool
     {
-        return $user->role === UserRole::Owner;
+        return false;
+    }
+
+    /**
+     * Filament menanyakan ability `deleteAny` (BUKAN `delete`) untuk bulk
+     * action. Tanpa method ini Gate mengembalikan "tidak terdefinisi" dan
+     * Filament menganggapnya diizinkan — kasir pun bisa bulk-delete unit.
+     */
+    public function deleteAny(User $user): bool
+    {
+        return false;
     }
 
     public function restore(User $user, Unit $unit): bool

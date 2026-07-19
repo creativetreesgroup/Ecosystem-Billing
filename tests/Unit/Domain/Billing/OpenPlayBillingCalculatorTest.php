@@ -22,3 +22,10 @@ test('calculate never returns a float-producing value outside int range', functi
 
     expect($result)->toBeInt();
 });
+
+// Pembulatan 0 menit dulu melempar DivisionByZeroError tepat saat kasir
+// menutup sesi, sehingga sesinya tidak bisa diselesaikan sama sekali.
+test('an increment of zero is treated as one minute instead of crashing', function () {
+    expect(OpenPlayBillingCalculator::calculate(3600, 5000, 0))
+        ->toBe(OpenPlayBillingCalculator::calculate(3600, 5000, 1));
+});

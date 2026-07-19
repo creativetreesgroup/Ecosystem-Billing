@@ -17,11 +17,15 @@ class SettingForm
                     ->formatStateUsing(fn (?Setting $record): ?string => $record?->label())
                     ->helperText(fn (?Setting $record): ?string => $record?->key)
                     ->disabled(),
+                // minValue(1), bukan 0: pembulatan billing 0 menit dulu membuat
+                // setiap penutupan sesi open play melempar DivisionByZeroError
+                // sehingga sesinya tidak bisa diselesaikan sama sekali.
                 TextInput::make('value.minutes')
                     ->label('Nilai')
                     ->suffix('menit')
                     ->numeric()
-                    ->minValue(0)
+                    ->minValue(1)
+                    ->maxValue(1440)
                     ->required(),
             ]);
     }

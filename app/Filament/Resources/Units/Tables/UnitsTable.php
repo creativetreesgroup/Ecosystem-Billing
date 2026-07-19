@@ -2,8 +2,6 @@
 
 namespace App\Filament\Resources\Units\Tables;
 
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -49,10 +47,9 @@ class UnitsTable
             ->recordActions([
                 EditAction::make(),
             ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                ]),
-            ]);
+            // Tanpa bulk delete: rental_sessions menyimpan FK unit_id dengan
+            // restrictOnDelete, jadi menghapus unit yang punya riwayat sesi
+            // gagal di level DB. Nonaktifkan lewat kolom "Aktif".
+            ->toolbarActions([]);
     }
 }

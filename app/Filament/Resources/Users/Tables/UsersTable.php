@@ -31,7 +31,7 @@ class UsersTable
                 IconColumn::make('is_active')
                     ->label('Aktif')
                     ->boolean(),
-                TextColumn::make('openedSessions_count')
+                TextColumn::make('opened_sessions_count')
                     ->label('Sesi dibuka')
                     ->counts('openedSessions')
                     ->badge()
