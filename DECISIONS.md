@@ -76,6 +76,65 @@ Format: keputusan, alasan (*why*), dan trade-off yang ditolak. Diurutkan per fas
   *Why:* mengikuti keputusan fondasi multi-outlet — tetap benar untuk V1 (satu
   outlet, jadi efektif unique global juga) tapi tidak perlu migrasi ulang saat V2.
 
+## Fase 2 — Domain
+
+- **Paket dibayar di muka (saat mulai), open play dibayar di akhir (saat stop).**
+  *Why:* ini default yang eksplisit ditulis di §5 master prompt sendiri ("base_amount
+  = price, default dibayar di muka") dan tidak pernah dibantah di jawaban Fase 0 —
+  bukan tebakan API, tapi mengikuti default yang sudah didokumentasikan. `StartSessionAction`
+  mewajibkan `paymentMethod` untuk tipe paket, `CompleteSessionAction` mewajibkannya
+  untuk tipe open play (kecuali sudah terisi dari paket).
+
+- **Interface `TvControl` + `DeviceManager` + `ManualDriver` dibangun di Fase 2**,
+  bukan ditunda penuh ke Fase 5.
+  *Why:* `StartSessionAction`/`CompleteSessionAction` secara eksplisit diwajibkan
+  §5 memerintah TV on/off — tidak bisa jadi placeholder kosong (dilarang §0.4).
+  `HomeAssistantDriver`/`TasmotaDriver` tetap ditunda ke Fase 5 sungguhan;
+  `DeviceManager::driverFor()` melempar `RuntimeException` eksplisit untuk
+  keduanya sampai diimplementasi — bukan pura-pura berhasil.
+
+- **Perintah device dibungkus `DeviceManager::attempt()`**: exception apa pun dari
+  driver ditangkap, dicatat sebagai log terstruktur, dan tidak pernah menggagalkan
+  transaksi billing yang memanggilnya.
+  *Why:* prinsip arsitektur #1 (§3) — "state billing tidak pernah bergantung pada
+  state device". TV yang gagal nyala/mati tidak boleh membuat sesi gagal dibuka/ditutup.
+
+- **`ManualDriver::powerOff()` langsung membuat `device_alert` (power_off_failed)**,
+  tidak melalui reconciliation loop generik yang direncanakan di Fase 5.
+  *Why:* reconciliation loop generik memverifikasi lewat `state()` setelah 10 detik —
+  tapi `ManualDriver::state()` selalu `Unknown`, tidak pernah `On`, jadi tidak akan
+  pernah memicu alert lewat jalur itu. Manual pada dasarnya tidak bisa diverifikasi
+  sama sekali, jadi alert dibuat langsung saat itu juga.
+
+- **`QUEUE_CONNECTION` test diubah ke `database`** (dari default Laravel `sync`).
+  *Why:* dengan `sync`, `->delay()` diabaikan dan job jalan seketika saat
+  di-dispatch — sesi paket yang baru dibuat akan langsung "expired" oleh
+  `ExpireRentalSession` di tengah test, menutupi bug alih-alih mengujinya. Dengan
+  `database`, job betul-betul mengendap di tabel `jobs` sampai `available_at`
+  tercapai, sama seperti production.
+
+- **Test konkurensi asli** (`tests/Concurrency/StartSessionConcurrencyTest.php`)
+  memakai `Illuminate\Support\Facades\Process::pool()` menjalankan dua proses OS
+  sungguhan (`php artisan testing:attempt-start-session`) hampir bersamaan, lalu
+  `DatabaseTruncation` (bukan `RefreshDatabase`) untuk suite `tests/Concurrency`.
+  *Why:* `RefreshDatabase` membungkus tiap test dalam transaksi yang di-rollback —
+  data itu tidak pernah commit, jadi proses child (koneksi DB terpisah) tidak akan
+  pernah melihatnya. `DatabaseTruncation` benar-benar commit data lalu truncate
+  sebelum test berikutnya, cocok untuk skenario lintas-proses. Dijalankan 5x
+  berturut-turut untuk memastikan tidak flaky — semua lolos, tepat satu sesi aktif
+  per percobaan.
+  *Trade-off yang ditolak:* membuktikan invariant hanya lewat urutan sekuensial
+  (buka dua kali berurutan, assert yang kedua gagal) — ditolak karena tidak
+  membuktikan row lock (`lockForUpdate()`) benar-benar menyerialkan request
+  paralel sungguhan, hanya membuktikan constraint DB menolak duplikat.
+
+- **Void bisa dilakukan dari status `active` maupun `completed`**, hanya ditolak
+  dari `voided` (mencegah void ganda).
+  *Why:* §5 rule 5 hanya bilang "void: hanya owner, wajib alasan" tanpa membatasi
+  status asal — dan use case nyata owner membatalkan transaksi yang SUDAH selesai
+  (salah catat pembayaran, dsb) sama validnya dengan membatalkan sesi yang masih
+  aktif. Kalau sesi masih aktif saat di-void, TV tetap diperintah mati.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)
