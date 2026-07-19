@@ -1033,6 +1033,182 @@ masalah baru.**
   `UnitGridWidget` di Fase 4 dan sudah dicatat waktu itu, tapi terulang karena
   widget baru tidak otomatis mewarisi keputusan itu.
 
+## Jebakan Filament v5 yang ditemukan saat memoles UI (bukan dari dokumentasi)
+
+Semua di bawah ini gagal **dalam diam**: tidak ada error, tidak ada log, hanya
+tampilan yang salah. Ketujuhnya baru ketahuan dari menjalankan aplikasinya,
+bukan dari membaca dokumentasi — karena itu dicatat di sini, bukan cuma di
+komentar kode.
+
+- **Isi modal aksi TIDAK bisa dicek dengan `assertSee()`.** Filament v5
+  merender modal di partial terpisah (`wire:partial="action-modals"`) yang
+  KOSONG pada render awal, jadi `assertSee` selalu gagal walau modalnya normal.
+  Ini sempat membuat saya menyimpulkan modalnya rusak dan membongkar kode yang
+  sebenarnya benar. Cara yang benar: `assertActionMounted()` + memeriksa state
+  yang dihasilkan (mis. status sesi di DB).
+
+- **`replaceMountedAction()` membuang cache schema tapi meninggalkan
+  `$discoveredSchemaNames`** (properti Livewire yang persist antar request).
+  Aksi pengganti yang TIDAK punya schema membuat request berikutnya mencari
+  `mountedActionSchema0` yang sudah tidak ada, dan meledak. Karena itu modal
+  konfirmasi langkah kedua Stop & Bayar diberi isi nyata (nominal besar),
+  bukan dibiarkan kosong.
+
+- **Utility Tailwind sembarangan TIDAK ada di CSS bawaan Filament.** Proyek ini
+  sengaja nol build frontend, jadi `->extraAttributes(['class' => 'mx-auto'])`
+  menempelkan kelas yang tidak punya aturan apa pun — diam-diam tidak berefek.
+  Pengganti yang benar: style inline. Lihat konstanta
+  `UnitGridWidget::SEGMENTED_CONTROL`.
+
+- **`columns(2)` berarti `['lg' => 2]`**, bukan "dua kolom". Form baru jadi dua
+  kolom mulai 1024px, sehingga SELURUH tablet menumpuk seperti HP. Semua form
+  resource kini memakai `['md' => 2]`; filter Laporan memakai `['default' => 2]`
+  karena dua tanggal pendek muat berdampingan di lebar berapa pun — dan
+  "Dari–Sampai" memang dibaca sebagai satu rentang, bukan dua isian terpisah.
+
+- **`helperText()` selalu rata kiri** dan tidak bisa ditengahkan. Di modal yang
+  seluruhnya rata tengah, keterangan harus jadi `TextEntry` tersendiri dengan
+  `->alignCenter()`.
+
+- **`Split` membagi lebar rata ke semua kolom.** Badge ikut memuai sehingga
+  titik berhentinya bergeser tergantung ada-tidaknya badge lain — itu penyebab
+  badge status tidak pernah sejajar antar kartu. `->grow(false)` pada badge
+  membuat hanya kode unit yang memuai.
+
+- **`RichEditor` menyimpan state sebagai dokumen TipTap (array bersarang)**,
+  bukan string HTML. Memaksanya jadi string di dalam rule validasi melempar
+  "Array to string conversion". Yang tersimpan ke DB tetap HTML.
+
+## Dropdown native: satu default global, bukan ditempel per field
+
+`Select`, `DatePicker`, `DateTimePicker`, `SelectFilter`, dan `SelectColumn`
+bawaannya memakai `<select>` asli browser. Di HP kontrol itu dirender OLEH
+SISTEM OPERASI, DI LUAR kotak modal — hasilnya panel melayang di pojok layar,
+lepas dari form yang memicunya. Setiap resource kena, dan hanya terlihat dari
+layar kecil.
+
+Diatur sekali lewat `configureUsing()` di `AppServiceProvider`, bukan ditempel
+per field: kalau per field, setiap `Select` baru yang ditulis nanti mengulang
+bug yang sama dan baru ketahuan setelah dilihat di HP. Enam pemanggilan
+`->native(false)` yang sudah tersebar dihapus supaya tidak ada dua sumber
+aturan. Dijaga `tests/Feature/Filament/MobileDropdownDefaultsTest.php`.
+
+## Tabel resource: kolom penting dulu, konteks menyusul
+
+Riwayat Sesi punya 11 kolom — di HP semuanya dipaksa muat dan harus digeser
+menyamping. Kolom sekunder kini memakai `->visibleFrom('md'|'lg'|'xl')`.
+Aturannya: yang tersisa di layar HP adalah yang dipakai MENGAMBIL KEPUTUSAN
+(siapa, berapa, statusnya apa); yang jadi konteks tambahan naik ke breakpoint
+lebih besar. Di desktop tidak ada yang hilang.
+
+## Stop & Bayar: dua langkah untuk Open Play, satu konfirmasi untuk Paket
+
+Sesi **Paket** sudah lunas di muka, jadi menutupnya bukan transaksi uang —
+cukup konfirmasi ringkas, tanpa field.
+
+Sesi **Open Play** memindahkan uang saat itu juga, jadi kasir memilih metode
+bayar dulu, lalu MENEGASKAN lewat modal kedua bahwa uangnya benar-benar
+diterima. Sekali klik untuk sesuatu yang tidak bisa dibatalkan terlalu mudah
+salah tekan. Dijaga test: sesi TIDAK boleh tertutup di langkah pertama.
+
+Notifikasi void juga ditulis ulang jadi konsekuensi, bukan konfirmasi: nominal
+yang keluar dari laporan, apakah TV ikut dimatikan (`$wasActive` dibaca SEBELUM
+void — setelah statusnya berubah, informasi itu hilang), dan siapa yang
+bertanggung jawab. Sengaja `warning` dan `persistent()`, bukan hijau yang
+hilang sendiri: angka itu yang dicocokkan saat menutup kas.
+
+Try/catch untuk void ganda sempat ditambahkan lalu **dibuang lagi** setelah
+test membuktikannya dead code — Filament menolak me-mount maupun menjalankan
+aksi yang sudah tidak `visible`, dan penjaga terakhirnya sudah ada di
+`VoidSessionAction` dengan test tersendiri.
+
+## Pemindai jaringan lokal: sistem tidak lagi buta tanpa Home Assistant
+
+Sebelumnya satu-satunya cara sistem tahu ada TV adalah bertanya ke Home
+Assistant. Kalau HA mati, belum diatur, atau tokennya salah, sistem buta total
+— dan operator tidak bisa membedakan "TV-nya mati" dari "HA-nya bermasalah".
+
+`App\Domain\Devices\NetworkScanner` memindai sendiri lewat SSDP (M-SEARCH ke
+239.255.255.250:1900), protokol yang sama yang dipakai HA. Nol dependensi baru:
+`ext-sockets` sudah aktif. Tersedia dari panel (aksi "Pindai jaringan" di
+halaman Unit) dan dari terminal (`php artisan devices:scan`) — yang kedua
+penting saat panelnya sendiri bermasalah.
+
+Terbukti di jaringan sungguhan: menemukan `TCL Smart TV (192.168.100.7)` dan
+tidak menandai routernya sebagai TV.
+
+Empat hal yang ditemukan saat membangunnya:
+
+- **Socket WAJIB di-bind ke IP LAN, bukan `0.0.0.0`.** Mesin dengan banyak
+  interface mengirim multicast lewat yang dipilih kernel — hasilnya nol balasan
+  padahal TV-nya jelas menyala. `IP_MULTICAST_IF` tidak dipakai karena macOS
+  menolak nilai berupa alamat IP.
+- **Router juga menjawab SSDP.** Tanpa saringan lintas-merek (DLNA
+  MediaRenderer, Chromecast/DIAL), daftarnya menyesatkan.
+- **Merek dari deskripsi UPnP tidak bisa dipercaya.** TV TCL melapor sebagai
+  "Microsoft Corporation" karena yang menjawab adalah renderer DLNA-nya. Kolom
+  merek dibuang; nama ramah + IP yang dipakai.
+- **Deskripsi UPnP perangkat murah sering XML cacat** — parser sungguhan gagal
+  total. Dibaca regex, cuma tiga nilai yang dibutuhkan.
+
+**Batas yang dijaga:** hasil pemindaian TIDAK bisa dipakai sebagai
+`control_ref`. SSDP memberi IP; `control_ref` harus `entity_id` HA atau topic
+Tasmota. Mengisikan IP ke sana membuat unit TAMPAK terpasang padahal tidak akan
+pernah bisa dikontrol. Pemindai ini diagnosis, bukan jalur pemasangan — dan
+justru pemisahan itu yang berguna: kalau TV muncul di pemindaian tapi tidak di
+daftar HA, yang bermasalah HA-nya.
+
+Satu pengecualian yang jujur: saat memilih TV hasil pindai, `control_ref` ikut
+terisi HANYA kalau di HA ada TEPAT SATU `media_player` yang namanya sama
+persis. Kalau ada dua yang mirip, sengaja dibiarkan kosong — menebak berarti
+unit ini bisa mengendalikan TV milik unit lain, dan itu baru ketahuan setelah
+pelanggan duduk di depan layar yang tiba-tiba mati.
+
+## Wake-on-LAN yang gagal dalam diam (bug nyata, bukan hipotetis)
+
+`arp` di macOS dan banyak halaman admin router membuang nol di depan tiap oktet
+MAC — router di jaringan uji terbaca `80:60:36:69:2f:6`, sebelas digit.
+`WakeOnLan::packMac()` menuntut TEPAT dua belas dan mengembalikan `false` tanpa
+log, tanpa pesan.
+
+Artinya sebelum ini: operator menyalin MAC dari routernya, menyimpannya, dan
+Wake-on-LAN TIDAK AKAN PERNAH jalan — tanpa satu pun petunjuk kenapa. Kasir
+akan menyimpulkan TV-nya rusak.
+
+MAC kini dinormalkan sebelum disimpan (`2f:6` → `2f:06`, `-` → `:`, huruf besar
+→ kecil) dan format yang benar-benar salah ditolak dengan pesan. Field `tv_mac`
+juga bisa diisi otomatis dari hasil pemindaian, karena MAC tidak pernah
+tertulis di badan TV dan satu digit salah sudah cukup untuk menggagalkannya.
+
+## Daftar kosong yang berbohong
+
+"TV terdeteksi di jaringan" menampilkan pesan bawaan Filament ("Tidak ada
+pilihan yang tersedia") untuk TIGA sebab yang sangat berbeda: HA belum diatur,
+HA terhubung tapi tidak ada entity bebas, dan benar-benar tidak ada. Pesan itu
+terbaca sebagai "tidak ada TV di jaringan" padahal yang belum ada justru
+`HA_TOKEN`-nya — dan operator akan mengejar masalah yang salah. Ketiganya kini
+dibedakan lewat `HomeAssistantDriver::isConfigured()`.
+
+## Tombol Hapus pindah ke footer form
+
+Di header, Hapus berdiri sendirian di atas seperti aksi utama halaman —
+padahal ia yang paling merusak; di HP letaknya persis di bawah jempol saat
+halaman baru dibuka. Di footer ia baru terjangkau setelah menggulir melewati
+seluruh form, dan terpisah dari Simpan oleh Batal. Ditulis sekali di trait
+`App\Filament\Concerns\DeletesFromFormFooter`, dipakai 3 halaman.
+
+**Pengaturan sengaja TIDAK memakai trait itu**: setting tidak pernah bisa
+dihapus sama sekali. `Setting::get('billing_increment_minutes')` dipakai di
+jalur penagihan Open Play, jadi baris yang hilang membuat perhitungan
+diam-diam jatuh ke default. `SettingPolicy::delete()` sudah menegakkannya;
+kini dijaga test supaya larangan itu benar-benar sampai ke tombol di layar.
+
+## Pelajaran proses: subagent review pernah mengubah kode sumber
+
+Diulang di sini karena terbukti berulang: agen review yang diberi akses tulis
+pernah melemahkan `lockForUpdate()` dan filter pendapatan. Setiap sesi review
+WAJIB ditutup dengan `git diff` sebelum apa pun dilanjutkan.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2). **Diminta lagi & ditegaskan
