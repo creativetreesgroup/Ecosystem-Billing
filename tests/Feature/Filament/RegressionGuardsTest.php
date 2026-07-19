@@ -1,14 +1,21 @@
 <?php
 
+use App\Domain\Billing\PaymentMethod;
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\DeviceAlertStatus;
 use App\Domain\Devices\DeviceAlertType;
+use App\Domain\Sessions\Actions\CompleteSessionAction;
+use App\Domain\Sessions\Actions\StartSessionAction;
+use App\Domain\Sessions\SessionStatus;
+use App\Domain\Sessions\SessionType;
 use App\Filament\Pages\SalesReport;
+use App\Filament\Resources\RentalSessions\Pages\ListRentalSessions;
 use App\Filament\Resources\Units\Pages\EditUnit;
 use App\Models\DeviceAlert;
 use App\Models\Unit;
 use App\Models\User;
 use Carbon\Carbon;
+use Filament\Actions\Testing\TestAction;
 use Livewire\Livewire;
 
 /**
@@ -83,4 +90,28 @@ test('a new alert is raised again once the previous one has been acknowledged', 
     DeviceAlert::raiseOnce($unit->id, DeviceAlertType::PowerOffFailed, 'kedua');
 
     expect(DeviceAlert::where('unit_id', $unit->id)->count())->toBe(2);
+});
+
+/**
+ * Alasan void adalah catatan audit untuk pembatalan UANG. Setelah field-nya
+ * jadi RichEditor, required() saja tidak lagi cukup: editor yang cuma
+ * di-klik lalu ditinggal mengirim "<p></p>" — secara teknis terisi, tapi
+ * kosong bagi manusia yang membaca riwayat enam bulan kemudian.
+ */
+test('an empty rich editor is not accepted as a void reason', function () {
+    $owner = User::factory()->owner()->create();
+    $unit = Unit::factory()->create(['control_driver' => ControlDriver::Manual]);
+
+    $session = app(StartSessionAction::class)->handle($unit, $owner, SessionType::Open);
+    app(CompleteSessionAction::class)->handle($session, PaymentMethod::Cash);
+
+    $action = TestAction::make('void')->table($session);
+
+    Livewire::actingAs($owner)->test(ListRentalSessions::class)
+        ->mountAction($action)
+        ->setActionData(['reason' => '<p></p>'])
+        ->callMountedAction()
+        ->assertHasActionErrors(['reason']);
+
+    expect($session->refresh()->status)->toBe(SessionStatus::Completed);
 });
