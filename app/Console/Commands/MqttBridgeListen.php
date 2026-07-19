@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Domain\Devices\ControlDriver;
-use App\Domain\Devices\Events\UnitPowerStateChanged;
+use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
 use App\Domain\Devices\TasmotaTopic;
 use App\Models\Unit;
@@ -34,8 +34,11 @@ class MqttBridgeListen extends Command
 
     private const int MAX_BACKOFF_SECONDS = 30;
 
-    public function handle(): int
+    private DeviceManager $devices;
+
+    public function handle(DeviceManager $devices): int
     {
+        $this->devices = $devices;
         $backoff = self::INITIAL_BACKOFF_SECONDS;
 
         while (true) {
@@ -80,7 +83,7 @@ class MqttBridgeListen extends Command
             return;
         }
 
-        $this->applyState($unit, strtoupper(trim($message)) === 'ON' ? PowerState::On : PowerState::Standby);
+        $this->devices->reportState($unit, strtoupper(trim($message)) === 'ON' ? PowerState::On : PowerState::Standby);
     }
 
     private function handleAvailabilityMessage(string $topic, string $message): void
@@ -92,7 +95,7 @@ class MqttBridgeListen extends Command
         }
 
         if (strtolower(trim($message)) === 'offline') {
-            $this->applyState($unit, PowerState::Unreachable);
+            $this->devices->reportState($unit, PowerState::Unreachable);
 
             return;
         }
@@ -112,16 +115,5 @@ class MqttBridgeListen extends Command
             ->where('control_driver', ControlDriver::Tasmota)
             ->where('control_ref', $controlRef)
             ->first();
-    }
-
-    private function applyState(Unit $unit, PowerState $state): void
-    {
-        $changed = $unit->power_state !== $state;
-
-        $unit->update(['power_state' => $state, 'last_seen_at' => now()]);
-
-        if ($changed) {
-            UnitPowerStateChanged::dispatch($unit->id);
-        }
     }
 }

@@ -1,8 +1,10 @@
 <?php
 
 use App\Domain\Devices\ControlDriver;
+use App\Domain\Devices\DeviceAlertType;
 use App\Domain\Devices\Events\UnitPowerStateChanged;
 use App\Domain\Devices\PowerState;
+use App\Models\DeviceAlert;
 use App\Models\Unit;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
@@ -61,4 +63,5 @@ test('a tv going unreachable is treated as a real state change and broadcast', f
 
     expect($unit->fresh()->power_state)->toBe(PowerState::Unreachable);
     Event::assertDispatched(UnitPowerStateChanged::class, fn ($event) => $event->unitId === $unit->id);
+    expect(DeviceAlert::where('unit_id', $unit->id)->where('type', DeviceAlertType::DeviceOffline)->exists())->toBeTrue();
 });

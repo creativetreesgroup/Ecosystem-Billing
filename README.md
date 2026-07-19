@@ -1,58 +1,209 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Creative Trees Billing Game
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Sistem billing rental PlayStation — Laravel 13 + Filament v5 + Reverb. Menangani uang sungguhan: satu sumber kebenaran untuk sesi, tarif, dan kontrol TV per unit.
 
-## About Laravel
+Lihat juga: [`DECISIONS.md`](DECISIONS.md) (keputusan teknis & alasannya per fase) dan [`RUNBOOK.md`](RUNBOOK.md) (operasional harian, insiden, tugas manusia).
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Prinsip arsitektur
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+1. **Laravel adalah satu-satunya source of truth.** Home Assistant dan Tasmota hanya *tangan* (eksekutor). State billing tidak pernah bergantung pada state device.
+2. **Waktu selalu otoritas server.** Durasi dan biaya dihitung dari `started_at`/`ends_at`/`ended_at` di server; timer di browser hanya tampilan.
+3. **Uang = integer rupiah.** Tidak ada float di kolom, kalkulasi, maupun response.
+4. **Realtime terukur:** perubahan state tampil di dashboard ≤ 2 detik via Reverb, dengan fallback polling 15 detik jika WebSocket putus.
+5. **Fail loud, fail secure.** Perintah device yang gagal menghasilkan alert yang terlihat kasir, bukan kegagalan diam-diam.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Topologi komponen
 
-## Learning Laravel
+```mermaid
+flowchart LR
+    Kasir["Browser Kasir/Owner<br/>(Filament panel, LAN only)"]
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+    subgraph Server["Mini PC — Ubuntu Server"]
+        Laravel["Laravel App<br/>(Nginx + PHP-FPM)"]
+        Reverb["Reverb<br/>(WebSocket server)"]
+        Queue["Queue Worker<br/>(database driver)"]
+        Scheduler["Scheduler<br/>(units:poll-state, sweep)"]
+        Bridge["bridge:mqtt-listen<br/>(daemon)"]
+        MySQL[("MySQL 8")]
+    end
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+    HA["Home Assistant<br/>(Docker, network_mode: host)"]
+    Mosquitto["Mosquitto<br/>(Docker)"]
+    TV["Smart TV<br/>(Android TV: Sony/TCL/Coocaa)"]
+    Plug["Smart Plug<br/>(Tasmota firmware)"]
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+    Kasir <-->|HTTP| Laravel
+    Kasir <-->|WebSocket| Reverb
+    Laravel --> MySQL
+    Laravel --> Queue
+    Queue --> MySQL
+    Scheduler --> Laravel
+    Laravel -->|REST API, Bearer token| HA
+    HA -->|HDMI-CEC / network standby| TV
+    Bridge <-->|MQTT pub/sub| Mosquitto
+    Laravel -.->|publish cmnd/+/POWER| Mosquitto
+    Mosquitto <-->|stat/+/POWER, tele/+/LWT| Plug
+    Bridge --> MySQL
+    Laravel -->|broadcast events| Reverb
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+## ERD
 
-## Contributing
+```mermaid
+erDiagram
+    OUTLETS ||--o{ USERS : employs
+    OUTLETS ||--o{ UNIT_TYPES : offers
+    OUTLETS ||--o{ UNITS : has
+    UNIT_TYPES ||--o{ UNITS : categorizes
+    UNIT_TYPES ||--o{ PACKAGES : offers
+    UNITS ||--o{ RENTAL_SESSIONS : hosts
+    PACKAGES ||--o{ RENTAL_SESSIONS : "priced by"
+    USERS ||--o{ RENTAL_SESSIONS : opens
+    RENTAL_SESSIONS ||--o{ SESSION_EXTENSIONS : extended_by
+    USERS ||--o{ SESSION_EXTENSIONS : records
+    UNITS ||--o{ DEVICE_ALERTS : raises
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+    OUTLETS {
+        bigint id PK
+        string name
+        string timezone
+        bool is_active
+    }
+    USERS {
+        bigint id PK
+        bigint outlet_id FK
+        string name
+        string email UK
+        string password
+        enum role "owner, kasir"
+        bool is_active
+    }
+    UNIT_TYPES {
+        bigint id PK
+        bigint outlet_id FK
+        string name
+        uint hourly_rate "rupiah"
+        uint sort_order
+    }
+    UNITS {
+        bigint id PK
+        bigint outlet_id FK
+        bigint unit_type_id FK
+        string code UK "per outlet"
+        enum control_driver "home_assistant, tasmota, manual"
+        string control_ref "entity_id HA / topic Tasmota"
+        string tv_mac "Wake-on-LAN"
+        json capabilities
+        enum power_state "on, standby, unreachable, unknown"
+        timestamp last_seen_at
+        bool is_active
+    }
+    PACKAGES {
+        bigint id PK
+        bigint unit_type_id FK
+        string name
+        uint duration_minutes
+        uint price "rupiah"
+        bool is_active
+    }
+    RENTAL_SESSIONS {
+        bigint id PK
+        bigint unit_id FK
+        bigint opened_by FK
+        string customer_name
+        enum type "open, package"
+        bigint package_id FK
+        timestamp started_at
+        timestamp ends_at "null untuk open play"
+        timestamp ended_at
+        enum status "active, completed, voided"
+        uuid expiry_token
+        uint base_amount "rupiah"
+        uint extra_amount "rupiah"
+        uint total_amount "rupiah"
+        enum payment_method "cash, qris, transfer"
+        timestamp paid_at
+        bigint voided_by FK
+        text void_reason
+        bigint active_unit_id "generated, unique — 1 sesi aktif/unit"
+    }
+    SESSION_EXTENSIONS {
+        bigint id PK
+        bigint rental_session_id FK
+        uint added_minutes
+        uint amount "rupiah"
+        bigint user_id FK
+    }
+    DEVICE_ALERTS {
+        bigint id PK
+        bigint unit_id FK
+        enum type "power_off_failed, device_offline, state_mismatch"
+        string message
+        enum status "open, acknowledged"
+        bigint acknowledged_by FK
+        timestamp acknowledged_at
+    }
+    SETTINGS {
+        bigint id PK
+        string key UK
+        json value
+    }
+```
 
-## Code of Conduct
+`outlet_id` ada di `users`/`unit_types`/`units` sejak V1 sebagai fondasi siap-scale — V1 sendiri berjalan single-outlet, tanpa UI ganti-outlet (lihat `DECISIONS.md` Fase 0).
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Sequence: sesi berakhir → TV mati
 
-## Security Vulnerabilities
+```mermaid
+sequenceDiagram
+    participant Job as ExpireRentalSession<br/>(delayed job / sweep)
+    participant Action as CompleteSessionAction
+    participant DB as MySQL
+    participant DM as DeviceManager
+    participant Driver as HomeAssistantDriver /<br/>TasmotaDriver
+    participant Verify as VerifyUnitPoweredOffJob<br/>(+10s)
+    participant Reverb
+    participant Dash as Dashboard Kasir
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+    Job->>Action: handle(session)
+    Action->>DB: lockForUpdate() + update status=completed
+    Action->>DM: powerOff(unit)
+    DM->>Driver: powerOff(unit)
+    Driver-->>DM: CommandResult
+    DM->>Job: dispatch VerifyUnitPoweredOffJob (delay 10s)
+    Action->>Reverb: broadcast SessionEnded
+    Reverb-->>Dash: push (≤2s)
+    Dash->>Dash: refreshUnits() — tanpa reload
 
-## License
+    Note over Verify: 10 detik kemudian
+    Verify->>Driver: state(unit)
+    alt masih On
+        Verify->>DB: create device_alert (state_mismatch)
+        DB-->>Reverb: broadcast DeviceAlertRaised
+        Reverb-->>Dash: badge alert muncul
+    else Standby/Off
+        Verify->>Verify: no-op
+    end
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Menjalankan lokal
+
+```bash
+composer install && npm install
+cp .env.example .env && php artisan key:generate
+php artisan migrate --seed
+composer run dev   # server + queue:work + reverb:start + vite, paralel
+```
+
+Unit dengan `control_driver=manual` tidak butuh Home Assistant/Mosquitto apa pun — cukup untuk development. Untuk mencoba driver HA/Tasmota sungguhan, lihat `docker-compose.devices.yml` (Linux only, lihat komentar di file itu) dan `RUNBOOK.md`.
+
+## Test
+
+```bash
+php artisan test              # Feature + Unit
+php artisan test --testsuite=Concurrency   # butuh DB nyata, bukan transaksi in-memory
+```
+
+## Stack (versi dikunci)
+
+PHP 8.5 · Laravel 13 · Filament v5 (Livewire 4) · MySQL 8 · Reverb · Pest v4 · `php-mqtt/client` · `spatie/laravel-activitylog` · `laravel/boost`.

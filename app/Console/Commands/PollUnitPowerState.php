@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\DeviceManager;
-use App\Domain\Devices\Events\UnitPowerStateChanged;
 use App\Models\Unit;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -14,8 +13,9 @@ use Throwable;
  * Fallback poll untuk unit ber-driver home_assistant: Tasmota sudah dapat
  * push realtime lewat MQTT LWT/POWER (lihat bridge:mqtt-listen), tapi HA
  * tidak mendorong perubahan state ke aplikasi ini, jadi harus ditanya
- * berkala. Hanya menulis DB & broadcast kalau state benar-benar berubah,
- * supaya tidak membanjiri dashboard dengan event kosong tiap siklus.
+ * berkala. Delegasi ke DeviceManager::reportState() supaya "state berubah
+ * → broadcast (+ device_alert kalau jadi unreachable)" konsisten dengan
+ * bridge:mqtt-listen, bukan duplikat logikanya di sini.
  */
 class PollUnitPowerState extends Command
 {
@@ -44,13 +44,11 @@ class PollUnitPowerState extends Command
                 continue;
             }
 
-            if ($state === $unit->power_state) {
-                continue;
+            if ($state !== $unit->power_state) {
+                $changed++;
             }
 
-            $unit->update(['power_state' => $state, 'last_seen_at' => now()]);
-            UnitPowerStateChanged::dispatch($unit->id);
-            $changed++;
+            $devices->reportState($unit, $state);
         }
 
         $this->info("Polling selesai: {$units->count()} unit diperiksa, {$changed} berubah.");

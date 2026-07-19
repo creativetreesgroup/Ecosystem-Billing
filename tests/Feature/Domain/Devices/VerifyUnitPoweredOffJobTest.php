@@ -32,7 +32,7 @@ test('the job raises a device alert when the tv still reports on after power-off
 
     (new VerifyUnitPoweredOffJob($unit->id))->handle(app(DeviceManager::class));
 
-    expect(DeviceAlert::where('unit_id', $unit->id)->where('type', DeviceAlertType::StateMismatch)->exists())->toBeTrue();
+    expect(DeviceAlert::where('unit_id', $unit->id)->where('type', DeviceAlertType::PowerOffFailed)->exists())->toBeTrue();
 });
 
 test('the job does nothing when the tv correctly reports off', function () {

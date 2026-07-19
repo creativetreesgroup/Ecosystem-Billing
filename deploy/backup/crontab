@@ -1,0 +1,5 @@
+# Instal: crontab -u www-data deploy/backup/crontab
+# (atau tempel baris di bawah ke crontab yang sudah ada untuk user itu)
+#
+# Backup harian jam 03:00 — di luar jam operasional outlet manapun.
+0 3 * * * /var/www/creative-trees-billing/deploy/backup/backup-database.sh >> /var/log/creative-trees-billing-backup.log 2>&1

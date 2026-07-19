@@ -49,7 +49,7 @@ class VerifyUnitPoweredOffJob implements ShouldQueue
 
         DeviceAlert::create([
             'unit_id' => $unit->id,
-            'type' => DeviceAlertType::StateMismatch,
+            'type' => DeviceAlertType::PowerOffFailed,
             'message' => "TV unit {$unit->code} masih menyala 10 detik setelah perintah power-off dikirim.",
         ]);
     }

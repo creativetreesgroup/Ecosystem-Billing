@@ -5,7 +5,9 @@ namespace App\Domain\Devices;
 use App\Domain\Devices\Drivers\HomeAssistantDriver;
 use App\Domain\Devices\Drivers\ManualDriver;
 use App\Domain\Devices\Drivers\TasmotaDriver;
+use App\Domain\Devices\Events\UnitPowerStateChanged;
 use App\Domain\Devices\Jobs\VerifyUnitPoweredOffJob;
+use App\Models\DeviceAlert;
 use App\Models\Unit;
 use Closure;
 use Illuminate\Contracts\Container\Container;
@@ -65,5 +67,31 @@ class DeviceManager
         VerifyUnitPoweredOffJob::dispatch($unit->id)->delay(now()->addSeconds(10));
 
         return $result;
+    }
+
+    /**
+     * Titik masuk tunggal untuk poller (`units:poll-state`) dan bridge MQTT
+     * melaporkan power state yang baru mereka amati. Menyatukan di sini
+     * supaya "state berubah → broadcast, dan kalau jadi unreachable → device_alert"
+     * konsisten dari kedua sumber, bukan diduplikasi di masing-masing caller.
+     */
+    public function reportState(Unit $unit, PowerState $state): void
+    {
+        if ($unit->power_state === $state) {
+            $unit->update(['last_seen_at' => now()]);
+
+            return;
+        }
+
+        $unit->update(['power_state' => $state, 'last_seen_at' => now()]);
+        UnitPowerStateChanged::dispatch($unit->id);
+
+        if ($state === PowerState::Unreachable) {
+            DeviceAlert::create([
+                'unit_id' => $unit->id,
+                'type' => DeviceAlertType::DeviceOffline,
+                'message' => "Unit {$unit->code} tidak bisa dihubungi.",
+            ]);
+        }
     }
 }

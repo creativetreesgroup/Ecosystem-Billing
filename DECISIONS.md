@@ -337,13 +337,93 @@ Format: keputusan, alasan (*why*), dan trade-off yang ditolak. Diurutkan per fas
   supaya tidak membingungkan saat dev lokal di macOS (jalankan unit dengan
   `control_driver=manual` saja untuk dev, seperti sudah didukung sejak Fase 2).
 
-- **Mosquitto default `allow_anonymous true` di file compose ini**, dengan
-  baris `password_file` sudah disiapkan tapi di-comment.
-  *Why:* generate password file (`mosquitto_passwd`) adalah tugas manusia
-  sekali-jalan per outlet (§14), bukan sesuatu yang bisa/perlu diotomatisasi
-  di commit ini. Default anonymous memudahkan bring-up lokal; production
-  WAJIB mengaktifkan auth sebelum expose port manapun ke luar — akan masuk
-  checklist RUNBOOK.md di Fase 6.
+- **Mosquitto `allow_anonymous false` + `password_file` + `acl_file` aktif
+  sejak awal** (bukan default anonymous seperti draft awal fase ini — dikoreksi
+  di Fase 6 setelah dicek ulang ke §11 yang eksplisit minta "anonymous off").
+  *Why:* generate isi password file (`mosquitto_passwd`) tetap tugas manusia
+  sekali-jalan per outlet (§14) — tapi *wiring*-nya (config menunjuk ke file
+  itu, container menolak start tanpanya) adalah kode, bukan langkah manual,
+  dan harus benar dari awal. Fail-secure (§3.5): tanpa file password, broker
+  menolak start sama sekali alih-alih diam-diam menerima siapa saja.
+
+## Fase 6 — Hardening & serah terima
+
+- **Dua celah ditemukan lewat audit checklist §10 satu-per-satu** (bukan
+  ditulis ulang dari draft Fase 5 tanpa dicek):
+  1. `DeviceAlertType::DeviceOffline` sudah ada di enum sejak Fase 1 tapi
+     TIDAK PERNAH dibuat di mana pun — `units:poll-state` dan
+     `bridge:mqtt-listen` cuma broadcast `UnitPowerStateChanged`, tidak
+     pernah membuat `device_alert`. Padahal DoD §10 eksplisit: "Unit dibuat
+     unreachable → ≤ 90 detik badge berubah + `device_alert` muncul".
+  2. `VerifyUnitPoweredOffJob` (reconciliation loop) memakai
+     `DeviceAlertType::StateMismatch`, padahal §7 eksplisit menulis "buat
+     device_alert `power_off_failed`" untuk skenario TV masih menyala 10
+     detik setelah perintah off — dan DoD §10 juga eksplisit menyebut
+     `power_off_failed`, bukan `state_mismatch`.
+
+  *Why keduanya diperbaiki, bukan dibiarkan:* checklist DoD bukan formalitas
+  — dua baris ini adalah bukti nyata kenapa audit satu-per-satu (bukan
+  "kelihatannya sudah beres") ada gunanya. Diperbaiki dengan menambah
+  `DeviceManager::reportState(Unit, PowerState)` sebagai titik masuk
+  TUNGGAL untuk `units:poll-state` maupun `bridge:mqtt-listen` melaporkan
+  state yang mereka amati — state berubah → broadcast; kalau state baru
+  `Unreachable` → tambahan buat `device_alert` tipe `DeviceOffline`. Kedua
+  caller lama yang masing-masing menduplikasi logika "kalau berubah, tulis
+  DB + broadcast" diarahkan ke method ini, supaya perilaku ini konsisten
+  dari kedua sumber sekaligus dan tidak bisa diam-diam drift lagi.
+  `DeviceAlertType::StateMismatch` sekarang jadi nilai enum yang tersedia di
+  schema tapi tidak dipakai V1 — bukan dihapus (tetap valid sebagai nilai
+  kolom), hanya tidak ada jalur kode yang menghasilkannya saat ini.
+
+- **`mysqldump`/`mysql` client HARUS dari vendor yang sama dengan server**
+  (MySQL client untuk MySQL server) — ditemukan lewat uji restore
+  sungguhan (bukan cuma menulis script lalu percaya), bukan diasumsikan.
+  *Why:* mesin dev ini punya MariaDB client di PATH (`mysqldump`/`mysql`
+  default resolve ke situ) SEKALIGUS MySQL 8.4 (Homebrew, keg-only, dipakai
+  aplikasi). Dump lewat client MariaDB terhadap tabel `rental_sessions`
+  (yang punya kolom generated `active_unit_id`) menulis `NULL` eksplisit di
+  posisi kolom itu di setiap `INSERT`; MySQL 8 lalu MENOLAK restore-nya
+  (`ERROR 3105`, generated column tidak boleh diberi nilai eksplisit sama
+  sekali, walau `NULL`). Diverifikasi ulang pakai `mysqldump`/`mysql` dari
+  `/opt/homebrew/opt/mysql@8.4/bin` (vendor yang sama dengan server) →
+  restore sukses, jumlah baris `users`/`units`/`rental_sessions`/
+  `device_alerts` identik sebelum & sesudah. Di server production (Ubuntu +
+  paket `mysql-server` dari APT), client bawaan sudah otomatis satu vendor
+  — potensi masalah ini spesifik ke mesin dev bertoolchain campuran, dicatat
+  di `RUNBOOK.md` supaya tidak mengejutkan siapa pun yang menguji ulang di
+  environment serupa.
+
+- **`grep -riE "token|password" storage/logs` (DoD §10) sempat menemukan
+  SATU baris** — bukan HA_TOKEN/kredensial MQTT (yang memang jadi fokus
+  §9.4 dan sudah dijamin oleh `tests/Feature/Security/NoSecretsInLogsTest.php`),
+  melainkan hash bcrypt kolom `users.password` yang ikut ter-log utuh di
+  pesan `QueryException` bawaan Laravel untuk error duplicate-key lama
+  (SQL statement dengan bindings-nya di-stringify penuh oleh framework saat
+  exception, bukan oleh kode aplikasi ini).
+  *Why dicatat, bukan "diperbaiki":* ini perilaku default Laravel
+  (`Illuminate\Database\QueryException`) yang menyertakan bound SQL lengkap
+  di pesan exception untuk keperluan debugging — bukan celah spesifik
+  proyek ini, dan nilainya adalah HASH satu-arah (bcrypt), bukan password
+  plaintext. Beda kelas risiko dari HA_TOKEN/kredensial MQTT mentah yang
+  memang §9.4 khawatirkan. Log lama dibersihkan (`storage/logs/laravel.log`
+  di-truncate); grep diulang setelah full test suite (117 test, termasuk
+  jalur device-failure yang sengaja memicu `Log::warning`) dan hasilnya
+  nihil — dibuktikan bersih untuk operasi normal aplikasi saat ini.
+
+- **`deploy/` (nginx vhost, 4 config Supervisor, backup+restore script,
+  crontab) ditulis mengikuti pola resmi dari dokumentasi Laravel/Reverb**
+  (`search-docs`), bukan ditebak — nginx vhost persis contoh resmi
+  (`fastcgi_pass unix:...`, blok deny dotfile), Supervisor `queue:work`
+  persis pola resmi (`numprocs`, `stopasgroup`/`killasgroup`,
+  `stopwaitsecs`) dengan `numprocs` diturunkan ke 2 (bukan 8 di contoh) —
+  beban job sistem ini (billing satu outlet) jauh di bawah skala yang
+  contoh itu diasumsikan.
+
+- **Backup script pakai `--defaults-extra-file` (temp file mode 600,
+  dihapus via `trap`), bukan `--password=` di argumen CLI mysqldump.**
+  *Why:* `--password=` di argumen command line terlihat penuh oleh siapa
+  pun yang menjalankan `ps aux` selama dump berjalan — pelanggaran §9.4
+  yang gampang dihindari dengan pola standar ini.
 
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
