@@ -156,22 +156,81 @@ final class SalesSummary
     }
 
     /**
-     * @return array<int, array{date: string, sessions: int, revenue: int}>
+     * Rincian per hari yang cukup untuk MENUTUP KAS: kasir/owner perlu tahu
+     * berapa uang TUNAI yang mestinya ada di laci hari itu, terpisah dari QRIS
+     * dan transfer yang masuk ke rekening. Total saja tidak cukup untuk itu.
+     *
+     * @return array<int, array{date: string, sessions: int, revenue: int, average: int, share: float, cash: int, qris: int, transfer: int}>
      */
     public function dailyBreakdown(): array
     {
         $tz = self::timezone();
+        $total = $this->totalRevenue();
 
         return $this->sessions()
             ->groupBy(fn (RentalSession $session) => $session->ended_at->setTimezone($tz)->toDateString())
-            ->map(fn (Collection $group, string $date) => [
-                'date' => $date,
-                'sessions' => $group->count(),
-                'revenue' => (int) $group->sum('total_amount'),
-            ])
+            ->map(function (Collection $group, string $date) use ($total): array {
+                $revenue = (int) $group->sum('total_amount');
+
+                $perMethod = collect(PaymentMethod::cases())->mapWithKeys(fn (PaymentMethod $method) => [
+                    $method->value => (int) $group
+                        ->where('payment_method', $method)
+                        ->sum('total_amount'),
+                ])->all();
+
+                return [
+                    'date' => $date,
+                    'sessions' => $group->count(),
+                    'revenue' => $revenue,
+                    'average' => $group->count() === 0 ? 0 : intdiv($revenue, $group->count()),
+                    'share' => $total === 0 ? 0.0 : round($revenue / $total * 100, 1),
+                    ...$perMethod,
+                ];
+            })
             ->sortKeysDesc()
             ->values()
             ->all();
+    }
+
+    /**
+     * Komposisi pendapatan harian per metode bayar, untuk grafik batang
+     * bertumpuk. Satu deret per metode, panjangnya sama dengan labels.
+     *
+     * @return array{labels: array<int, string>, series: array<int, array{name: string, data: array<int, int>}>}
+     */
+    public function dailyPaymentSeries(): array
+    {
+        $tz = self::timezone();
+        $byDay = $this->sessions()->groupBy(
+            fn (RentalSession $session) => $session->ended_at->setTimezone($tz)->toDateString()
+        );
+
+        [$start, $end] = $this->range();
+        $cursor = $start->copy()->setTimezone($tz)->startOfDay();
+        $last = $end->copy()->setTimezone($tz)->startOfDay();
+
+        $labels = [];
+        $days = [];
+
+        for ($i = 0; $cursor->lte($last) && $i < 366; $i++) {
+            $labels[] = $cursor->format('d M');
+            $days[] = $byDay->get($cursor->toDateString());
+            $cursor->addDay();
+        }
+
+        $series = collect(PaymentMethod::cases())
+            ->map(fn (PaymentMethod $method) => [
+                'name' => $method->getLabel(),
+                'data' => array_map(
+                    fn (?Collection $group) => $group
+                        ? (int) $group->where('payment_method', $method)->sum('total_amount')
+                        : 0,
+                    $days,
+                ),
+            ])
+            ->all();
+
+        return ['labels' => $labels, 'series' => $series];
     }
 
     /**

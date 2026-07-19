@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\SalesSummary;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\SalesReport;
@@ -122,4 +123,42 @@ test('the report page refreshes its breakdowns when a session ends', function ()
 
     $page->dispatch('echo-private:panel.units,.session.ended')
         ->assertSee('Rp 64.000');
+});
+
+/**
+ * Rincian harian dipakai untuk MENUTUP KAS: tunai harus terpisah dari QRIS &
+ * transfer, dan penjumlahannya wajib cocok dengan kolom Total.
+ */
+test('the daily breakdown splits each day by payment method and the parts sum to the total', function () {
+    $a = completedOn($this->unit, '2026-05-10 14:00', 30000);
+    $a->update(['payment_method' => PaymentMethod::Cash]);
+    $b = completedOn($this->unit, '2026-05-10 16:00', 20000);
+    $b->update(['payment_method' => PaymentMethod::Qris]);
+
+    $day = (new SalesSummary('2026-05-01', '2026-05-31'))->dailyBreakdown()[0];
+
+    expect($day['cash'])->toBe(30000)
+        ->and($day['qris'])->toBe(20000)
+        ->and($day['transfer'])->toBe(0)
+        ->and($day['cash'] + $day['qris'] + $day['transfer'])->toBe($day['revenue'])
+        ->and($day['sessions'])->toBe(2)
+        ->and($day['average'])->toBe(25000)
+        ->and($day['share'])->toBe(100.0);
+});
+
+test('the payment mix chart emits one stacked series per payment method', function () {
+    $s = completedOn($this->unit, '2026-05-02 14:00', 12000);
+    $s->update(['payment_method' => PaymentMethod::Transfer]);
+
+    $mix = (new SalesSummary('2026-05-01', '2026-05-03'))->dailyPaymentSeries();
+
+    expect($mix['labels'])->toBe(['01 May', '02 May', '03 May'])
+        ->and(array_column($mix['series'], 'name'))->toBe(['Tunai', 'QRIS', 'Transfer']);
+
+    // Tiap deret harus sepanjang labels, kalau tidak batangnya bergeser hari.
+    foreach ($mix['series'] as $serie) {
+        expect($serie['data'])->toHaveCount(3);
+    }
+
+    expect($mix['series'][2]['data'])->toBe([0, 12000, 0]); // Transfer di 02 May
 });

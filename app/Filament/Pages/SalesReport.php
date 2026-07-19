@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Domain\Billing\Rupiah;
 use App\Domain\Billing\SalesSummary;
+use App\Filament\Widgets\SalesPaymentMixChart;
 use App\Filament\Widgets\SalesRevenueChart;
 use App\Filament\Widgets\SalesStatsWidget;
 use App\Models\UserRole;
@@ -18,6 +19,7 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Livewire;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\FontWeight;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
@@ -147,7 +149,13 @@ class SalesReport extends Page implements HasTable
                     ]),
             ]),
 
+            Livewire::make(SalesPaymentMixChart::class, fn (): array => [
+                'startDate' => $this->data['start_date'] ?? null,
+                'endDate' => $this->data['end_date'] ?? null,
+            ]),
+
             Section::make('Rincian harian')
+                ->description('Tunai harus cocok dengan isi laci; QRIS & transfer dengan mutasi rekening.')
                 ->schema([EmbeddedTable::make()]),
         ]);
     }
@@ -170,9 +178,41 @@ class SalesReport extends Page implements HasTable
         return $table
             ->records(fn (): SupportCollection => collect($this->summary()->dailyBreakdown()))
             ->columns([
-                TextColumn::make('date')->label('Tanggal')->date('d M Y'),
-                TextColumn::make('sessions')->label('Jumlah sesi'),
-                TextColumn::make('revenue')->label('Pendapatan')->formatStateUsing(fn (int $state) => Rupiah::format($state)),
+                TextColumn::make('date')
+                    ->label('Tanggal')
+                    ->date('d M Y')
+                    ->weight(FontWeight::Medium),
+                TextColumn::make('sessions')
+                    ->label('Sesi')
+                    ->badge()
+                    ->color('gray'),
+                // Tiga kolom di bawah ini yang membuat rincian ini bisa dipakai
+                // MENUTUP KAS: tunai harus cocok dengan isi laci, QRIS &
+                // transfer dengan mutasi rekening.
+                TextColumn::make('cash')
+                    ->label('Tunai')
+                    ->formatStateUsing(fn (int $state) => $state > 0 ? Rupiah::format($state) : '—')
+                    ->color(fn (int $state) => $state > 0 ? 'success' : 'gray'),
+                TextColumn::make('qris')
+                    ->label('QRIS')
+                    ->formatStateUsing(fn (int $state) => $state > 0 ? Rupiah::format($state) : '—')
+                    ->color(fn (int $state) => $state > 0 ? 'info' : 'gray'),
+                TextColumn::make('transfer')
+                    ->label('Transfer')
+                    ->formatStateUsing(fn (int $state) => $state > 0 ? Rupiah::format($state) : '—')
+                    ->color(fn (int $state) => $state > 0 ? 'warning' : 'gray'),
+                TextColumn::make('revenue')
+                    ->label('Total')
+                    ->formatStateUsing(fn (int $state) => Rupiah::format($state))
+                    ->weight(FontWeight::Bold),
+                TextColumn::make('average')
+                    ->label('Rata-rata/sesi')
+                    ->formatStateUsing(fn (int $state) => Rupiah::format($state))
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('share')
+                    ->label('Kontribusi')
+                    ->formatStateUsing(fn (float $state) => number_format($state, 1, ',', '.').'%')
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->paginated(false)
             ->poll('30s')

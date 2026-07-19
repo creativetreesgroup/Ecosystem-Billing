@@ -983,6 +983,34 @@ masalah baru.**
   angka tetap terasa berubah seketika, jadi polling hanya perlu jadi jaring
   pengaman.
 
+## Rincian harian: dibuat cukup untuk menutup kas
+
+- **Kolom rincian harian diperluas jadi Tanggal / Sesi / Tunai / QRIS /
+  Transfer / Total**, plus Rata-rata per sesi & Kontribusi (%) yang bisa
+  dimunculkan lewat toggle kolom.
+  *Why bukan sekadar "menambah kolom":* rincian sebelumnya (tanggal, jumlah
+  sesi, total) tidak bisa dipakai untuk pekerjaan nyata di akhir hari.
+  Owner/kasir perlu tahu berapa uang TUNAI yang mestinya ada di laci, terpisah
+  dari QRIS & transfer yang masuk rekening — angka total saja tidak menjawab
+  itu. Deskripsi section-nya menyebut ini eksplisit supaya maksud kolomnya
+  jelas: "Tunai harus cocok dengan isi laci; QRIS & transfer dengan mutasi
+  rekening."
+
+- **`SalesPaymentMixChart` (ApexCharts, batang bertumpuk)** menampilkan
+  komposisi yang sama secara visual. Melengkapi `SalesRevenueChart` yang hanya
+  menunjukkan totalnya: yang ini menjawab "hari itu uangnya masuk lewat mana".
+  Urutan warnanya sengaja sama dengan badge metode bayar di tabel Riwayat Sesi
+  (Tunai hijau, QRIS biru, Transfer kuning) supaya tidak perlu dihafal ulang.
+
+- **Deret grafik dijamin sepanjang labels**, termasuk hari & metode tanpa
+  transaksi (nilainya 0). Kalau tidak, batang akan bergeser hari dan grafiknya
+  berbohong — ada test khusus yang menjaga panjang tiap deret.
+
+- **Pemecahan per metode dihitung di `SalesSummary`, bukan di kolom tabel**,
+  dan ada test yang memastikan `cash + qris + transfer === revenue`. Ini
+  laporan uang: kolom yang tidak menjumlah ke totalnya sendiri lebih buruk
+  daripada tidak ada kolom sama sekali.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)
