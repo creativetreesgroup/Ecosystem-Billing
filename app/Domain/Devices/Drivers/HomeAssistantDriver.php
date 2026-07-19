@@ -26,6 +26,18 @@ class HomeAssistantDriver implements TvControl
         private readonly string $token,
     ) {}
 
+    /**
+     * Apakah HA sudah dikonfigurasi sama sekali.
+     *
+     * Dibedakan dari "terhubung tapi tidak menemukan apa-apa": tanpa pembedaan
+     * ini, daftar TV yang kosong terbaca sebagai "tidak ada TV di jaringan"
+     * padahal TV-nya jelas ada dan yang belum ada justru tokennya.
+     */
+    public function isConfigured(): bool
+    {
+        return filled($this->baseUrl) && filled($this->token);
+    }
+
     public function powerOn(Unit $unit): CommandResult
     {
         if ($unit->tv_mac) {
