@@ -4,6 +4,7 @@ use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\SalesSummary;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\SalesReport;
+use App\Filament\Widgets\SalesPaymentMixChart;
 use App\Filament\Widgets\SalesRevenueChart;
 use App\Filament\Widgets\SalesStatsWidget;
 use App\Filament\Widgets\UnitGridWidget;
@@ -81,7 +82,15 @@ test('both widgets follow the range broadcast by the report page', function () {
  * untuk abort(403) saat mount, jadi widgetnya malah mati di halaman Laporan.
  */
 test('the dashboard shows only the unit grid, not the report widgets', function () {
-    expect((new Dashboard)->getWidgets())->toBe([UnitGridWidget::class]);
+    // Yang dijaga: widget LAPORAN tidak boleh ikut ke dasbor kasir. Daftar
+    // dasbor sendiri boleh bertambah (mis. ringkasan outlet), jadi jangan
+    // dikunci ke satu isi persis.
+    $widgets = (new Dashboard)->getWidgets();
+
+    expect($widgets)->toContain(UnitGridWidget::class)
+        ->and($widgets)->not->toContain(SalesStatsWidget::class)
+        ->and($widgets)->not->toContain(SalesRevenueChart::class)
+        ->and($widgets)->not->toContain(SalesPaymentMixChart::class);
 
     Livewire::actingAs($this->owner)->test(SalesStatsWidget::class)->assertOk();
 });

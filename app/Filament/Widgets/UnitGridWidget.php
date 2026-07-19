@@ -284,9 +284,15 @@ class UnitGridWidget extends TableWidget
 
     protected function togglePowerAction(): Action
     {
+        // Ikon saja, bukan tombol berlabel: saat sesi paket berjalan kartu ini
+        // memuat TIGA aksi (Perpanjang + Stop & Bayar + daya). Dengan label
+        // penuh, tombol ketiga meluber keluar kartu dan menimpa kartu
+        // sebelahnya. Daya adalah aksi bantu, jadi ia yang diringkas — label
+        // tetap terbaca lewat tooltip.
         return Action::make('togglePower')
-            ->button()
+            ->iconButton()
             ->size(Size::Small)
+            ->tooltip(fn (?Unit $record) => $record?->power_state === PowerState::On ? 'Matikan TV' : 'Nyalakan TV')
             ->label(fn (?Unit $record) => $record?->power_state === PowerState::On ? 'Matikan TV' : 'Nyalakan TV')
             ->color('gray')
             ->icon('heroicon-o-power')

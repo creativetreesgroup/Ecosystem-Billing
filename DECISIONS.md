@@ -1011,9 +1011,38 @@ masalah baru.**
   laporan uang: kolom yang tidak menjumlah ke totalnya sendiri lebih buruk
   daripada tidak ada kolom sama sekali.
 
+## Dasbor: bug tombol meluber & ringkasan outlet
+
+- **BUG DIPERBAIKI: aksi ketiga meluber keluar kartu.** Saat sebuah unit
+  menjalankan sesi PAKET, kartunya memuat tiga aksi (Perpanjang + Stop & Bayar
+  + daya). Dengan label penuh, tombol ketiga melewati batas kartu dan menimpa
+  kartu sebelahnya — terlihat jelas di grid 3 kolom. Aksi daya diubah jadi
+  tombol ikon (`->iconButton()`) dengan tooltip: ia memang aksi bantu, dan
+  meringkasnya membuat dua aksi utama tetap berlabel penuh. Tidak menambah
+  kolom grid atau memperkecil font, yang hanya akan memindahkan masalahnya.
+
+- **`OutletOverviewWidget` di atas grid unit** — unit terpakai / total,
+  pendapatan HARI INI, dan alert yang belum ditangani. Sengaja dibatasi tiga
+  angka yang benar-benar dipakai kasir sambil berdiri di depan layar; sisanya
+  sudah ada di Laporan. Batas "hari ini" mengikuti jam dinding outlet, bukan
+  UTC — kalau tidak, sesi jam 01:00 WIB (masih jam operasional) akan dihitung
+  ke hari kemarin saat kasir mencocokkan laci. Ada test yang menguncinya.
+
+- **`$isLazy = false` pada widget dasbor.** Tanpa itu widget hanya
+  menampilkan kotak KOSONG — pola yang sama persis sudah pernah terjadi pada
+  `UnitGridWidget` di Fase 4 dan sudah dicatat waktu itu, tapi terulang karena
+  widget baru tidak otomatis mewarisi keputusan itu.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
-- Akun pelanggan + saldo/top-up tanpa expiry (V2)
+- Akun pelanggan + saldo/top-up tanpa expiry (V2). **Diminta lagi & ditegaskan
+  ditunda oleh pemilik produk**: field "Nama pelanggan" di modal Mulai Sesi
+  nantinya membaca dari data member (dengan tetap bisa diketik manual untuk
+  tamu), plus pengisian saldo per member. Bentuk V1 sekarang — teks bebas —
+  sengaja dipertahankan karena tanpa tabel member, saldo, dan mutasinya, isian
+  member hanyalah teks yang menyamar jadi relasi. Saat V2 dikerjakan, field
+  ini menjadi Select ber-`getSearchResultsUsing()` + `createOptionForm()`
+  supaya tamu tanpa akun tetap bisa dilayani tanpa memaksa buat member.
 - Payment gateway (Midtrans) + verifikasi otomatis bukti transfer (V2)
 - Notifikasi WhatsApp (V2, butuh nomor pelanggan yang belum ada sumbernya di V1)
 - Engine diskon/voucher (V2)

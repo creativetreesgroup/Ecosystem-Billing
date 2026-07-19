@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Widgets\OutletOverviewWidget;
 use App\Filament\Widgets\UnitGridWidget;
 use Filament\Pages\Dashboard as BaseDashboard;
 
@@ -20,6 +21,7 @@ class Dashboard extends BaseDashboard
     public function getWidgets(): array
     {
         return [
+            OutletOverviewWidget::class,
             UnitGridWidget::class,
         ];
     }
