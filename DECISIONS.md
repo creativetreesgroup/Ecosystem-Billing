@@ -425,6 +425,82 @@ Format: keputusan, alasan (*why*), dan trade-off yang ditolak. Diurutkan per fas
   pun yang menjalankan `ps aux` selama dump berjalan — pelanggaran §9.4
   yang gampang dihindari dengan pola standar ini.
 
+## Audit kelengkapan v1 (pasca Fase 6)
+
+Diminta eksplisit oleh user: cek ulang apakah v1 benar-benar lengkap & profesional. Diaudit satu per satu ke §8/§9/§12, bukan diasumsikan sudah beres karena checklist §10 sudah lolos — ditemukan satu celah signifikan dan satu celah kecil:
+
+- **`Filament\Pages\SalesReport` (Laporan) ditambahkan — §8 secara eksplisit
+  memintanya ("Laporan (owner-only): rekap harian & bulanan — jumlah sesi,
+  pendapatan per metode bayar & per tipe unit, jam sibuk. Export CSV.") dan
+  sebelumnya TIDAK ADA sama sekali** — bukan variasi/penyempurnaan dari
+  sesuatu yang sudah ada, murni ketinggalan dari Fase 3.
+  *Why terlewat sebelumnya:* checklist DoD §10 tidak eksplisit menyebut
+  "laporan" sebagai item terpisah (hanya §8 yang memintanya), jadi audit
+  checklist §10 satu-per-satu di Fase 6 tidak menangkapnya — pelajarannya:
+  audit ulang harus menyisir SEMUA bagian spek (§8 juga), bukan hanya
+  checklist §10 yang eksplisit.
+  *Desain:* satu custom Page (bukan Resource — tidak ada CRUD, murni
+  agregat baca), rentang tanggal bebas (bukan toggle harian/bulanan
+  terpisah) supaya satu halaman melayani rekap sehari maupun sebulan
+  penuh; breakdown per hari di tabel bawah tetap memberi rincian harian
+  walau rentang dipilih sebulan. Native Filament penuh: `form(Schema)` +
+  `$this->form` (pola persis `Filament\Auth\Pages\EditProfile` bawaan,
+  dibaca langsung dari source sebelum menulis kode), `HasTable` +
+  `InteractsWithTable` dengan `->records()` "custom data" (data agregat
+  array, bukan Eloquent model) untuk breakdown harian, `<x-filament::section>`
+  untuk grouping visual di Blade tipis yang cuma merender `$this->form`/
+  `$this->table` + angka ringkasan.
+  *CSV export* lewat `response()->streamDownload()` dikembalikan langsung
+  dari closure `Action::action()` — dikonfirmasi ini pola resmi Livewire
+  ("Streaming downloads"), bukan lewat sistem `ExportAction`/Exporter
+  bawaan Filament (itu untuk export baris tabel mentah + queue job,
+  overkill untuk satu file rekap sinkron kecil).
+  *Diverifikasi bukan cuma ditulis:* dimuat di browser sungguhan (menemukan
+  1 bug nyata — closure `records()` di-type-hint `Eloquent\Collection`
+  padahal `groupBy()->map()` di atas Eloquent Collection menghasilkan
+  `Support\Collection`, `TypeError` langsung muncul di halaman — diperbaiki
+  dengan alias import terpisah), filter tanggal reaktif dicoba manual,
+  export CSV dicoba dari UI. Selain itu ditambah test otomatis:
+  `assertSee`/`assertSeeInOrder` untuk angka agregat dengan fixture
+  terkontrol (bukan data seeder acak), dan test export CSV yang
+  membandingkan BYTE PERSIS keluaran lewat `assertFileDownloaded($nama,
+  $contentPersis)` — bukan cuma "file terunduh".
+
+- **`Model::preventLazyLoading()` ditambahkan ke `AppServiceProvider::boot()`,
+  aktif non-production** — §12 eksplisit memintanya sebagai bukti tabel
+  Filament sudah eager-load relasinya, sebelumnya tidak pernah diset sama
+  sekali (nilai defaultnya di Laravel adalah OFF).
+  *Why aman diaktifkan belakangan:* full test suite (122 test) tetap hijau
+  tanpa perubahan apa pun begitu diaktifkan — membuktikan semua resource/
+  widget yang sudah ada memang sudah eager-load dengan benar sejak awal
+  (`UnitGridWidget`, `SalesReport`, dst). Diverifikasi ulang lewat browser
+  sungguhan sebagai login kasir DAN owner (dashboard, modal Mulai Sesi
+  dengan tipe Paket yang me-load relasi `Package`, resource Unit/Alert,
+  halaman Laporan) — tidak ada `LazyLoadingViolationException` di manapun.
+
+- **`Rupiah::format()` diekstrak dari method statis privat di
+  `UnitGridWidget`** ke `app/Domain/Billing/Rupiah.php`, dipakai ulang oleh
+  `SalesReport`.
+  *Why:* begitu ada caller kedua yang genuinely butuh format rupiah yang
+  sama, method itu bukan lagi detail privat satu widget — memindahkannya
+  ke domain Billing (tempat `OpenPlayBillingCalculator` juga tinggal)
+  mencegah drift format kalau salah satu sisi diubah sendiri-sendiri nanti.
+
+- **Rate limit login (§9.5) TIDAK butuh kode tambahan** — dicek langsung ke
+  `vendor/filament/filament/src/Auth/Pages/Login.php`: sudah pakai
+  `Illuminate\Support\Facades\RateLimiter` bawaan (maks 5 percobaan) sejak
+  instalasi awal. Dicatat di sini eksplisit supaya audit berikutnya tidak
+  menganggap ini celah yang belum dikerjakan.
+
+- **`SESSION_SECURE_COOKIE` sengaja dibiarkan TIDAK diisi di `.env`/`.env.example`
+  (bukan celah)** — §9.5 minta "secure mengikuti environment", dan
+  `config/session.php` sudah `env('SESSION_SECURE_COOKIE')` tanpa default
+  hardcoded: kosong berarti Laravel mengikuti skema request sesungguhnya
+  (adaptif). Memaksa `true` justru akan MEMATIKAN cookie session di
+  deployment default proyek ini (HTTP polos, LAN-only, tanpa SSL — lihat
+  `RUNBOOK.md` "Akses remote"). Dicatat eksplisit dengan alasan yang sama
+  seperti poin di atas.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

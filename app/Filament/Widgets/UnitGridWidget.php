@@ -4,6 +4,7 @@ namespace App\Filament\Widgets;
 
 use App\Domain\Billing\OpenPlayBillingCalculator;
 use App\Domain\Billing\PaymentMethod;
+use App\Domain\Billing\Rupiah;
 use App\Domain\Devices\DeviceAlertStatus;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
@@ -236,7 +237,7 @@ class UnitGridWidget extends TableWidget
                 return [
                     Placeholder::make('estimasi_total')
                         ->label('Total tagihan')
-                        ->content($session ? self::formatRupiah(self::estimateTotal($session)) : '-'),
+                        ->content($session ? Rupiah::format(self::estimateTotal($session)) : '-'),
                     Select::make('payment_method')
                         ->label('Metode pembayaran')
                         ->options(PaymentMethod::class)
@@ -251,7 +252,7 @@ class UnitGridWidget extends TableWidget
                 );
 
                 Notification::make()
-                    ->title('Sesi selesai — Total: '.self::formatRupiah($completed->total_amount))
+                    ->title('Sesi selesai — Total: '.Rupiah::format($completed->total_amount))
                     ->success()
                     ->send();
             });
@@ -290,11 +291,6 @@ class UnitGridWidget extends TableWidget
             $session->unit->unitType->hourly_rate,
             Setting::get('billing_increment_minutes')['minutes'] ?? 1,
         );
-    }
-
-    public static function formatRupiah(int $amount): string
-    {
-        return 'Rp'.number_format($amount, 0, ',', '.');
     }
 
     /**

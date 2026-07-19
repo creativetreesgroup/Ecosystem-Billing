@@ -11,6 +11,7 @@ test('kasir gets a 403 on owner-only pages, even by direct URL', function (strin
     '/admin/rental-sessions',
     '/admin/unit-types',
     '/admin/packages',
+    '/admin/sales-report',
 ]);
 
 test('owner can reach every admin page', function (string $path) {
@@ -25,6 +26,7 @@ test('owner can reach every admin page', function (string $path) {
     '/admin/packages',
     '/admin/units',
     '/admin/device-alerts',
+    '/admin/sales-report',
 ]);
 
 test('kasir can reach the dashboard, units, and device alerts', function (string $path) {
