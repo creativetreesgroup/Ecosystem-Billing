@@ -551,6 +551,82 @@ empat action di `UnitGridWidget` satu per satu.
     jalurnya dari dashboard kasir (`UnitGridWidget`) — dicek eksplisit
     tidak ketemu.
 
+## Full native Filament — menghapus sisa scaffolding Laravel
+
+Diminta user: *"full native Filament, yang sudah ada pada bagian resource
+Laravel dihapuskan saja."* Ditelusuri apa saja yang sebenarnya masih non-Filament,
+dan ternyata menemukan **satu bug tampilan nyata** yang selama ini tidak terlihat
+di test:
+
+- **`resources/views/filament/pages/sales-report.blade.php` DIHAPUS, halaman
+  Laporan disusun ulang 100% lewat `content(Schema $schema)`** memakai komponen
+  bawaan Filament: `Section`, `Grid`, `TextEntry`, `KeyValueEntry`, `EmbeddedSchema`,
+  `EmbeddedTable`.
+  *Why — ini bukan sekadar preferensi gaya, Blade lama itu RUSAK secara visual:*
+  Blade tersebut memakai kelas Tailwind sendiri (`grid grid-cols-1 sm:grid-cols-3`,
+  `flex items-center justify-between`, dst) yang **tidak pernah ter-compile**.
+  Satu-satunya entry point Tailwind proyek ini (`resources/css/app.css`) hanya
+  dimuat oleh `welcome.blade.php` bawaan Laravel — halaman panel tidak pernah
+  memuat bundle Vite sama sekali. Akibatnya ringkasan yang seharusnya 3 kolom
+  menumpuk vertikal dan angka tidak rata kanan. Test tetap hijau karena
+  `assertSee()` hanya memeriksa teks, bukan layout — persis kelemahan yang
+  membuat verifikasi browser sungguhan wajib (dan memang ketahuannya dari
+  screenshot, bukan dari test).
+  *Hasil setelah pakai komponen native:* ringkasan jadi grid 3 kolom betulan
+  dengan label + angka besar (`TextSize::Large`, `FontWeight::Bold`, total
+  pendapatan `->color('success')`), dua breakdown jadi tabel key-value native
+  bersebelahan, dan **semua empty state jadi bawaan Filament** (`->placeholder()`
+  pada entry, `->emptyStateHeading()` pada tabel) — sebelumnya ditulis manual
+  pakai `@forelse`. Diverifikasi di browser: rentang tanggal 2030 (tanpa data)
+  menampilkan "Belum ada sesi" / "Tidak ada data pada rentang ini." /
+  "Tidak ada sesi selesai pada rentang ini" dengan styling yang benar.
+
+- **Vite, npm, Tailwind, dan seluruh toolchain frontend DIHAPUS TOTAL**
+  (`package.json`, `package-lock.json`, `vite.config.js`, `resources/css/`,
+  `resources/js/`, `node_modules/`).
+  *Why:* setelah `welcome.blade.php` hilang, **tidak ada satu pun** file yang
+  memakai `@vite` — dicek dengan grep ke seluruh `resources/`, `app/`, dan
+  `config/`. Filament v5 mengirim aset CSS/JS-nya sendiri yang sudah
+  ter-compile ke `public/` lewat `filament:upgrade` (sudah terpasang di
+  `post-autoload-dump`). Menyimpan build step yang tidak menghasilkan apa pun
+  hanya menambah dependency, langkah deploy, dan permukaan yang bisa rusak.
+  *Risiko yang dicek eksplisit sebelum menghapus:* Echo/Reverb. `config/filament.php`
+  membaca `VITE_REVERB_*` lewat `env()` di sisi PHP (prefix `VITE_` cuma nama,
+  tidak ada hubungannya dengan Vite), dan Filament punya `echo.js` sendiri di
+  bundle-nya. Diverifikasi di browser setelah penghapusan:
+  `window.Echo.connector.pusher.connection.state === 'connected'` dengan
+  **nol** script Vite di halaman.
+
+- **`resources/views/welcome.blade.php` dihapus; `routes/web.php` jadi
+  `Route::redirect('/', '/admin')`.**
+  *Why:* aplikasi ini tidak punya halaman publik apa pun — panel adalah
+  satu-satunya antarmuka. Redirect (bukan 404) supaya kasir yang mengetik
+  alamat server saja tanpa `/admin` tetap sampai ke tempat yang benar.
+  Command `inspire` bawaan Laravel di `routes/console.php` ikut dihapus.
+
+- **`composer run dev` tidak lagi memakai `npx concurrently`**, diganti
+  `bash -c 'trap "kill 0" EXIT; … & … & wait'`.
+  *Why:* `npx concurrently` mengunduh paket dari internet saat dijalankan —
+  janggal untuk proyek yang justru baru saja membuang npm sepenuhnya. Pola
+  `trap "kill 0" EXIT` + `wait` adalah cara shell standar menjalankan
+  beberapa proses dan mematikan semuanya sekaligus saat Ctrl+C, tanpa
+  dependency apa pun.
+  *Sekalian memperbaiki celah nyata:* skrip lama menjalankan
+  server/queue/pail/vite tapi **tidak pernah menjalankan `reverb:start`
+  maupun `schedule:work`** — artinya realtime (§6) dan expiry sweep/poller
+  (§5, §7) TIDAK aktif saat development lokal, padahal keduanya inti sistem.
+  Sekarang keempat proses yang memang dijalankan Supervisor di production
+  (lihat `deploy/supervisor/`) juga yang dijalankan di dev, jadi dev dan
+  production benar-benar setara.
+
+*Diverifikasi end-to-end di browser setelah semua perubahan di atas:* satu
+siklus penuh buka sesi open play → count-up berjalan (00:03 → 00:16) → Stop &
+Bayar (metode bayar wajib) → sesi `completed` dengan `total_amount` integer dan
+`activity_log` event `completed`. Sekaligus terlihat langsung DoD §10 "unit
+unreachable → badge berubah + `device_alert` muncul" bekerja live: unit
+ber-driver HA berubah jadi `unreachable` + badge `1 alert` **tanpa reload**,
+didorong `units:poll-state` → `DeviceManager::reportState()` → Reverb.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

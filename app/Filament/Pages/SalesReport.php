@@ -2,7 +2,6 @@
 
 namespace App\Filament\Pages;
 
-use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\Rupiah;
 use App\Domain\Sessions\SessionStatus;
 use App\Models\RentalSession;
@@ -11,8 +10,16 @@ use BackedEnum;
 use Carbon\Carbon;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
+use Filament\Infolists\Components\KeyValueEntry;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\EmbeddedSchema;
+use Filament\Schemas\Components\EmbeddedTable;
+use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\FontWeight;
+use Filament\Support\Enums\TextSize;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
@@ -30,6 +37,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * bebas (bukan toggle harian/bulanan terpisah) supaya satu halaman melayani
  * baik rekap satu hari maupun satu bulan — breakdown per hari di tabel bawah
  * tetap memberi rincian harian walau rentang yang dipilih sebulan penuh.
+ *
+ * Seluruh tampilan disusun lewat content() memakai komponen schema bawaan
+ * Filament (Section/Grid/TextEntry/KeyValueEntry/EmbeddedTable) — tanpa Blade
+ * kustom, supaya stylingnya ikut CSS Filament yang sudah ter-compile dan
+ * proyek ini tidak butuh build step frontend sama sekali (lihat DECISIONS.md).
  */
 class SalesReport extends Page implements HasTable
 {
@@ -40,8 +52,6 @@ class SalesReport extends Page implements HasTable
     protected static ?string $navigationLabel = 'Laporan';
 
     protected static ?string $title = 'Laporan Penjualan';
-
-    protected string $view = 'filament.pages.sales-report';
 
     public ?array $data = [];
 
@@ -60,6 +70,61 @@ class SalesReport extends Page implements HasTable
         ]);
     }
 
+    public function content(Schema $schema): Schema
+    {
+        return $schema->components([
+            Section::make('Filter')
+                ->schema([EmbeddedSchema::make('form')]),
+
+            Section::make('Ringkasan')
+                ->schema([
+                    Grid::make(3)->schema([
+                        TextEntry::make('total_sessions')
+                            ->label('Jumlah sesi')
+                            ->state(fn (): int => $this->getTotalSessions())
+                            ->size(TextSize::Large)
+                            ->weight(FontWeight::Bold),
+                        TextEntry::make('total_revenue')
+                            ->label('Total pendapatan')
+                            ->state(fn (): string => $this->getTotalRevenue())
+                            ->size(TextSize::Large)
+                            ->weight(FontWeight::Bold)
+                            ->color('success'),
+                        TextEntry::make('busiest_hour')
+                            ->label('Jam tersibuk')
+                            ->state(fn (): ?string => $this->getBusiestHour())
+                            ->placeholder('Belum ada sesi')
+                            ->size(TextSize::Large)
+                            ->weight(FontWeight::Bold),
+                    ]),
+                ]),
+
+            Grid::make(2)->schema([
+                Section::make('Pendapatan per metode bayar')
+                    ->schema([
+                        KeyValueEntry::make('revenue_by_payment_method')
+                            ->hiddenLabel()
+                            ->state(fn (): array => $this->getRevenueByPaymentMethod())
+                            ->keyLabel('Metode bayar')
+                            ->valueLabel('Pendapatan')
+                            ->placeholder('Tidak ada data pada rentang ini.'),
+                    ]),
+                Section::make('Pendapatan per tipe unit')
+                    ->schema([
+                        KeyValueEntry::make('revenue_by_unit_type')
+                            ->hiddenLabel()
+                            ->state(fn (): array => $this->getRevenueByUnitType())
+                            ->keyLabel('Tipe unit')
+                            ->valueLabel('Pendapatan')
+                            ->placeholder('Tidak ada data pada rentang ini.'),
+                    ]),
+            ]),
+
+            Section::make('Rincian harian')
+                ->schema([EmbeddedTable::make()]),
+        ]);
+    }
+
     public function form(Schema $schema): Schema
     {
         return $schema
@@ -71,6 +136,9 @@ class SalesReport extends Page implements HasTable
             ->columns(2);
     }
 
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
     protected function range(): array
     {
         $start = Carbon::parse($this->data['start_date'] ?? now()->startOfMonth())->startOfDay();
@@ -82,6 +150,8 @@ class SalesReport extends Page implements HasTable
     /**
      * Satu query dipakai ulang untuk semua angka rekap — dataset satu outlet
      * kecil, jauh lebih sederhana daripada beberapa query agregat SQL terpisah.
+     *
+     * @return Collection<int, RentalSession>
      */
     protected function completedSessions(): Collection
     {
@@ -109,34 +179,33 @@ class SalesReport extends Page implements HasTable
     }
 
     /**
-     * @return array<int, array{label: string, count: int, revenue: string}>
+     * @return array<string, string>
      */
     public function getRevenueByPaymentMethod(): array
     {
-        return $this->completedSessions()
-            ->groupBy(fn (RentalSession $session) => $session->payment_method?->value ?? 'unknown')
-            ->map(fn (Collection $group, string $method) => [
-                'label' => PaymentMethod::tryFrom($method)?->name ?? 'Tidak diketahui',
-                'count' => $group->count(),
-                'revenue' => Rupiah::format((int) $group->sum('total_amount')),
-            ])
-            ->values()
-            ->all();
+        return $this->summarize(fn (RentalSession $session) => $session->payment_method?->name ?? 'Tidak diketahui');
     }
 
     /**
-     * @return array<int, array{label: string, count: int, revenue: string}>
+     * @return array<string, string>
      */
     public function getRevenueByUnitType(): array
     {
+        return $this->summarize(fn (RentalSession $session) => $session->unit->unitType->name);
+    }
+
+    /**
+     * Bentuk "Label (n sesi) => Rp…" yang langsung dipakai KeyValueEntry.
+     *
+     * @return array<string, string>
+     */
+    private function summarize(callable $groupBy): array
+    {
         return $this->completedSessions()
-            ->groupBy(fn (RentalSession $session) => $session->unit->unitType->name)
-            ->map(fn (Collection $group, string $unitType) => [
-                'label' => $unitType,
-                'count' => $group->count(),
-                'revenue' => Rupiah::format((int) $group->sum('total_amount')),
+            ->groupBy($groupBy)
+            ->mapWithKeys(fn (Collection $group, string $label) => [
+                "{$label} ({$group->count()} sesi)" => Rupiah::format((int) $group->sum('total_amount')),
             ])
-            ->values()
             ->all();
     }
 
@@ -167,10 +236,11 @@ class SalesReport extends Page implements HasTable
                 ->values())
             ->columns([
                 TextColumn::make('date')->label('Tanggal')->date('d M Y'),
-                TextColumn::make('sessions')->label('Jumlah Sesi'),
+                TextColumn::make('sessions')->label('Jumlah sesi'),
                 TextColumn::make('revenue')->label('Pendapatan')->formatStateUsing(fn (int $state) => Rupiah::format($state)),
             ])
-            ->paginated(false);
+            ->paginated(false)
+            ->emptyStateHeading('Tidak ada sesi selesai pada rentang ini');
     }
 
     protected function getHeaderActions(): array

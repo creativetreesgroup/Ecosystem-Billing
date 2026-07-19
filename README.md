@@ -189,11 +189,13 @@ sequenceDiagram
 ## Menjalankan lokal
 
 ```bash
-composer install && npm install
+composer install
 cp .env.example .env && php artisan key:generate
 php artisan migrate --seed
-composer run dev   # server + queue:work + reverb:start + vite, paralel
+composer run dev   # server + queue:listen + reverb:start + schedule:work, paralel
 ```
+
+**Tidak ada build step frontend sama sekali** — tanpa Node, tanpa npm, tanpa Vite. Seluruh antarmuka memakai Filament yang aset CSS/JS-nya sudah ter-compile dan ter-publish ke `public/` oleh `php artisan filament:upgrade` (sudah otomatis lewat `post-autoload-dump` di `composer.json`).
 
 Unit dengan `control_driver=manual` tidak butuh Home Assistant/Mosquitto apa pun — cukup untuk development. Untuk mencoba driver HA/Tasmota sungguhan, lihat `docker-compose.devices.yml` (Linux only, lihat komentar di file itu) dan `RUNBOOK.md`.
 
