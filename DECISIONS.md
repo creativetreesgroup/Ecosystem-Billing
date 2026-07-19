@@ -176,6 +176,66 @@ Format: keputusan, alasan (*why*), dan trade-off yang ditolak. Diurutkan per fas
   langsung (dot-notation form state Filament) supaya owner mengedit angka polos,
   bukan JSON mentah.
 
+## Fase 4 — Realtime
+
+- **`config/filament.php` broadcasting.echo pakai `broadcaster: 'reverb'`**,
+  bukan `'pusher'` (yang tertulis di komentar default Filament).
+  *Why:* dicek langsung ke bundle `public/js/filament/filament/echo.js` yang
+  ter-publish — string `reverb` memang ada di dalamnya (laravel-echo versi
+  terbundle sudah punya broadcaster type khusus Reverb), jadi tidak perlu
+  menyamar sebagai Pusher. Key/host/port dibaca dari `VITE_REVERB_*` yang
+  sudah ada di `.env` sejak `reverb:install` di Fase 1.
+
+- **Semua event broadcast diberi `broadcastAs()` eksplisit** (`session.started`,
+  `session.extended`, `session.ending`, `session.ended`, `device-alert.raised`)
+  alih-alih memakai default Laravel (nama kelas lengkap dengan namespace).
+  *Why:* listener Livewire `#[On('echo-private:panel.units,.nama')]` jauh
+  lebih terbaca dengan nama pendek dibanding menyisipkan
+  `App\Domain\Sessions\Events\SessionStarted` mentah-mentah di string atribut.
+
+- **Verifikasi realtime push dilakukan lewat inspeksi DOM/Alpine state langsung
+  (`javascript_tool`), bukan screenshot atau `get_page_text`.**
+  *Why:* screenshot terbukti tidak bisa diandalkan untuk widget ini di bawah
+  browser automation (menangkap frame sebelum paint selesai, berulang kali
+  menunjukkan "kosong" padahal kontennya sudah benar) — dikonfirmasi dengan
+  `document.body.innerHTML`/`get_page_text` menunjukkan data yang benar di
+  saat yang sama screenshot kosong. `get_page_text` sendiri scoped ke
+  `<main>`, jadi tidak pernah menangkap modal Filament (yang di-teleport ke
+  luar `<main>`) — modal harus dicek lewat `document.querySelector('.fi-modal')`
+  langsung. Dicatat supaya sesi debugging berikutnya tidak mengulang jalan
+  buntu yang sama.
+
+- **`UnitGridWidget::$isLazy = false`** (lazy loading widget dimatikan).
+  *Why:* widget ini ADALAH konten utama halaman dashboard, bukan widget
+  sekunder di halaman yang sudah padat — jadi lazy loading tidak membeli
+  apa-apa selain round-trip tambahan. Selama sesi testing browser yang
+  panjang, mekanisme mount lazy-load (`x-init="$wire.__lazyLoad(...)"`)
+  terbukti jadi sumber utama widget macet di "Loading..." tanpa error PHP
+  maupun JS apa pun — mematikannya menghilangkan kelas masalah itu sepenuhnya
+  untuk widget yang toh tidak butuh optimisasi ini.
+
+- **Countdown (`countdown`) & count-up (`countup`) Alpine components
+  didaftarkan lewat render hook `PanelsRenderHook::BODY_END`** (script inline
+  di `AdminPanelProvider`), bukan file JS terpisah + build step.
+  *Why:* dua komponen kecil, murni tampilan (§3: server tetap satu-satunya
+  sumber kebenaran durasi), tidak butuh dependency baru atau langkah build
+  Vite tambahan — Alpine sudah bawaan Livewire. Logika `tick()` diverifikasi
+  benar dengan memanggilnya manual lewat `Alpine.$data(el).tick()` dan
+  membandingkan hasilnya ke elapsed time sungguhan dari `new Date() -
+  startedAt`, bukan hanya dari tampilan visual (yang under browser automation
+  kena throttling `setInterval` background-tab dari Chrome — bukan bug kode,
+  dikonfirmasi lewat perbandingan manual di atas).
+
+- **File korup sementara akibat kehilangan izin filesystem OS di tengah sesi**
+  (folder `Documents` sempat jadi "Operation not permitted" untuk semua tool,
+  lalu pulih dengan beberapa file ter-revert ke versi lama). Semua file yang
+  kena di-restore dari commit terakhir via `git checkout`, lalu perubahan
+  Fase 4 (broadcastAs, config echo, listener) ditulis ulang dan **diverifikasi
+  persisten** (baca ulang setelah tiap tulis) sebelum commit berikutnya.
+  *Why dicatat:* commit sesering mungkin per unit kerja logis bukan cuma soal
+  kerapian riwayat git — di sesi ini itu yang menyelamatkan pekerjaan Fase 3
+  saat filesystem sempat tidak stabil.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)
