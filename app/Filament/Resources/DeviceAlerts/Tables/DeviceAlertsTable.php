@@ -21,6 +21,7 @@ class DeviceAlertsTable
                     ->label('Unit')
                     ->searchable(),
                 TextColumn::make('type')
+                    ->visibleFrom('md')
                     ->label('Tipe')
                     ->badge(),
                 TextColumn::make('message')
@@ -30,9 +31,11 @@ class DeviceAlertsTable
                     ->label('Status')
                     ->badge(),
                 TextColumn::make('acknowledgedBy.name')
+                    ->visibleFrom('lg')
                     ->label('Ditangani oleh')
                     ->placeholder('-'),
                 TextColumn::make('created_at')
+                    ->visibleFrom('md')
                     ->label('Waktu')
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
                     ->sortable(),

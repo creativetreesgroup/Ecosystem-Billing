@@ -17,6 +17,7 @@ class PackagesTable
         return $table
             ->columns([
                 TextColumn::make('unitType.name')
+                    ->visibleFrom('md')
                     ->label('Tipe unit')
                     ->searchable(),
                 TextColumn::make('name')
@@ -32,6 +33,7 @@ class PackagesTable
                     ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->sortable(),
                 IconColumn::make('is_active')
+                    ->visibleFrom('md')
                     ->label('Aktif')
                     ->boolean(),
             ])

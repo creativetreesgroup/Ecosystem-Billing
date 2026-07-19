@@ -22,6 +22,7 @@ class UsersTable
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('email')
+                    ->visibleFrom('md')
                     ->label('Email')
                     ->searchable()
                     ->copyable(),
@@ -29,9 +30,11 @@ class UsersTable
                     ->label('Peran')
                     ->badge(),
                 IconColumn::make('is_active')
+                    ->visibleFrom('md')
                     ->label('Aktif')
                     ->boolean(),
                 TextColumn::make('opened_sessions_count')
+                    ->visibleFrom('lg')
                     ->label('Sesi dibuka')
                     ->counts('openedSessions')
                     ->badge()

@@ -23,17 +23,20 @@ class UnitsTable
                     ->label('Tipe')
                     ->searchable(),
                 TextColumn::make('control_driver')
+                    ->visibleFrom('md')
                     ->label('Driver')
                     ->badge(),
                 TextColumn::make('power_state')
                     ->label('Status TV')
                     ->badge(),
                 TextColumn::make('last_seen_at')
+                    ->visibleFrom('lg')
                     ->label('Terakhir terlihat')
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
                     ->placeholder('-')
                     ->sortable(),
                 IconColumn::make('is_active')
+                    ->visibleFrom('md')
                     ->label('Aktif')
                     ->boolean(),
             ])

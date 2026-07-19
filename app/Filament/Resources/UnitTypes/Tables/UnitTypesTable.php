@@ -17,6 +17,7 @@ class UnitTypesTable
             ->defaultSort('sort_order')
             ->columns([
                 TextColumn::make('outlet.name')
+                    ->visibleFrom('md')
                     ->label('Outlet')
                     ->searchable(),
                 TextColumn::make('name')
@@ -27,6 +28,7 @@ class UnitTypesTable
                     ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->sortable(),
                 TextColumn::make('sort_order')
+                    ->visibleFrom('lg')
                     ->label('Urutan')
                     ->numeric()
                     ->sortable(),
