@@ -39,6 +39,10 @@ class UnitGridWidget extends TableWidget
 
     protected static ?string $heading = 'Unit';
 
+    // Ini dashboard utama kasir, bukan widget sekunder di halaman yang sudah
+    // padat — lazy loading cuma menambah round-trip tanpa manfaat nyata di sini.
+    protected static bool $isLazy = false;
+
     /**
      * Push utama lewat Reverb (target ≤2 detik, §6). ->poll('15s') di
      * table() di bawah tetap jadi fallback kalau koneksi WebSocket putus.
@@ -104,18 +108,24 @@ class UnitGridWidget extends TableWidget
                             : 'Open Play')
                         ->visible(fn (?Unit $record) => $record?->activeSession !== null),
                     TextColumn::make('activeSession.ends_at')
-                        ->label('Berakhir')
-                        ->dateTime('H:i')
+                        ->label('Sisa waktu')
+                        ->formatStateUsing(fn (?Unit $record) => $record?->activeSession?->ends_at?->format('H:i'))
                         ->placeholder('—')
                         ->extraAttributes(fn (?Unit $record) => $record?->activeSession?->ends_at
-                            ? ['data-ends-at' => $record->activeSession->ends_at->toIso8601String()]
+                            ? [
+                                'x-data' => "countdown('".$record->activeSession->ends_at->toIso8601String()."')",
+                                'x-text' => 'display',
+                            ]
                             : [])
                         ->visible(fn (?Unit $record) => $record?->activeSession?->ends_at !== null),
                     TextColumn::make('activeSession.started_at')
-                        ->label('Mulai')
-                        ->dateTime('H:i')
+                        ->label('Berjalan')
+                        ->formatStateUsing(fn (?Unit $record) => $record?->activeSession?->started_at?->format('H:i'))
                         ->extraAttributes(fn (?Unit $record) => $record?->activeSession
-                            ? ['data-started-at' => $record->activeSession->started_at->toIso8601String()]
+                            ? [
+                                'x-data' => "countup('".$record->activeSession->started_at->toIso8601String()."')",
+                                'x-text' => 'display',
+                            ]
                             : [])
                         ->visible(fn (?Unit $record) => $record?->activeSession !== null && $record->activeSession->ends_at === null),
                     TextColumn::make('empty_state')
