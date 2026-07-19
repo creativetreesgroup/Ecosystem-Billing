@@ -13,7 +13,6 @@ use App\Models\Setting;
 use App\Models\Unit;
 use App\Models\UnitType;
 use App\Models\User;
-use App\Models\UserRole;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
