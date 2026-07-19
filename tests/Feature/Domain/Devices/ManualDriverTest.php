@@ -4,6 +4,8 @@ use App\Domain\Devices\Capability;
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\DeviceAlertType;
 use App\Domain\Devices\DeviceManager;
+use App\Domain\Devices\Drivers\HomeAssistantDriver;
+use App\Domain\Devices\Drivers\TasmotaDriver;
 use App\Domain\Devices\PowerState;
 use App\Models\DeviceAlert;
 use App\Models\Unit;
@@ -26,8 +28,14 @@ test('manual driver never reports a supported capability', function () {
     expect($driver->state($unit))->toBe(PowerState::Unknown);
 });
 
-test('device manager throws a clear error for drivers not yet implemented', function (ControlDriver $driver) {
-    $unit = Unit::factory()->create(['control_driver' => $driver]);
+test('device manager resolves the home assistant driver for home_assistant units', function () {
+    $unit = Unit::factory()->create(['control_driver' => ControlDriver::HomeAssistant]);
 
-    app(DeviceManager::class)->driverFor($unit);
-})->with([ControlDriver::HomeAssistant, ControlDriver::Tasmota])->throws(RuntimeException::class);
+    expect(app(DeviceManager::class)->driverFor($unit))->toBeInstanceOf(HomeAssistantDriver::class);
+});
+
+test('device manager resolves the tasmota driver for tasmota units', function () {
+    $unit = Unit::factory()->create(['control_driver' => ControlDriver::Tasmota]);
+
+    expect(app(DeviceManager::class)->driverFor($unit))->toBeInstanceOf(TasmotaDriver::class);
+});

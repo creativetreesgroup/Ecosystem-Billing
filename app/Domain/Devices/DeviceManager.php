@@ -2,12 +2,14 @@
 
 namespace App\Domain\Devices;
 
+use App\Domain\Devices\Drivers\HomeAssistantDriver;
 use App\Domain\Devices\Drivers\ManualDriver;
+use App\Domain\Devices\Drivers\TasmotaDriver;
+use App\Domain\Devices\Jobs\VerifyUnitPoweredOffJob;
 use App\Models\Unit;
 use Closure;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\Log;
-use RuntimeException;
 use Throwable;
 
 class DeviceManager
@@ -18,8 +20,15 @@ class DeviceManager
     {
         return match ($unit->control_driver) {
             ControlDriver::Manual => $this->container->make(ManualDriver::class),
-            ControlDriver::HomeAssistant, ControlDriver::Tasmota => throw new RuntimeException(
-                "Driver {$unit->control_driver->value} belum diimplementasikan — dikerjakan di Fase 5."
+            ControlDriver::HomeAssistant => new HomeAssistantDriver(
+                baseUrl: config('services.home_assistant.base_url'),
+                token: config('services.home_assistant.token'),
+            ),
+            ControlDriver::Tasmota => new TasmotaDriver(
+                host: config('services.mqtt.host'),
+                port: config('services.mqtt.port'),
+                username: config('services.mqtt.username'),
+                password: config('services.mqtt.password'),
             ),
         };
     }
@@ -42,5 +51,19 @@ class DeviceManager
 
             return null;
         }
+    }
+
+    /**
+     * Perintah power-off tidak pernah bisa dipercaya sepenuhnya (TV tidak
+     * merespons, jaringan putus, dll) — jadwalkan verifikasi belakangan
+     * lewat VerifyUnitPoweredOffJob alih-alih memblokir alur billing.
+     */
+    public function powerOff(Unit $unit): ?CommandResult
+    {
+        $result = $this->attempt($unit, fn (TvControl $driver) => $driver->powerOff($unit));
+
+        VerifyUnitPoweredOffJob::dispatch($unit->id)->delay(now()->addSeconds(10));
+
+        return $result;
     }
 }

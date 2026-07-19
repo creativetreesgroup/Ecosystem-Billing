@@ -236,6 +236,115 @@ Format: keputusan, alasan (*why*), dan trade-off yang ditolak. Diurutkan per fas
   kerapian riwayat git — di sesi ini itu yang menyelamatkan pekerjaan Fase 3
   saat filesystem sempat tidak stabil.
 
+## Fase 5 — Devices
+
+- **API `php-mqtt/client` dan REST Home Assistant diverifikasi langsung dari
+  source package terpasang & dokumentasi resmi HA sebelum menulis driver**
+  (bukan diingat/ditebak) — `MqttClient`/`ConnectionSettings` dari
+  `vendor/php-mqtt/client/src/`, endpoint `/api/services/<domain>/<service>`
+  dan `/api/states/<entity_id>` dari developers.home-assistant.io.
+  *Why:* aturan eksplisit "dilarang mengarang API" — device control adalah
+  satu-satunya lapisan di sistem ini yang bicara ke hardware pihak ketiga.
+
+- **`HomeAssistantDriver` mengontrol TV lewat domain `media_player`**, bukan
+  domain per-merk (`androidtv`, `webostv`, dst).
+  *Why:* HA mengabstraksikan semua integrasi TV ke entity `media_player.*`
+  yang seragam — satu driver bekerja untuk Sony/TCL/Coocaa Android TV tanpa
+  cabang per-merk, sesuai jawaban Fase 0 (keluarga Android TV, bukan satu merk).
+
+- **`TasmotaDriver::state()` TIDAK query MQTT secara sinkron** — ia hanya
+  membaca `power_state`/`last_seen_at` yang di-cache di DB oleh daemon
+  `bridge:mqtt-listen`, dengan staleness check 120 detik (kembali
+  `PowerState::Unknown` kalau lewat itu).
+  *Why:* MQTT itu protokol push/subscribe, bukan request/response — memaksa
+  query sinkron berarti connect+subscribe+tunggu tiap kali `state()`
+  dipanggil, lambat dan rawan timeout. Bridge daemon yang selalu terhubung
+  jauh lebih murah dan matching cara kerja natural MQTT.
+
+- **`TasmotaTopic` diekstrak jadi value object kecil terpisah** (`command()`,
+  `power()`, `availability()`, `controlRefFrom()`), dipakai baik oleh
+  `TasmotaDriver::publish()` maupun `MqttBridgeListen`.
+  *Why:* dua sisi (publish command, subscribe status) harus sepakat persis
+  soal format topic `{prefix}/<control_ref>/{POWER|LWT}` — kalau format ini
+  di-inline terpisah di dua file, keduanya bisa drift diam-diam. Testable
+  langsung tanpa broker sungguhan (`tests/Unit/Domain/Devices/TasmotaTopicTest.php`).
+
+- **`DeviceManager::powerOff()` jadi satu-satunya jalur power-off**, membungkus
+  `attempt()` + otomatis men-dispatch `VerifyUnitPoweredOffJob` dengan delay
+  10 detik. Tiga caller lama (`CompleteSessionAction`, `VoidSessionAction`,
+  `UnitGridWidget` toggle) diarahkan ke method ini.
+  *Why:* reconciliation ("TV masih menyala setelah perintah off?") harus
+  berlaku di SEMUA jalur power-off, bukan cuma satu — memusatkannya di satu
+  method mencegah satu jalur baru lupa didaftarkan nanti. Billing tetap tidak
+  pernah menunggu hasil verifikasi ini (job jalan belakangan lewat queue).
+
+- **`units:poll-state` dijadwalkan `everyThirtySeconds()`, bukan tiap 45
+  detik seperti disebut di §7.** Laravel scheduler hanya punya preset
+  kelipatan 5/10/15/20/30 detik untuk sub-minute tasks, tidak ada
+  `everyFortyFiveSeconds()` bawaan dan menulis modulo-detik custom lewat
+  `->when()` untuk selisih 15 detik ini over-engineered untuk polling
+  fallback yang toh tidak pernah mempengaruhi billing (prinsip arsitektur
+  #1). 30 detik dipilih (lebih sering, bukan lebih jarang) supaya tetap
+  dalam anggaran "state device stale secepatnya terlihat".
+
+- **`units:poll-state` hanya query unit ber-`control_driver=home_assistant`**,
+  tidak menyentuh unit Tasmota sama sekali.
+  *Why:* Tasmota sudah dapat push realtime lewat MQTT LWT/POWER
+  (`bridge:mqtt-listen`) — polling ulang lewat cara lain cuma kerja ganda
+  tanpa manfaat, dan HA memang tidak punya mekanisme push ke aplikasi ini
+  sehingga satu-satunya cara tahu perubahan state-nya adalah tanya berkala.
+
+- **`units:poll-state` & `bridge:mqtt-listen` hanya menulis DB dan
+  broadcast `UnitPowerStateChanged` kalau state benar-benar berubah**
+  (bukan tiap siklus/pesan).
+  *Why:* mencegah membanjiri dashboard kasir dengan re-render kosong tiap 30
+  detik atau tiap heartbeat MQTT untuk unit yang state-nya memang tidak berubah.
+
+- **`bridge:mqtt-listen` pakai backoff manual di outer `while(true)`**
+  (1s → 2s → ... → cap 30s) di atas `ConnectionSettings` bawaan library,
+  bukan cuma mengandalkan `setReconnectAutomatically()` milik php-mqtt/client.
+  *Why:* reconnect bawaan library membatasi jumlah percobaan
+  (`setMaxReconnectAttempts`) lalu menyerah — daemon yang dikelola Supervisor
+  ini harus tetap mencoba selamanya (broker Mosquitto down semalaman untuk
+  maintenance, misalnya), jadi loop terluar sendiri yang jadi jaring pengaman
+  akhir.
+
+- **`WakeOnLan` ditulis pakai ekstensi `ext-sockets` (`socket_create`, bukan
+  `stream_socket_client`)**, dipanggil best-effort dari
+  `HomeAssistantDriver::powerOn()` kalau `Unit::tv_mac` terisi.
+  *Why:* magic packet WoL butuh broadcast UDP (`SO_BROADCAST`), yang tidak
+  bisa diset lewat stream context PHP — ini satu-satunya cara standar
+  kirim broadcast UDP dari PHP. `ext-sockets` adalah ekstensi inti PHP
+  (bukan dependency Composer baru), tersedia default di hampir semua image
+  PHP termasuk yang dipakai proyek ini. Diuji tanpa broadcast sungguhan:
+  test membuka UDP listener di `127.0.0.1` dan memverifikasi struktur byte
+  paket (6× `0xFF` + 16× MAC 6-byte = 102 byte) yang benar-benar diterima.
+
+- **`docker-compose.devices.yml` dipisah dari deploy aplikasi utama**
+  (`deploy/`, dikerjakan Fase 6), versi image di-pin eksplisit
+  (`homeassistant/home-assistant:2026.7.2`, `eclipse-mosquitto:2.1.2-alpine`
+  — dicek langsung ke Docker Hub, bukan `latest`).
+  *Why:* §2 mengunci versi semua komponen; `latest` akan diam-diam berubah
+  di balik layar tiap kali container di-pull ulang. Dipisah dari deploy app
+  utama karena siklus hidupnya beda — HA/Mosquitto adalah infrastruktur
+  device per-outlet, bukan bagian dari deployment kode aplikasi.
+
+- **Home Assistant pakai `network_mode: host`.**
+  *Why:* device discovery TV Android (mDNS/SSDP) butuh HA berada di L2
+  network yang sama, tidak bisa lewat NAT container biasa. Konsekuensi:
+  compose ini hanya jalan di Docker Engine Linux (target production), TIDAK
+  di Docker Desktop macOS/Windows — dicatat jelas di komentar file & di sini
+  supaya tidak membingungkan saat dev lokal di macOS (jalankan unit dengan
+  `control_driver=manual` saja untuk dev, seperti sudah didukung sejak Fase 2).
+
+- **Mosquitto default `allow_anonymous true` di file compose ini**, dengan
+  baris `password_file` sudah disiapkan tapi di-comment.
+  *Why:* generate password file (`mosquitto_passwd`) adalah tugas manusia
+  sekali-jalan per outlet (§14), bukan sesuatu yang bisa/perlu diotomatisasi
+  di commit ini. Default anonymous memudahkan bring-up lokal; production
+  WAJIB mengaktifkan auth sebelum expose port manapun ke luar — akan masuk
+  checklist RUNBOOK.md di Fase 6.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

@@ -61,7 +61,7 @@ class CompleteSessionAction
                 ->event('completed')
                 ->log('Sesi selesai');
 
-            $this->devices->attempt($locked->unit, fn ($driver) => $driver->powerOff($locked->unit));
+            $this->devices->powerOff($locked->unit);
 
             $justCompleted = true;
 

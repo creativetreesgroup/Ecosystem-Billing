@@ -46,7 +46,7 @@ class VoidSessionAction
                 ->log('Sesi di-void');
 
             if ($wasActive) {
-                $this->devices->attempt($locked->unit, fn ($driver) => $driver->powerOff($locked->unit));
+                $this->devices->powerOff($locked->unit);
             }
 
             return $locked->fresh();

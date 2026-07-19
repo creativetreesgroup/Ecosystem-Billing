@@ -1,0 +1,28 @@
+# Infrastruktur kontrol device (§7) — TERPISAH dari deploy aplikasi utama
+# (lihat deploy/, Fase 6). Home Assistant butuh network_mode: host untuk
+# device discovery (mDNS/SSDP ke TV Android di jaringan lokal) — ini
+# mengharuskan Docker Engine Linux; tidak berfungsi lewat Docker Desktop
+# macOS/Windows (batasan platform Docker, bukan pilihan desain). Untuk dev
+# di luar Linux, jalankan unit dengan control_driver=manual dan lewati
+# compose ini sepenuhnya.
+services:
+  home-assistant:
+    image: homeassistant/home-assistant:2026.7.2
+    container_name: ctb-home-assistant
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./docker/home-assistant/config:/config
+    environment:
+      - TZ=Asia/Jakarta
+
+  mosquitto:
+    image: eclipse-mosquitto:2.1.2-alpine
+    container_name: ctb-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/mosquitto/config:/mosquitto/config
+      - ./docker/mosquitto/data:/mosquitto/data
+      - ./docker/mosquitto/log:/mosquitto/log

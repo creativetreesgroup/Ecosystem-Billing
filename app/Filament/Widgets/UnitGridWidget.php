@@ -52,6 +52,7 @@ class UnitGridWidget extends TableWidget
     #[On('echo-private:panel.units,.session.ending')]
     #[On('echo-private:panel.units,.session.ended')]
     #[On('echo-private:panel.units,.device-alert.raised')]
+    #[On('echo-private:panel.units,.unit.power-state-changed')]
     public function refreshUnits(): void
     {
         //
@@ -265,11 +266,11 @@ class UnitGridWidget extends TableWidget
             ->requiresConfirmation()
             ->action(function (Unit $record): void {
                 $turnOn = $record->power_state !== PowerState::On;
+                $devices = app(DeviceManager::class);
 
-                $result = app(DeviceManager::class)->attempt(
-                    $record,
-                    fn ($driver) => $turnOn ? $driver->powerOn($record) : $driver->powerOff($record),
-                );
+                $result = $turnOn
+                    ? $devices->attempt($record, fn ($driver) => $driver->powerOn($record))
+                    : $devices->powerOff($record);
 
                 Notification::make()
                     ->title($result?->successful ? 'Perintah terkirim' : 'Perintah gagal dikirim, cek log.')

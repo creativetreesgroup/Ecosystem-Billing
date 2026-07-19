@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    'home_assistant' => [
+        'base_url' => env('HA_BASE_URL'),
+        'token' => env('HA_TOKEN'),
+    ],
+
+    'mqtt' => [
+        'host' => env('MQTT_HOST', '127.0.0.1'),
+        'port' => env('MQTT_PORT', 1883),
+        'username' => env('MQTT_USERNAME'),
+        'password' => env('MQTT_PASSWORD'),
+    ],
+
 ];
