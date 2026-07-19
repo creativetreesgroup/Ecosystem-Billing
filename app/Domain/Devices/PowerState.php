@@ -2,10 +2,13 @@
 
 namespace App\Domain\Devices;
 
+use BackedEnum;
 use Filament\Support\Contracts\HasColor;
+use Filament\Support\Contracts\HasIcon;
 use Filament\Support\Contracts\HasLabel;
+use Filament\Support\Icons\Heroicon;
 
-enum PowerState: string implements HasColor, HasLabel
+enum PowerState: string implements HasColor, HasIcon, HasLabel
 {
     case On = 'on';
     case Standby = 'standby';
@@ -29,6 +32,22 @@ enum PowerState: string implements HasColor, HasLabel
             self::Standby => 'gray',
             self::Unreachable => 'danger',
             self::Unknown => 'warning',
+        };
+    }
+
+    /**
+     * Kasir memindai grid unit dari jarak satu meter, di mana warna badge
+     * lebih dulu terbaca daripada tulisannya — dan "Tidak terhubung" vs
+     * "Belum diketahui" cuma beda semburat merah/kuning. Ikon memberi
+     * pembeda kedua yang tidak bergantung pada warna sama sekali.
+     */
+    public function getIcon(): string|BackedEnum|null
+    {
+        return match ($this) {
+            self::On => Heroicon::OutlinedBolt,
+            self::Standby => Heroicon::OutlinedMoon,
+            self::Unreachable => Heroicon::OutlinedSignalSlash,
+            self::Unknown => Heroicon::OutlinedQuestionMarkCircle,
         };
     }
 }
