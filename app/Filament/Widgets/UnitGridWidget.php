@@ -31,12 +31,27 @@ use Filament\Tables\Table;
 use Filament\Widgets\TableWidget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
 
 class UnitGridWidget extends TableWidget
 {
     protected int|string|array $columnSpan = 'full';
 
     protected static ?string $heading = 'Unit';
+
+    /**
+     * Push utama lewat Reverb (target ≤2 detik, §6). ->poll('15s') di
+     * table() di bawah tetap jadi fallback kalau koneksi WebSocket putus.
+     */
+    #[On('echo-private:panel.units,.session.started')]
+    #[On('echo-private:panel.units,.session.extended')]
+    #[On('echo-private:panel.units,.session.ending')]
+    #[On('echo-private:panel.units,.session.ended')]
+    #[On('echo-private:panel.units,.device-alert.raised')]
+    public function refreshUnits(): void
+    {
+        //
+    }
 
     public function table(Table $table): Table
     {

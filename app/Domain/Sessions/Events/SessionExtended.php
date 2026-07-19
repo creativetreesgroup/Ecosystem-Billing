@@ -23,4 +23,9 @@ class SessionExtended implements ShouldBroadcast, ShouldDispatchAfterCommit
     {
         return [new PrivateChannel('panel.units')];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'session.extended';
+    }
 }

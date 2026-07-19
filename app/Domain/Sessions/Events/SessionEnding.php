@@ -23,4 +23,9 @@ class SessionEnding implements ShouldBroadcast, ShouldDispatchAfterCommit
     {
         return [new PrivateChannel('panel.units')];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'session.ending';
+    }
 }

@@ -22,4 +22,9 @@ class DeviceAlertRaised implements ShouldBroadcast, ShouldDispatchAfterCommit
     {
         return [new PrivateChannel('panel.units')];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'device-alert.raised';
+    }
 }
