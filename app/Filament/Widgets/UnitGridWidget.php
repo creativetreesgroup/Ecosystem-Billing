@@ -1,0 +1,287 @@
+<?php
+
+namespace App\Filament\Widgets;
+
+use App\Domain\Billing\OpenPlayBillingCalculator;
+use App\Domain\Billing\PaymentMethod;
+use App\Domain\Devices\DeviceAlertStatus;
+use App\Domain\Devices\DeviceManager;
+use App\Domain\Devices\PowerState;
+use App\Domain\Sessions\Actions\CompleteSessionAction;
+use App\Domain\Sessions\Actions\ExtendSessionAction;
+use App\Domain\Sessions\Actions\StartSessionAction;
+use App\Domain\Sessions\SessionType;
+use App\Models\Package;
+use App\Models\RentalSession;
+use App\Models\Setting;
+use App\Models\Unit;
+use Filament\Actions\Action;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Radio;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Support\Enums\FontWeight;
+use Filament\Tables\Columns\Layout\Split;
+use Filament\Tables\Columns\Layout\Stack;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Enums\RecordActionsPosition;
+use Filament\Tables\Table;
+use Filament\Widgets\TableWidget;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
+
+class UnitGridWidget extends TableWidget
+{
+    protected int|string|array $columnSpan = 'full';
+
+    protected static ?string $heading = 'Unit';
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query(
+                Unit::query()
+                    ->with(['unitType', 'activeSession.package', 'activeSession.openedBy'])
+                    ->withCount(['deviceAlerts as open_alerts_count' => fn (Builder $query) => $query->where('status', DeviceAlertStatus::Open)])
+            )
+            ->contentGrid([
+                'md' => 2,
+                'xl' => 3,
+                '2xl' => 4,
+            ])
+            ->paginated(false)
+            ->poll('15s')
+            ->defaultSort('code')
+            ->columns([
+                Stack::make([
+                    Split::make([
+                        TextColumn::make('code')
+                            ->weight(FontWeight::Bold)
+                            ->size('lg'),
+                        TextColumn::make('power_state')
+                            ->badge()
+                            ->color(fn (?PowerState $state) => match ($state) {
+                                PowerState::On => 'success',
+                                PowerState::Standby => 'gray',
+                                PowerState::Unreachable => 'danger',
+                                default => 'warning',
+                            }),
+                    ]),
+                    TextColumn::make('unitType.name')
+                        ->color('gray')
+                        ->size('sm'),
+                    TextColumn::make('open_alerts_count')
+                        ->label('Alert')
+                        ->badge()
+                        ->color('danger')
+                        ->formatStateUsing(fn (?int $state) => "{$state} alert")
+                        ->visible(fn (?Unit $record) => $record?->open_alerts_count > 0),
+                    TextColumn::make('activeSession.customer_name')
+                        ->label('Pelanggan')
+                        ->placeholder('-')
+                        ->visible(fn (?Unit $record) => $record?->activeSession !== null),
+                    TextColumn::make('activeSession.type')
+                        ->label('Tipe')
+                        ->formatStateUsing(fn (?Unit $record) => $record?->activeSession?->type === SessionType::Package
+                            ? 'Paket ('.$record->activeSession->package?->name.')'
+                            : 'Open Play')
+                        ->visible(fn (?Unit $record) => $record?->activeSession !== null),
+                    TextColumn::make('activeSession.ends_at')
+                        ->label('Berakhir')
+                        ->dateTime('H:i')
+                        ->placeholder('—')
+                        ->extraAttributes(fn (?Unit $record) => $record?->activeSession?->ends_at
+                            ? ['data-ends-at' => $record->activeSession->ends_at->toIso8601String()]
+                            : [])
+                        ->visible(fn (?Unit $record) => $record?->activeSession?->ends_at !== null),
+                    TextColumn::make('activeSession.started_at')
+                        ->label('Mulai')
+                        ->dateTime('H:i')
+                        ->extraAttributes(fn (?Unit $record) => $record?->activeSession
+                            ? ['data-started-at' => $record->activeSession->started_at->toIso8601String()]
+                            : [])
+                        ->visible(fn (?Unit $record) => $record?->activeSession !== null && $record->activeSession->ends_at === null),
+                    TextColumn::make('empty_state')
+                        ->label('')
+                        ->state('Unit kosong')
+                        ->color('gray')
+                        ->visible(fn (?Unit $record) => $record?->activeSession === null),
+                ])->space(1),
+            ])
+            ->recordActions([
+                $this->startSessionAction(),
+                $this->extendSessionAction(),
+                $this->stopSessionAction(),
+                $this->togglePowerAction(),
+            ], position: RecordActionsPosition::AfterColumns)
+            ->toolbarActions([]);
+    }
+
+    protected function startSessionAction(): Action
+    {
+        return Action::make('start')
+            ->label('Mulai')
+            ->color('success')
+            ->icon('heroicon-o-play')
+            ->visible(fn (?Unit $record) => $record?->activeSession === null)
+            ->modalHeading(fn (?Unit $record) => 'Mulai Sesi — '.$record?->code)
+            ->schema(function (?Unit $record) {
+                return [
+                    Radio::make('type')
+                        ->label('Tipe sesi')
+                        ->options(['open' => 'Open Play', 'package' => 'Paket'])
+                        ->default('open')
+                        ->live()
+                        ->required(),
+                    TextInput::make('customer_name')
+                        ->label('Nama pelanggan (opsional)'),
+                    Select::make('package_id')
+                        ->label('Paket')
+                        ->options(fn () => Package::query()->where('unit_type_id', $record?->unit_type_id)->where('is_active', true)->pluck('name', 'id'))
+                        ->required(fn (Get $get) => $get('type') === 'package')
+                        ->visible(fn (Get $get) => $get('type') === 'package'),
+                    Select::make('payment_method')
+                        ->label('Metode pembayaran (dibayar di muka)')
+                        ->options(PaymentMethod::class)
+                        ->required(fn (Get $get) => $get('type') === 'package')
+                        ->visible(fn (Get $get) => $get('type') === 'package'),
+                ];
+            })
+            ->action(function (array $data, Unit $record): void {
+                $package = isset($data['package_id']) ? Package::find($data['package_id']) : null;
+
+                app(StartSessionAction::class)->handle(
+                    $record,
+                    Auth::user(),
+                    SessionType::from($data['type']),
+                    package: $package,
+                    customerName: $data['customer_name'] ?: null,
+                    paymentMethod: self::resolvePaymentMethod($data['payment_method'] ?? null),
+                );
+
+                Notification::make()->title('Sesi dimulai')->success()->send();
+            });
+    }
+
+    protected function extendSessionAction(): Action
+    {
+        return Action::make('extend')
+            ->label('Perpanjang')
+            ->color('warning')
+            ->icon('heroicon-o-clock')
+            ->visible(fn (?Unit $record) => $record?->activeSession?->type === SessionType::Package)
+            ->schema([
+                TextInput::make('added_minutes')
+                    ->label('Tambah durasi (menit)')
+                    ->numeric()
+                    ->minValue(1)
+                    ->required(),
+                TextInput::make('amount')
+                    ->label('Biaya tambahan (Rp)')
+                    ->numeric()
+                    ->minValue(0)
+                    ->required(),
+            ])
+            ->action(function (array $data, Unit $record): void {
+                app(ExtendSessionAction::class)->handle(
+                    $record->activeSession,
+                    addedMinutes: (int) $data['added_minutes'],
+                    amount: (int) $data['amount'],
+                    user: Auth::user(),
+                );
+
+                Notification::make()->title('Sesi diperpanjang')->success()->send();
+            });
+    }
+
+    protected function stopSessionAction(): Action
+    {
+        return Action::make('stop')
+            ->label('Stop & Bayar')
+            ->color('danger')
+            ->icon('heroicon-o-stop')
+            ->modalHeading('Stop & Bayar')
+            ->visible(fn (?Unit $record) => $record?->activeSession !== null)
+            ->schema(function (?Unit $record) {
+                $session = $record?->activeSession;
+
+                return [
+                    Placeholder::make('estimasi_total')
+                        ->label('Total tagihan')
+                        ->content($session ? self::formatRupiah(self::estimateTotal($session)) : '-'),
+                    Select::make('payment_method')
+                        ->label('Metode pembayaran')
+                        ->options(PaymentMethod::class)
+                        ->required(fn () => $session?->type === SessionType::Open)
+                        ->visible(fn () => $session?->type === SessionType::Open),
+                ];
+            })
+            ->action(function (array $data, Unit $record): void {
+                $completed = app(CompleteSessionAction::class)->handle(
+                    $record->activeSession,
+                    self::resolvePaymentMethod($data['payment_method'] ?? null),
+                );
+
+                Notification::make()
+                    ->title('Sesi selesai — Total: '.self::formatRupiah($completed->total_amount))
+                    ->success()
+                    ->send();
+            });
+    }
+
+    protected function togglePowerAction(): Action
+    {
+        return Action::make('togglePower')
+            ->label(fn (?Unit $record) => $record?->power_state === PowerState::On ? 'Matikan TV' : 'Nyalakan TV')
+            ->color('gray')
+            ->icon('heroicon-o-power')
+            ->requiresConfirmation()
+            ->action(function (Unit $record): void {
+                $turnOn = $record->power_state !== PowerState::On;
+
+                $result = app(DeviceManager::class)->attempt(
+                    $record,
+                    fn ($driver) => $turnOn ? $driver->powerOn($record) : $driver->powerOff($record),
+                );
+
+                Notification::make()
+                    ->title($result?->successful ? 'Perintah terkirim' : 'Perintah gagal dikirim, cek log.')
+                    ->color($result?->successful ? 'success' : 'danger')
+                    ->send();
+            });
+    }
+
+    public static function estimateTotal(RentalSession $session): int
+    {
+        if ($session->type === SessionType::Package) {
+            return $session->base_amount + $session->extra_amount;
+        }
+
+        return OpenPlayBillingCalculator::calculate(
+            $session->started_at->diffInSeconds(now()),
+            $session->unit->unitType->hourly_rate,
+            Setting::get('billing_increment_minutes')['minutes'] ?? 1,
+        );
+    }
+
+    public static function formatRupiah(int $amount): string
+    {
+        return 'Rp'.number_format($amount, 0, ',', '.');
+    }
+
+    /**
+     * Filament's Select::options(PaymentMethod::class) already casts submitted
+     * state to a PaymentMethod instance, but this stays defensive in case a
+     * raw scalar ever comes through instead.
+     */
+    private static function resolvePaymentMethod(mixed $value): ?PaymentMethod
+    {
+        return match (true) {
+            $value instanceof PaymentMethod => $value,
+            $value === null => null,
+            default => PaymentMethod::from($value),
+        };
+    }
+}
