@@ -26,6 +26,7 @@ use Filament\Tables\Table;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Response;
+use Livewire\Attributes\On;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -69,6 +70,19 @@ class SalesReport extends Page implements HasTable
             'start_date' => now($tz)->startOfMonth()->toDateString(),
             'end_date' => now($tz)->toDateString(),
         ]);
+    }
+
+    /**
+     * Rincian per metode bayar / tipe unit ada di halaman ini (bukan di
+     * widget), jadi halamannya sendiri yang harus ikut menyegarkan diri saat
+     * ada sesi baru selesai — kalau tidak, angkanya diam sampai owner
+     * memuat ulang. Push utama lewat Reverb (§6); tabel di bawah juga
+     * di-poll sebagai cadangan kalau WebSocket putus.
+     */
+    #[On('echo-private:panel.units,.session.ended')]
+    public function refreshReport(): void
+    {
+        $this->summaryCache = null;
     }
 
     private function summary(): SalesSummary
@@ -161,6 +175,7 @@ class SalesReport extends Page implements HasTable
                 TextColumn::make('revenue')->label('Pendapatan')->formatStateUsing(fn (int $state) => Rupiah::format($state)),
             ])
             ->paginated(false)
+            ->poll('30s')
             ->emptyStateHeading('Tidak ada sesi selesai pada rentang ini');
     }
 

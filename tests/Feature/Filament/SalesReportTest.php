@@ -58,14 +58,14 @@ test('it summarizes completed sessions within the selected date range only', fun
     Livewire::actingAs($this->owner)->test(SalesReport::class)
         ->set('data.start_date', '2026-01-01')
         ->set('data.end_date', '2026-01-31')
-        ->assertSee('Rp30.000')
+        ->assertSee('Rp 30.000')
         ->assertSee('Tunai (1 sesi)')
         ->assertSee('QRIS (1 sesi)')
         ->assertSee('Non-VIP (1 sesi)')
         ->assertSee('VIP (1 sesi)')
-        ->assertSeeInOrder(['Rp10.000', 'Rp20.000'])
-        ->assertDontSee('Rp999.999')
-        ->assertDontSee('Rp500.000');
+        ->assertSeeInOrder(['Rp 10.000', 'Rp 20.000'])
+        ->assertDontSee('Rp 999.999')
+        ->assertDontSee('Rp 500.000');
 });
 
 test('it identifies the hour with the most sessions', function () {
@@ -92,7 +92,7 @@ test('it identifies the hour with the most sessions', function () {
     Livewire::actingAs($this->owner)->test(SalesStatsWidget::class, [
         'startDate' => '2026-03-01',
         'endDate' => '2026-03-31',
-    ])->assertSee('20:00–21:00');
+    ])->assertSee('20:00 – 21:00');
 });
 
 test('csv export contains the exact rows for the selected range', function () {
@@ -144,10 +144,10 @@ test('day boundaries follow the outlet wall clock, not UTC', function () {
     Livewire::actingAs($this->owner)->test(SalesReport::class)
         ->set('data.start_date', '2026-07-01')
         ->set('data.end_date', '2026-07-01')
-        ->assertDontSee('Rp77.000');
+        ->assertDontSee('Rp 77.000');
 
     Livewire::actingAs($this->owner)->test(SalesReport::class)
         ->set('data.start_date', '2026-07-02')
         ->set('data.end_date', '2026-07-02')
-        ->assertSee('Rp77.000');
+        ->assertSee('Rp 77.000');
 });

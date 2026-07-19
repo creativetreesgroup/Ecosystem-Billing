@@ -98,7 +98,7 @@ final class SalesSummary
 
         $peak = $byHour->sortByDesc(fn (Collection $group) => $group->count())->keys()->first();
 
-        return "{$peak}:00–".str_pad((string) ((int) $peak + 1), 2, '0', STR_PAD_LEFT).':00';
+        return "{$peak}:00 – ".str_pad((string) ((int) $peak + 1), 2, '0', STR_PAD_LEFT).':00';
     }
 
     /**
@@ -179,11 +179,21 @@ final class SalesSummary
      */
     private function summarize(callable $groupBy): array
     {
-        return $this->sessions()
+        $rows = $this->sessions()
             ->groupBy($groupBy)
             ->mapWithKeys(fn (Collection $group, string $label) => [
                 "{$label} ({$group->count()} sesi)" => Rupiah::format((int) $group->sum('total_amount')),
             ])
             ->all();
+
+        if ($rows === []) {
+            return $rows;
+        }
+
+        // Baris total ditambahkan di sini, bukan dihitung ulang di UI, supaya
+        // penjumlahannya dijamin cocok dengan baris-baris di atasnya.
+        $rows["TOTAL ({$this->totalSessions()} sesi)"] = Rupiah::format($this->totalRevenue());
+
+        return $rows;
     }
 }

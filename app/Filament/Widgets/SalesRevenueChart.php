@@ -26,6 +26,17 @@ class SalesRevenueChart extends ApexChartWidget
 
     protected int|string|array $columnSpan = 'full';
 
+    // Polling bawaan widget 5 detik terlalu boros untuk laporan yang
+    // meng-query seluruh rentang; 30 detik cukup sebagai cadangan, sementara
+    // push Reverb di bawah membuat angka tetap terasa langsung berubah.
+    protected ?string $pollingInterval = '30s';
+
+    #[On('echo-private:panel.units,.session.ended')]
+    public function refreshOnSessionEnded(): void
+    {
+        $this->updateOptions();
+    }
+
     #[On('sales-range-updated')]
     public function applyRange(?string $startDate, ?string $endDate): void
     {

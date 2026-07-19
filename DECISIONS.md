@@ -959,6 +959,30 @@ masalah baru.**
   lewat `getWidgets()`. Ketahuan dari browser, bukan dari test — test-nya
   hijau karena tidak ada yang merender halaman Laporan secara nyata saat itu.
 
+## Polish laporan: format uang, baris total, dan auto-refresh
+
+- **`Rupiah::format()` kini `Rp 135.000` (pakai spasi)** dan jam tersibuk
+  `10:00 – 11:00` (spasi mengapit tanda pisah). Perubahan di satu tempat ini
+  otomatis berlaku ke seluruh panel karena semua sisi uang sudah disatukan ke
+  `Rupiah::format()` sebelumnya.
+
+- **Baris `TOTAL (n sesi)` ditambahkan ke rincian per metode bayar & per tipe
+  unit.** Dihitung di `SalesSummary::summarize()` dari sumber yang sama dengan
+  baris-baris di atasnya — BUKAN dijumlah ulang di UI — supaya totalnya
+  dijamin cocok. Rentang kosong tidak menampilkan baris total sama sekali.
+
+- **Rincian kini ikut bertambah otomatis.** Sebelumnya hanya kartu statistik &
+  grafik yang menyegar sendiri (widget Filament punya polling bawaan 5 detik);
+  dua tabel rincian hidup di HALAMAN, dan halaman tidak punya listener apa pun
+  — angkanya diam sampai owner memuat ulang. Sekarang halaman mendengarkan
+  `session.ended` lewat Reverb (§6) dengan `->poll('30s')` di tabel sebagai
+  cadangan kalau WebSocket putus, persis pola dashboard kasir.
+
+- **Polling widget diturunkan 5s → 30s.** Default bawaan 5 detik terlalu boros
+  untuk laporan yang meng-query seluruh rentang tanggal; push Reverb membuat
+  angka tetap terasa berubah seketika, jadi polling hanya perlu jadi jaring
+  pengaman.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2)

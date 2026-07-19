@@ -1,6 +1,8 @@
 <?php
 
+use App\Domain\Billing\SalesSummary;
 use App\Filament\Pages\Dashboard;
+use App\Filament\Pages\SalesReport;
 use App\Filament\Widgets\SalesRevenueChart;
 use App\Filament\Widgets\SalesStatsWidget;
 use App\Filament\Widgets\UnitGridWidget;
@@ -37,9 +39,9 @@ test('the stats widget reports the totals for the range it is given', function (
         'startDate' => '2026-05-01',
         'endDate' => '2026-05-31',
     ])
-        ->assertSee('Rp50.000')
-        ->assertSee('Rp25.000')      // rata-rata per sesi
-        ->assertDontSee('Rp999.000');
+        ->assertSee('Rp 50.000')
+        ->assertSee('Rp 25.000')      // rata-rata per sesi
+        ->assertDontSee('Rp 999.000');
 });
 
 /**
@@ -66,10 +68,10 @@ test('both widgets follow the range broadcast by the report page', function () {
     Livewire::actingAs($this->owner)->test(SalesStatsWidget::class, [
         'startDate' => '2026-05-01', 'endDate' => '2026-05-31',
     ])
-        ->assertSee('Rp15.000')
+        ->assertSee('Rp 15.000')
         ->dispatch('sales-range-updated', startDate: '2026-09-01', endDate: '2026-09-30')
-        ->assertSee('Rp77.000')
-        ->assertDontSee('Rp15.000');
+        ->assertSee('Rp 77.000')
+        ->assertDontSee('Rp 15.000');
 });
 
 /**
@@ -81,4 +83,43 @@ test('the dashboard shows only the unit grid, not the report widgets', function 
     expect((new Dashboard)->getWidgets())->toBe([UnitGridWidget::class]);
 
     Livewire::actingAs($this->owner)->test(SalesStatsWidget::class)->assertOk();
+});
+
+/**
+ * Rincian per metode bayar & tipe unit harus punya baris TOTAL, dan totalnya
+ * dihitung di SalesSummary (bukan dijumlah ulang di UI) supaya dijamin cocok
+ * dengan baris-baris di atasnya.
+ */
+test('each breakdown ends with a total row that matches its rows', function () {
+    completedOn($this->unit, '2026-05-02 14:00', 30000);
+    completedOn($this->unit, '2026-05-03 14:00', 20000);
+
+    $summary = new SalesSummary('2026-05-01', '2026-05-31');
+
+    expect($summary->revenueByPaymentMethod())->toHaveKey('TOTAL (2 sesi)')
+        ->and($summary->revenueByPaymentMethod()['TOTAL (2 sesi)'])->toBe('Rp 50.000')
+        ->and($summary->revenueByUnitType()['TOTAL (2 sesi)'])->toBe('Rp 50.000');
+});
+
+test('an empty range shows no total row at all', function () {
+    $summary = new SalesSummary('2026-05-01', '2026-05-31');
+
+    expect($summary->revenueByPaymentMethod())->toBe([]);
+});
+
+/**
+ * Rincian hidup di halaman (bukan widget), jadi halamannya sendiri yang harus
+ * menyegarkan diri saat ada sesi selesai — kalau tidak, angkanya diam sampai
+ * owner memuat ulang halaman.
+ */
+test('the report page refreshes its breakdowns when a session ends', function () {
+    $page = Livewire::actingAs($this->owner)->test(SalesReport::class)
+        ->set('data.start_date', '2026-05-01')
+        ->set('data.end_date', '2026-05-31')
+        ->assertDontSee('Rp 64.000');
+
+    completedOn($this->unit, '2026-05-10 14:00', 64000);
+
+    $page->dispatch('echo-private:panel.units,.session.ended')
+        ->assertSee('Rp 64.000');
 });
