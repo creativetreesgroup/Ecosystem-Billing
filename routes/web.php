@@ -1,6 +1,6 @@
 <?php
 
-use App\Domain\Kiosk\UnitQrCode;
+use App\Domain\Kiosk\UnitKioskScreen;
 use App\Models\Unit;
 use Illuminate\Support\Facades\Route;
 
@@ -27,11 +27,11 @@ Route::get('/kios/{unit:code}', function (Unit $unit) {
 // menampilkannya lewat Google Cast — TV tidak punya sesi dan tidak akan pernah
 // punya. Yang dikandungnya hanya tautan ke halaman kios unit itu, yang juga
 // publik; tidak ada apa pun yang rahasia di dalamnya.
-Route::get('/kios/{unit:code}/qr.png', function (Unit $unit) {
+Route::get('/kios/{unit:code}/qr.jpg', function (Unit $unit) {
     abort_unless($unit->is_active, 404);
 
-    return response(UnitQrCode::pngFor($unit), 200, [
-        'Content-Type' => 'image/png',
+    return response(UnitKioskScreen::jpegFor($unit), 200, [
+        'Content-Type' => 'image/jpeg',
         // Cast mengambil ulang gambarnya tiap kali ditampilkan; tautannya tidak
         // pernah berubah selama kode unitnya tetap.
         'Cache-Control' => 'public, max-age=3600',

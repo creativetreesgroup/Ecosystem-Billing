@@ -54,7 +54,38 @@ final class UnitQrCode
      * kontras tinggi dan area kosong di sekeliling kode, dan layar TV dilihat
      * dari jarak beberapa meter.
      */
+    /**
+     * JPEG, bukan PNG.
+     *
+     * Default Media Receiver Google memperlakukan PNG sebagai video dan
+     * langsung berakhir idle — layar TV tetap kosong. JPEG adalah bentuk yang
+     * sama dipakai Home Assistant saat menampilkan snapshot kamera ke
+     * Chromecast, dan itu jalur yang memang bekerja.
+     */
+    public static function jpegFor(Unit $unit, int $scale = 12, int $margin = 4): string
+    {
+        $image = self::canvasFor($unit, $scale, $margin);
+
+        ob_start();
+        imagejpeg($image, quality: 95);
+
+        return (string) ob_get_clean();
+    }
+
     public static function pngFor(Unit $unit, int $scale = 12, int $margin = 4): string
+    {
+        $image = self::canvasFor($unit, $scale, $margin);
+
+        ob_start();
+        imagepng($image);
+
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * @return \GdImage
+     */
+    private static function canvasFor(Unit $unit, int $scale, int $margin)
     {
         $matrix = Encoder::encode(self::urlFor($unit), ErrorCorrectionLevel::M(), Encoder::DEFAULT_BYTE_MODE_ECODING)
             ->getMatrix();
@@ -82,10 +113,7 @@ final class UnitQrCode
             }
         }
 
-        ob_start();
-        imagepng($image);
-
-        return (string) ob_get_clean();
+        return $image;
     }
 
     /**
