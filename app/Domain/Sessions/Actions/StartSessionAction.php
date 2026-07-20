@@ -10,6 +10,7 @@ use App\Domain\Sessions\Jobs\ExpireRentalSession;
 use App\Domain\Sessions\Jobs\WarnSessionEnding;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
+use App\Domain\Settings\SettingKey;
 use App\Models\Package;
 use App\Models\RentalSession;
 use App\Models\Setting;
@@ -86,7 +87,7 @@ class StartSessionAction
             $this->devices->powerOn($lockedUnit);
 
             if ($endsAt) {
-                $warningMinutes = Setting::get('warning_before_minutes')['minutes'] ?? 5;
+                $warningMinutes = (int) Setting::get(SettingKey::WarningBeforeMinutes);
 
                 ExpireRentalSession::dispatch($session->id, $session->expiry_token)->delay($endsAt);
                 WarnSessionEnding::dispatch($session->id, $session->expiry_token)

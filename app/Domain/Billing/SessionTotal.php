@@ -3,6 +3,7 @@
 namespace App\Domain\Billing;
 
 use App\Domain\Sessions\SessionType;
+use App\Domain\Settings\SettingKey;
 use App\Models\RentalSession;
 use App\Models\Setting;
 use Carbon\CarbonInterface;
@@ -28,7 +29,7 @@ final class SessionTotal
         return OpenPlayBillingCalculator::calculate(
             elapsedSeconds: (int) $session->started_at->diffInSeconds($at),
             hourlyRateRupiah: $session->unit->unitType->hourly_rate,
-            incrementMinutes: Setting::get('billing_increment_minutes')['minutes'] ?? 1,
+            incrementMinutes: (int) Setting::get(SettingKey::BillingIncrementMinutes),
         );
     }
 }

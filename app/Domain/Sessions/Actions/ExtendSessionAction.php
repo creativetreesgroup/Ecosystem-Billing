@@ -8,6 +8,7 @@ use App\Domain\Sessions\Jobs\ExpireRentalSession;
 use App\Domain\Sessions\Jobs\WarnSessionEnding;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
+use App\Domain\Settings\SettingKey;
 use App\Models\RentalSession;
 use App\Models\SessionExtension;
 use App\Models\Setting;
@@ -51,7 +52,7 @@ class ExtendSessionAction
                 ->event('extended')
                 ->log('Sesi diperpanjang');
 
-            $warningMinutes = Setting::get('warning_before_minutes')['minutes'] ?? 5;
+            $warningMinutes = (int) Setting::get(SettingKey::WarningBeforeMinutes);
 
             ExpireRentalSession::dispatch($locked->id, $newToken)->delay($newEndsAt);
             WarnSessionEnding::dispatch($locked->id, $newToken)->delay($newEndsAt->copy()->subMinutes($warningMinutes));

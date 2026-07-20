@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Integrations\Schemas;
 
+use App\Domain\Devices\IntegrationKey;
 use App\Domain\Devices\NetworkScanner;
 use App\Models\Integration;
 use Filament\Actions\Action;
@@ -89,6 +90,7 @@ class IntegrationForm
                             ->url()
                             ->helperText('Alamat Home Assistant dari sudut pandang mesin ini. Kalau HA berjalan di mesin lain, gunakan IP-nya — bukan localhost.')
                             ->suffixAction(self::findOnNetworkAction())
+                            ->visible(fn (?Integration $record): bool => $record?->key !== null)
                             ->columnSpanFull(),
 
                         // Token TIDAK PERNAH dikirim balik ke browser.
@@ -99,14 +101,37 @@ class IntegrationForm
                         // alamat saja) akan menghapus token diam-diam dan
                         // memutus seluruh kendali TV outlet.
                         TextInput::make('token')
-                            ->label('Long-lived access token')
+                            ->label(fn (?Integration $record): string => $record?->key === IntegrationKey::Midtrans ? 'Server key' : 'Long-lived access token')
                             ->password()
                             ->revealable(false)
                             ->autocomplete(false)
                             ->dehydrated(fn (?string $state): bool => filled($state))
                             ->afterStateHydrated(fn (TextInput $component) => $component->state(null))
                             ->placeholder(fn (?Integration $record): string => $record?->maskedToken() ?? 'Belum diisi')
-                            ->helperText('Buat di Home Assistant: klik nama Anda (kiri bawah) → tab Security → Long-lived access tokens → Create Token. Token hanya muncul sekali. Kosongkan bila tidak ingin menggantinya.')
+                            ->helperText(fn (?Integration $record): string => $record?->key === IntegrationKey::Midtrans
+                                ? 'Ambil di Midtrans Dashboard → Settings → Access Keys → Server Key. Ini RAHASIA — jangan pernah dipakai di sisi pelanggan. Kosongkan bila tidak ingin menggantinya.'
+                                : 'Buat di Home Assistant: klik nama Anda (kiri bawah) → tab Security → Long-lived access tokens → Create Token. Token hanya muncul sekali. Kosongkan bila tidak ingin menggantinya.')
+                            ->columnSpanFull(),
+
+                        // Hanya untuk Midtrans. Client key & merchant id BUKAN
+                        // rahasia — keduanya memang dipakai terbuka di sisi
+                        // pelanggan — jadi ditampilkan apa adanya, tidak
+                        // disamarkan seperti server key.
+                        TextInput::make('options.client_key')
+                            ->label('Client key')
+                            ->placeholder('SB-Mid-client-xxxxxxxx')
+                            ->visible(fn (?Integration $record): bool => $record?->key === IntegrationKey::Midtrans),
+                        TextInput::make('options.merchant_id')
+                            ->label('Merchant ID')
+                            ->placeholder('G123456789')
+                            ->visible(fn (?Integration $record): bool => $record?->key === IntegrationKey::Midtrans),
+                        Toggle::make('options.is_production')
+                            ->label('Mode produksi')
+                            // Salah mode adalah kegagalan DIAM yang paling
+                            // mahal: transaksi sandbox terlihat sukses di layar
+                            // padahal tidak ada uang yang pernah berpindah.
+                            ->helperText('Nyalakan hanya bila memakai kredensial produksi. Kredensial sandbox pada mode produksi akan selalu ditolak — dan sebaliknya, transaksi sandbox terlihat berhasil tanpa uang benar-benar masuk.')
+                            ->visible(fn (?Integration $record): bool => $record?->key === IntegrationKey::Midtrans)
                             ->columnSpanFull(),
 
                         Toggle::make('is_active')

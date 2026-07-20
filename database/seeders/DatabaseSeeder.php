@@ -7,6 +7,7 @@ use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\IntegrationKey;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
+use App\Domain\Settings\SettingKey;
 use App\Models\Integration;
 use App\Models\Outlet;
 use App\Models\Package;
@@ -43,19 +44,26 @@ class DatabaseSeeder extends Seeder
             'email' => 'kasir@creativetrees.test',
         ]);
 
-        Setting::create(['key' => 'billing_increment_minutes', 'value' => ['minutes' => 1]]);
-        Setting::create(['key' => 'warning_before_minutes', 'value' => ['minutes' => 5]]);
+        // Semua kunci yang dikenal sistem dibuat sekaligus, dengan nilai
+        // bawaan dari enum-nya. Menambah pengaturan baru cukup menambah case
+        // di SettingKey — seeder ini tidak perlu disentuh lagi, dan tidak ada
+        // lagi kunci yang "ada di kode tapi tidak ada barisnya di database".
+        foreach (SettingKey::cases() as $key) {
+            Setting::put($key, $key->default());
+        }
 
         // Barisnya dibuat KOSONG, bukan diisi contoh: sampai pemilik menempel
         // tokennya sendiri dari Home Assistant, sistem tetap memakai .env.
         // Baris berisi token palsu justru akan menang atas .env dan membuat
         // integrasi yang tadinya jalan mendadak gagal otentikasi.
-        Integration::create([
-            'key' => IntegrationKey::HomeAssistant,
-            'base_url' => null,
-            'token' => null,
-            'is_active' => true,
-        ]);
+        foreach (IntegrationKey::cases() as $integration) {
+            Integration::create([
+                'key' => $integration,
+                'base_url' => null,
+                'token' => null,
+                'is_active' => true,
+            ]);
+        }
 
         $nonVip = UnitType::create([
             'outlet_id' => $outlet->id,

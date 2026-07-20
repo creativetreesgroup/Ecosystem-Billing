@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Settings\SettingKey;
 use Database\Factories\SettingFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -16,27 +17,49 @@ class Setting extends Model
     protected function casts(): array
     {
         return [
+            'key' => SettingKey::class,
             'value' => 'array',
         ];
     }
 
-    /**
-     * Label manusiawi per kunci. Daftar kunci ditentukan sistem (lihat seeder;
-     * SettingPolicy::create() selalu false), jadi peta statis ini cukup —
-     * owner mengubah nilainya, bukan menambah kunci baru.
-     */
-    private const LABELS = [
-        'billing_increment_minutes' => 'Pembulatan billing',
-        'warning_before_minutes' => 'Peringatan sebelum sesi habis',
-    ];
-
     public function label(): string
     {
-        return self::LABELS[$this->key] ?? $this->key;
+        return $this->key->getLabel();
     }
 
-    public static function get(string $key, mixed $default = null): mixed
+    /**
+     * Nilai skalar sebuah pengaturan, bukan pembungkus arraynya.
+     *
+     * Dulu tiap pemanggil menulis sendiri `Setting::get('x')['minutes'] ?? 1`
+     * — bentuk penyimpanan DAN nilai cadangannya tersebar di beberapa berkas,
+     * sehingga mengubah salah satunya berarti mencari semua salinannya.
+     * Cadangannya kini datang dari enum, satu tempat.
+     */
+    public static function get(SettingKey $key): int|string
     {
-        return static::query()->where('key', $key)->value('value') ?? $default;
+        $stored = static::query()->where('key', $key)->value('value');
+
+        return $stored['value'] ?? $key->default();
+    }
+
+    public static function put(SettingKey $key, int|string $value): void
+    {
+        static::query()->updateOrCreate(['key' => $key], ['value' => ['value' => $value]]);
+    }
+
+    /**
+     * Apakah rekening tujuan transfer sudah lengkap. Menawarkan pembayaran
+     * transfer dengan rekening kosong berarti mengirim pelanggan ke tujuan
+     * yang tidak ada.
+     */
+    public static function transferAccountIsComplete(): bool
+    {
+        foreach (SettingKey::cases() as $key) {
+            if ($key->isRequiredForTransfer() && blank(static::get($key))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

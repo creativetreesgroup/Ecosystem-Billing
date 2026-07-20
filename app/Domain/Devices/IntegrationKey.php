@@ -16,11 +16,13 @@ use Filament\Support\Icons\Heroicon;
 enum IntegrationKey: string implements HasIcon, HasLabel
 {
     case HomeAssistant = 'home_assistant';
+    case Midtrans = 'midtrans';
 
     public function getLabel(): string
     {
         return match ($this) {
             self::HomeAssistant => 'Home Assistant',
+            self::Midtrans => 'Midtrans',
         };
     }
 
@@ -28,6 +30,7 @@ enum IntegrationKey: string implements HasIcon, HasLabel
     {
         return match ($this) {
             self::HomeAssistant => Heroicon::OutlinedHomeModern,
+            self::Midtrans => Heroicon::OutlinedQrCode,
         };
     }
 
@@ -35,6 +38,7 @@ enum IntegrationKey: string implements HasIcon, HasLabel
     {
         return match ($this) {
             self::HomeAssistant => 'Jembatan ke TV: menyalakan, mematikan, dan membaca status daya tiap unit.',
+            self::Midtrans => 'Gateway QRIS: pelanggan membayar sendiri dari HP, statusnya diperiksa sistem — bukan dicocokkan manual oleh kasir.',
         };
     }
 
@@ -46,6 +50,7 @@ enum IntegrationKey: string implements HasIcon, HasLabel
     {
         return match ($this) {
             self::HomeAssistant => 'http://192.168.100.10:8123',
+            self::Midtrans => 'https://api.sandbox.midtrans.com',
         };
     }
 }

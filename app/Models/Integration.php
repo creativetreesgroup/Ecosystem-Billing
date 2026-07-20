@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Model;
  *   pesan exception, respons, maupun payload broadcast.
  * - Hanya owner yang bisa membuka layarnya (IntegrationPolicy).
  */
-#[Fillable(['key', 'base_url', 'token', 'is_active', 'verified_at'])]
+#[Fillable(['key', 'base_url', 'token', 'options', 'is_active', 'verified_at'])]
 class Integration extends Model
 {
     /** @use HasFactory<IntegrationFactory> */
@@ -35,6 +35,7 @@ class Integration extends Model
         return [
             'key' => IntegrationKey::class,
             'token' => 'encrypted',
+            'options' => 'array',
             'is_active' => 'boolean',
             'verified_at' => 'datetime',
         ];
@@ -54,10 +55,21 @@ class Integration extends Model
     }
 
     /**
+     * Nilai tambahan yang BUKAN rahasia — client key & merchant id Midtrans
+     * memang dipakai terbuka di sisi pelanggan. Menaruhnya di kolom token yang
+     * terenkripsi salah secara makna dan membuatnya tidak bisa ditampilkan
+     * kembali ke operator untuk dicocokkan.
+     */
+    public function option(string $name, mixed $default = null): mixed
+    {
+        return $this->options[$name] ?? $default;
+    }
+
+    /**
      * Bentuk aman untuk ditampilkan: cukup untuk membedakan "sudah diisi" dari
      * "belum", tanpa pernah membocorkan tokennya. Empat digit terakhir dipilih
-     * supaya operator bisa mencocokkan dengan token yang ia salin dari Home
-     * Assistant tanpa harus melihat keseluruhannya.
+     * supaya operator bisa mencocokkannya dengan yang ia salin dari dashboard
+     * tanpa harus melihat keseluruhannya.
      */
     public function maskedToken(): ?string
     {
