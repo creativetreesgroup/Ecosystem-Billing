@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Kiosk\UnitQrCode;
 use App\Models\Unit;
 use Illuminate\Support\Facades\Route;
 
@@ -21,3 +22,18 @@ Route::get('/kios/{unit:code}', function (Unit $unit) {
 
     return view('kiosk.show', ['unit' => $unit]);
 })->name('kiosk.unit');
+
+// Gambar QR unit. Tanpa login KARENA memang harus bisa diambil oleh TV yang
+// menampilkannya lewat Google Cast — TV tidak punya sesi dan tidak akan pernah
+// punya. Yang dikandungnya hanya tautan ke halaman kios unit itu, yang juga
+// publik; tidak ada apa pun yang rahasia di dalamnya.
+Route::get('/kios/{unit:code}/qr.png', function (Unit $unit) {
+    abort_unless($unit->is_active, 404);
+
+    return response(UnitQrCode::pngFor($unit), 200, [
+        'Content-Type' => 'image/png',
+        // Cast mengambil ulang gambarnya tiap kali ditampilkan; tautannya tidak
+        // pernah berubah selama kode unitnya tetap.
+        'Cache-Control' => 'public, max-age=3600',
+    ]);
+})->name('kiosk.unit.qr');
