@@ -19,9 +19,11 @@ use Illuminate\Support\Facades\DB;
  */
 class VerifyPaymentAction
 {
+    public function __construct(private readonly StartPaidKioskSessionAction $startSession) {}
+
     public function handle(Payment $payment, User $verifiedBy): Payment
     {
-        return DB::transaction(function () use ($payment, $verifiedBy): Payment {
+        $verified = DB::transaction(function () use ($payment, $verifiedBy): Payment {
             // Dikunci lebih dulu: dua kasir yang membuka daftar yang sama bisa
             // menekan Terima pada baris yang sama. Tanpa kunci, keduanya lolos
             // dan pemasukan tercatat ganda.
@@ -51,5 +53,11 @@ class VerifyPaymentAction
 
             return $locked->fresh();
         });
+
+        // Kalau ini tagihan kios yang menunggu, sesinya berjalan sekarang —
+        // pelanggan tidak perlu memanggil kasir lagi setelah buktinya diterima.
+        $this->startSession->handle($verified);
+
+        return $verified;
     }
 }

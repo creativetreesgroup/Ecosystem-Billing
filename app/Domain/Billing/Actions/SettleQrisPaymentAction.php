@@ -16,7 +16,10 @@ use Illuminate\Support\Facades\DB;
  */
 class SettleQrisPaymentAction
 {
-    public function __construct(private readonly MidtransGateway $gateway) {}
+    public function __construct(
+        private readonly MidtransGateway $gateway,
+        private readonly StartPaidKioskSessionAction $startSession,
+    ) {}
 
     public function handle(Payment $payment): Payment
     {
@@ -34,7 +37,7 @@ class SettleQrisPaymentAction
             return $payment;
         }
 
-        return DB::transaction(function () use ($payment, $status): Payment {
+        $updated = DB::transaction(function () use ($payment, $status): Payment {
             $locked = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== PaymentStatus::Pending) {
@@ -57,5 +60,11 @@ class SettleQrisPaymentAction
 
             return $locked->fresh();
         });
+
+        // Uang lunas = sesinya boleh berjalan. Di luar transaksi supaya
+        // perintah TV dan penjadwalan tidak menahan kunci baris pembayaran.
+        $this->startSession->handle($updated);
+
+        return $updated;
     }
 }

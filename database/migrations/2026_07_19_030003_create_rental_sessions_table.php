@@ -15,10 +15,15 @@ return new class extends Migration
             $table->string('customer_name')->nullable();
             $table->enum('type', ['open', 'package']);
             $table->foreignId('package_id')->nullable()->constrained()->nullOnDelete();
-            $table->timestamp('started_at');
+            // Nullable: sesi kios yang menunggu pembayaran belum punya waktu
+            // mulai. Memberinya waktu sebelum uangnya masuk berarti menagih
+            // waktu yang belum dibeli.
+            $table->timestamp('started_at')->nullable();
             $table->timestamp('ends_at')->nullable();
             $table->timestamp('ended_at')->nullable();
-            $table->enum('status', ['active', 'completed', 'voided'])->default('active');
+            // Nilainya HARUS sama persis dengan SessionStatus. 'pending' adalah
+            // sesi kios yang menunggu pembayaran: belum berjalan, belum menagih.
+            $table->enum('status', ['pending', 'active', 'completed', 'voided'])->default('active');
             $table->uuid('expiry_token');
             $table->unsignedInteger('base_amount')->default(0);
             $table->unsignedInteger('extra_amount')->default(0);
