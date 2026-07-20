@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Domain\Customers\Otp\LoggingOtpChannel;
+use App\Domain\Customers\Otp\OtpChannel;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Tables\Columns\SelectColumn;
@@ -29,6 +31,13 @@ class AppServiceProvider extends ServiceProvider
         Model::preventLazyLoading(! $this->app->isProduction());
 
         $this->useNonNativeDropdownsEverywhere();
+
+        // Penyalur OTP dipilih di satu tempat. Selama belum ada penyedia
+        // WhatsApp yang dikonfigurasi, dipakai penyalur log — yang sengaja
+        // MENOLAK bekerja di produksi, supaya kios yang tidak bisa dipakai
+        // siapa pun ketahuan saat memasang, bukan saat pelanggan pertama
+        // sudah berdiri di depan TV.
+        $this->app->bind(OtpChannel::class, LoggingOtpChannel::class);
     }
 
     /**
