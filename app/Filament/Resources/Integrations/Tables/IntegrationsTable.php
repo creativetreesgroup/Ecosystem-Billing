@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Integrations\Tables;
 
+use App\Domain\Devices\IntegrationKey;
 use App\Models\Integration;
 use Filament\Actions\EditAction;
 use Filament\Support\Icons\Heroicon;
@@ -20,7 +21,12 @@ class IntegrationsTable
                 TextColumn::make('base_url')
                     ->label('Alamat')
                     ->visibleFrom('md')
-                    ->placeholder('Memakai nilai .env'),
+                    // Kosong berarti hal yang BERBEDA per integrasi: Home Assistant
+                    // jatuh ke nilai .env, Midtrans justru memang seharusnya
+                    // kosong dan memakai alamat resminya sendiri.
+                    ->placeholder(fn (Integration $record): string => $record->key === IntegrationKey::Midtrans
+                        ? 'Alamat resmi Midtrans'
+                        : 'Memakai nilai .env'),
                 // Status kesiapan, BUKAN isi tokennya — token tidak pernah
                 // ditampilkan di mana pun, termasuk sebagian.
                 TextColumn::make('token_state')

@@ -65,7 +65,13 @@ class EditIntegration extends EditRecord
 
         $mode = $record->option('is_production') ? 'PRODUKSI' : 'sandbox';
 
-        if ($response->status() === 401) {
+        // Midtrans menaruh kode statusnya DI DALAM body, bukan di status HTTP:
+        // transaksi yang tidak ada dijawab HTTP 200 dengan status_code "404".
+        // Membaca status HTTP saja membuat kredensial yang BENAR terbaca
+        // sebagai "jawaban tak terduga" — sempat terjadi di sini.
+        $kode = (int) ($response->json('status_code') ?? $response->status());
+
+        if ($response->status() === 401 || $kode === 401) {
             Notification::make()
                 ->title('Server key ditolak Midtrans')
                 ->body("Kredensial tidak dikenali pada mode {$mode}. Pastikan server key & mode produksi cocok — kunci sandbox tidak berlaku di produksi, dan sebaliknya.")
@@ -77,7 +83,7 @@ class EditIntegration extends EditRecord
             return;
         }
 
-        if ($response->status() !== 404) {
+        if ($kode !== 404) {
             Notification::make()
                 ->title('Midtrans menjawab tidak seperti yang diharapkan')
                 ->body("Kode {$response->status()} pada mode {$mode}. Periksa alamat & koneksi internet mesin ini.")

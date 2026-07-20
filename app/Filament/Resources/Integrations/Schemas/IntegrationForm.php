@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Integrations\Schemas;
 use App\Domain\Devices\IntegrationKey;
 use App\Domain\Devices\NetworkScanner;
 use App\Models\Integration;
+use Closure;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\TextInput;
@@ -88,9 +89,26 @@ class IntegrationForm
                             ->label('Alamat')
                             ->placeholder(fn (?Integration $record): ?string => $record?->key?->baseUrlPlaceholder())
                             ->url()
-                            ->helperText('Alamat Home Assistant dari sudut pandang mesin ini. Kalau HA berjalan di mesin lain, gunakan IP-nya — bukan localhost.')
-                            ->suffixAction(self::findOnNetworkAction())
-                            ->visible(fn (?Integration $record): bool => $record?->key !== null)
+                            ->helperText(fn (?Integration $record): string => $record?->key === IntegrationKey::Midtrans
+                                ? 'Kosongkan saja. Sistem memakai alamat sandbox atau produksi Midtrans sesuai mode di bawah — isi hanya bila Anda punya alasan khusus.'
+                                : 'Alamat Home Assistant dari sudut pandang mesin ini. Kalau HA berjalan di mesin lain, gunakan IP-nya — bukan localhost.')
+                            // Alamat gateway harus benar-benar keluar. Alamat
+                            // LAN di sini berarti pembayaran dikirim ke mesin di
+                            // ruangan sebelah, dan gagalnya tidak akan pernah
+                            // terbaca sebagai "alamatnya salah".
+                            ->rule(fn (?Integration $record): ?Closure => $record?->key !== IntegrationKey::Midtrans ? null : function (string $attribute, mixed $value, Closure $fail): void {
+                                if (filled($value) && ! str_contains((string) $value, 'midtrans.com')) {
+                                    $fail('Alamat Midtrans harus menuju midtrans.com. Kosongkan saja bila ragu.');
+                                }
+                            })
+                            // Pemindai jaringan HANYA masuk akal untuk Home
+                            // Assistant. Midtrans hidup di internet, bukan di
+                            // LAN outlet — menampilkan tombolnya di sana pernah
+                            // membuat alamat Home Assistant tertulis sebagai
+                            // alamat gateway pembayaran.
+                            ->suffixAction(fn (?Integration $record) => $record?->key === IntegrationKey::HomeAssistant
+                                ? self::findOnNetworkAction()
+                                : null)
                             ->columnSpanFull(),
 
                         // Token TIDAK PERNAH dikirim balik ke browser.
@@ -105,7 +123,15 @@ class IntegrationForm
                             ->password()
                             ->revealable(false)
                             ->autocomplete(false)
-                            ->dehydrated(fn (?string $state): bool => filled($state))
+                            ->dehydrated(fn (?string $state): bool => filled(trim((string) $state)))
+                            // Dipangkas SEBELUM disimpan. Menyalin kunci dari
+                            // dashboard hampir selalu ikut membawa spasi atau
+                            // tab di ujungnya — pernah terjadi di sini, dan
+                            // gateway menjawabnya dengan 401 "Unknown Merchant
+                            // server_key" yang sama sekali tidak menyinggung
+                            // spasi. Berjam-jam bisa habis mencari kunci yang
+                            // sebenarnya sudah benar.
+                            ->dehydrateStateUsing(fn (?string $state): ?string => filled(trim((string) $state)) ? trim((string) $state) : null)
                             ->afterStateHydrated(fn (TextInput $component) => $component->state(null))
                             ->placeholder(fn (?Integration $record): string => $record?->maskedToken() ?? 'Belum diisi')
                             ->helperText(fn (?Integration $record): string => $record?->key === IntegrationKey::Midtrans
@@ -118,10 +144,12 @@ class IntegrationForm
                         // pelanggan — jadi ditampilkan apa adanya, tidak
                         // disamarkan seperti server key.
                         TextInput::make('options.client_key')
+                            ->dehydrateStateUsing(fn (?string $state): ?string => filled(trim((string) $state)) ? trim((string) $state) : null)
                             ->label('Client key')
                             ->placeholder('SB-Mid-client-xxxxxxxx')
                             ->visible(fn (?Integration $record): bool => $record?->key === IntegrationKey::Midtrans),
                         TextInput::make('options.merchant_id')
+                            ->dehydrateStateUsing(fn (?string $state): ?string => filled(trim((string) $state)) ? trim((string) $state) : null)
                             ->label('Merchant ID')
                             ->placeholder('G123456789')
                             ->visible(fn (?Integration $record): bool => $record?->key === IntegrationKey::Midtrans),
