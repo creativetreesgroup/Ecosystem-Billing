@@ -93,20 +93,29 @@ class DatabaseSeeder extends Seeder
         // Driver dicampur untuk membuktikan abstraksi TvControl bekerja untuk
         // ketiganya, meski deployment nyata saat ini seluruhnya Android TV (home_assistant).
         $units = [
-            ['code' => 'PS-01', 'unit_type_id' => $nonVip->id, 'control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.ps_01_androidtv'],
-            ['code' => 'PS-02', 'unit_type_id' => $nonVip->id, 'control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.ps_02_androidtv'],
-            ['code' => 'PS-03', 'unit_type_id' => $nonVip->id, 'control_driver' => ControlDriver::Tasmota, 'control_ref' => 'ps03plug'],
-            ['code' => 'PS-04', 'unit_type_id' => $vip->id, 'control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.ps_04_androidtv'],
-            ['code' => 'PS-05', 'unit_type_id' => $vip->id, 'control_driver' => ControlDriver::HomeAssistant, 'control_ref' => 'media_player.ps_05_androidtv'],
-            ['code' => 'PS-06', 'unit_type_id' => $sultan->id, 'control_driver' => ControlDriver::Manual, 'control_ref' => null],
+            // SEMUA unit lahir sebagai Manual, tanpa control_ref.
+            //
+            // Seeder ini dulu mengarang entity seperti
+            // "media_player.ps_02_androidtv" supaya datanya terlihat lengkap.
+            // Akibatnya di UAT: tiga unit menunjuk perangkat yang TIDAK ADA di
+            // Home Assistant, dan tiap kali sesinya dimulai perintah TV gagal
+            // tanpa ada yang menyadari. Data contoh tidak boleh berpura-pura
+            // menjadi perangkat sungguhan — operator memasangkannya sendiri
+            // lewat form unit, yang memang sudah menyediakan pemindaian.
+            ['code' => 'PS-01', 'unit_type_id' => $nonVip->id],
+            ['code' => 'PS-02', 'unit_type_id' => $nonVip->id],
+            ['code' => 'PS-03', 'unit_type_id' => $nonVip->id],
+            ['code' => 'PS-04', 'unit_type_id' => $vip->id],
+            ['code' => 'PS-05', 'unit_type_id' => $vip->id],
+            ['code' => 'PS-06', 'unit_type_id' => $sultan->id],
         ];
 
         $createdUnits = collect($units)->map(fn (array $data) => Unit::create([
             'outlet_id' => $outlet->id,
             'unit_type_id' => $data['unit_type_id'],
             'code' => $data['code'],
-            'control_driver' => $data['control_driver'],
-            'control_ref' => $data['control_ref'],
+            'control_driver' => ControlDriver::Manual,
+            'control_ref' => null,
             'is_active' => true,
         ]));
 
