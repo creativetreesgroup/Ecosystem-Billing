@@ -1209,6 +1209,32 @@ Diulang di sini karena terbukti berulang: agen review yang diberi akses tulis
 pernah melemahkan `lockForUpdate()` dan filter pendapatan. Setiap sesi review
 WAJIB ditutup dengan `git diff` sebelum apa pun dilanjutkan.
 
+## Dependensi baru: `bacon/bacon-qr-code` (§2 — justifikasi tertulis)
+
+Kios bekerja dengan pelanggan MEMINDAI kode di unit. Tanpa cara membuat kode
+itu, seluruh fiturnya tidak bisa ada — dan stikernya harus dibuat ulang tiap
+kali unit ditambah atau alamat servernya berubah, jadi menggambarnya sekali di
+luar sistem bukan jalan keluar.
+
+Kenapa tidak dihindari:
+
+- **Bukan di sisi klien.** Pustaka JavaScript berarti CDN (panel LAN-only, §14
+  melarangnya) atau build frontend (proyek ini sengaja nol build).
+- **Bukan layanan luar.** Mengirim alamat unit ke API pihak ketiga hanya untuk
+  menggambar kotak hitam-putih menambah ketergantungan internet pada mesin yang
+  harus tetap bekerja saat internet mati.
+- **Bukan ditulis sendiri.** Encoder QR adalah Reed–Solomon plus tabel masking;
+  menulisnya sendiri berarti memelihara kode kriptografis-berat demi menghindari
+  satu paket kecil.
+
+Kenapa yang ini:
+
+- Murni PHP, tanpa ekstensi tambahan bila keluarannya **SVG** — dan SVG justru
+  yang dibutuhkan untuk stiker cetak (tajam di ukuran berapa pun).
+- Sudah dikenal ekosistem Laravel; bahkan sudah tercantum sebagai `suggest` oleh
+  dependensi Filament yang terpasang.
+- Tidak menyentuh jalur uang sama sekali: ia hanya menggambar tautan.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2). **Diminta lagi & ditegaskan
