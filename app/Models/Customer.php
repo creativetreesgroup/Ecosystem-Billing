@@ -5,8 +5,8 @@ namespace App\Models;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Hash;
  * laporan pendapatan.
  */
 #[Fillable(['name', 'phone', 'pin_hash', 'balance', 'is_active', 'last_seen_at'])]
-class Customer extends Model
+class Customer extends Authenticatable
 {
     /** @use HasFactory<CustomerFactory> */
     use HasFactory;
@@ -48,6 +48,16 @@ class Customer extends Model
     public function rentalSessions(): HasMany
     {
         return $this->hasMany(RentalSession::class);
+    }
+
+    /**
+     * PIN disimpan di kolom pin_hash, bukan `password`. Laravel harus
+     * diberitahu — kalau tidak, seluruh mekanisme otentikasinya diam-diam
+     * membandingkan dengan kolom kosong dan MENOLAK semua orang.
+     */
+    public function getAuthPassword(): string
+    {
+        return $this->pin_hash;
     }
 
     public function verifyPin(string $pin): bool

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Customer;
 use App\Models\User;
 
 return [
@@ -42,6 +43,15 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        // Penjaga TERPISAH untuk pelanggan kios. Bukan kerapian: satu penjaga
+        // untuk keduanya berarti sesi pelanggan dan sesi kasir hidup di kunci
+        // yang sama, dan satu kekeliruan otorisasi memberi pelanggan akses ke
+        // panel yang memegang laporan pendapatan.
+        'customer' => [
+            'driver' => 'session',
+            'provider' => 'customers',
+        ],
     ],
 
     /*
@@ -65,6 +75,14 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', User::class),
+        ],
+
+        // Pelanggan kios punya tabelnya sendiri. Menyatukannya dengan users
+        // berarti satu kekeliruan otorisasi memberi pelanggan akses ke panel
+        // yang memegang laporan pendapatan.
+        'customers' => [
+            'driver' => 'eloquent',
+            'model' => Customer::class,
         ],
 
         // 'users' => [
