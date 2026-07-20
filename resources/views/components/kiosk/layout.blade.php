@@ -82,6 +82,14 @@
         .alert { background: rgba(239,68,68,.12); color: #fca5a5; border-radius: .75rem; padding: .75rem; text-align: center; font-size: .875rem; margin-top: .875rem; }
         .error { color: #fca5a5; font-size: .8rem; margin: .35rem 0 0; }
         .foot { text-align: center; color: #4b4b52; font-size: .75rem; margin-top: 1.25rem; }
+        .btn-quiet { background: #27272e; }
+        .btn-quiet:active { background: #33333c; }
+        .option-off { opacity: .45; }
+        .linkish {
+            display: block; width: 100%; margin-top: .75rem; padding: .75rem;
+            background: none; border: 0; color: var(--muted); font-size: .875rem; cursor: pointer;
+        }
+        .notice { background: rgba(34,197,94,.12); color: #86efac; border-radius: .75rem; padding: .625rem; text-align: center; font-size: .85rem; margin-top: .75rem; }
         [wire\:loading] { display: none; }
     </style>
     @filamentScripts

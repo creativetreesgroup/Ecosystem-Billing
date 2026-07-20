@@ -1,26 +1,33 @@
 <?php
 
-use App\Domain\Billing\Actions\OpenKioskCheckoutAction;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Domain\Billing\Rupiah;
+use App\Domain\Customers\Actions\AuthenticateCustomerAction;
+use App\Domain\Customers\Actions\RegisterCustomerAction;
+use App\Domain\Customers\Exceptions\TooManyPinAttemptsException;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
 use App\Domain\Settings\SettingKey;
+use App\Domain\Wallet\Actions\OpenTopUpAction;
+use App\Domain\Wallet\Actions\PlayFromWalletAction;
+use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
+use App\Models\Customer;
 use App\Models\Package;
 use App\Models\Payment;
 use App\Models\Setting;
 use App\Models\Unit;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\WithFileUploads;
 
 /**
- * Layar yang dilihat pelanggan setelah memindai QR di unit.
+ * Layar yang dilihat pelanggan setelah memindai QR di unitnya.
  *
- * Tidak ada login, tidak ada akun: pelanggan berdiri di depan unitnya, dan
- * memindai kode fisik di sana SUDAH membuktikan ia ada di tempat. Yang
- * dijaga bukan identitasnya, melainkan uangnya — sesi baru berjalan setelah
- * pembayaran terbukti (lihat OpenKioskCheckoutAction).
+ * Satu komponen, beberapa keadaan — bukan beberapa halaman. Pelanggan berdiri
+ * di depan TV sambil memegang HP; setiap perpindahan halaman adalah satu
+ * kesempatan lagi untuk tersesat atau menutup tab dan kehilangan tagihannya.
  */
 new class extends Component
 {
@@ -28,11 +35,21 @@ new class extends Component
 
     public Unit $unit;
 
+    // Masuk / daftar
+    public string $phone = '';
+
+    public string $pin = '';
+
+    public string $name = '';
+
+    public bool $registering = false;
+
+    // Memesan
     public ?int $packageId = null;
 
     public ?string $method = null;
 
-    public string $customerName = '';
+    public ?int $topUpAmount = null;
 
     public ?int $paymentId = null;
 
@@ -42,9 +59,17 @@ new class extends Component
 
     public ?string $error = null;
 
+    public ?string $notice = null;
+
     public function mount(Unit $unit): void
     {
         $this->unit = $unit;
+    }
+
+    #[Computed]
+    public function customer(): ?Customer
+    {
+        return Auth::guard('customer')->user();
     }
 
     #[Computed]
@@ -80,53 +105,103 @@ new class extends Component
     }
 
     /**
-     * Transfer hanya ditawarkan bila rekeningnya sudah lengkap. Menawarkannya
-     * dengan rekening kosong berarti mengirim pelanggan ke tujuan yang tidak
-     * ada, dan uangnya nyasar tanpa ada yang bisa menelusurinya.
+     * Transfer hanya ditawarkan bila rekeningnya lengkap: menawarkannya dengan
+     * rekening kosong berarti mengirim pelanggan ke tujuan yang tidak ada.
      */
     #[Computed]
     public function availableMethods(): array
     {
-        $methods = [PaymentMethod::Qris];
-
-        if (Setting::transferAccountIsComplete()) {
-            $methods[] = PaymentMethod::Transfer;
-        }
-
-        return $methods;
+        return Setting::transferAccountIsComplete()
+            ? [PaymentMethod::Qris, PaymentMethod::Transfer]
+            : [PaymentMethod::Qris];
     }
 
-    public function order(): void
+    public function signIn(): void
     {
         $this->error = null;
 
-        $this->validate([
-            'packageId' => 'required|integer',
-            'method' => 'required|in:qris,transfer',
-            'customerName' => 'nullable|string|max:100',
-        ], attributes: [
-            'packageId' => 'paket',
-            'method' => 'metode pembayaran',
-            'customerName' => 'nama',
-        ]);
-
         try {
-            ['payment' => $payment, 'qr_url' => $qrUrl] = app(OpenKioskCheckoutAction::class)->handle(
-                $this->unit,
-                Package::findOrFail($this->packageId),
-                PaymentMethod::from($this->method),
-                $this->customerName,
-            );
-        } catch (UnitAlreadyActiveException $exception) {
-            $this->error = 'Unit ini baru saja dipakai orang lain. Coba unit lain atau tanya kasir.';
+            $customer = app(AuthenticateCustomerAction::class)->handle($this->phone, $this->pin);
+        } catch (TooManyPinAttemptsException $exception) {
+            $this->error = $exception->getMessage();
 
             return;
+        } catch (ValidationException $exception) {
+            $this->error = collect($exception->errors())->flatten()->first();
+
+            return;
+        }
+
+        Auth::guard('customer')->login($customer);
+        $this->reset('phone', 'pin', 'name', 'registering');
+    }
+
+    public function register(): void
+    {
+        $this->error = null;
+
+        try {
+            $customer = app(RegisterCustomerAction::class)->handle($this->name, $this->phone, $this->pin);
+        } catch (ValidationException $exception) {
+            $this->error = collect($exception->errors())->flatten()->first();
+
+            return;
+        }
+
+        Auth::guard('customer')->login($customer);
+        $this->reset('phone', 'pin', 'name', 'registering');
+    }
+
+    public function signOut(): void
+    {
+        Auth::guard('customer')->logout();
+        $this->reset('packageId', 'method', 'paymentId', 'qrUrl', 'topUpAmount');
+    }
+
+    public function play(): void
+    {
+        $this->error = null;
+        $this->validate(['packageId' => 'required|integer'], attributes: ['packageId' => 'paket']);
+
+        try {
+            app(PlayFromWalletAction::class)->handle(
+                $this->customer,
+                $this->unit,
+                Package::findOrFail($this->packageId),
+            );
+        } catch (InsufficientBalanceException) {
+            $this->error = 'Saldo belum cukup untuk paket ini. Isi saldo dulu.';
+
+            return;
+        } catch (UnitAlreadyActiveException) {
+            $this->error = 'Unit ini baru saja dipakai orang lain.';
+
+            return;
+        }
+
+        unset($this->activeSession);
+    }
+
+    public function topUp(): void
+    {
+        $this->error = null;
+        $this->validate([
+            'topUpAmount' => 'required|integer|min:'.OpenTopUpAction::MINIMUM.'|max:'.OpenTopUpAction::MAXIMUM,
+            'method' => 'required|in:qris,transfer',
+        ], attributes: ['topUpAmount' => 'nominal', 'method' => 'metode pembayaran']);
+
+        try {
+            ['payment' => $payment, 'qr_url' => $qrUrl] = app(OpenTopUpAction::class)->handle(
+                $this->customer,
+                (int) $this->topUpAmount,
+                PaymentMethod::from($this->method),
+            );
         } catch (Throwable $exception) {
-            // Pesan mentah TIDAK ditampilkan ke pelanggan: isinya bisa memuat
-            // detail gateway atau jalur berkas. Yang berguna baginya cuma
+            // Pesan mentah tidak pernah ditampilkan: isinya bisa memuat detail
+            // gateway atau jalur berkas. Yang berguna bagi pelanggan hanyalah
             // langkah berikutnya.
             report($exception);
-            $this->error = 'Pembayaran sedang tidak bisa dibuat. Coba lagi sebentar, atau bayar lewat kasir.';
+            $this->error = 'Pembayaran sedang tidak bisa dibuat. Coba lagi sebentar, atau isi saldo lewat kasir.';
 
             return;
         }
@@ -136,20 +211,23 @@ new class extends Component
     }
 
     /**
-     * Dipanggil polling di halaman. Sengaja hanya MEMBACA — yang mengubah
-     * status pembayaran tetap penjadwal yang bertanya ke gateway, supaya
-     * pelanggan tidak pernah bisa mendorong status pembayarannya sendiri.
+     * Dipanggil polling. Sengaja hanya MEMBACA — yang memajukan status
+     * pembayaran tetap penjadwal yang bertanya ke gateway, supaya pelanggan
+     * tidak pernah bisa mendorong statusnya sendiri.
      */
     public function refreshStatus(): void
     {
-        unset($this->payment, $this->activeSession);
+        unset($this->payment, $this->activeSession, $this->customer);
+
+        if ($this->payment?->status === PaymentStatus::Paid) {
+            $this->notice = 'Saldo sudah bertambah.';
+            $this->reset('paymentId', 'qrUrl', 'topUpAmount', 'method');
+        }
     }
 
     public function uploadProof(): void
     {
-        $this->validate([
-            'proof' => 'required|image|max:4096',
-        ], attributes: ['proof' => 'bukti transfer']);
+        $this->validate(['proof' => 'required|image|max:4096'], attributes: ['proof' => 'bukti transfer']);
 
         $payment = $this->payment;
 
@@ -159,13 +237,10 @@ new class extends Component
             return;
         }
 
-        // Disk PRIVAT: bukti transfer memuat nama & nomor rekening orang, dan
-        // tidak boleh bisa dibuka siapa pun yang menebak alamatnya.
-        $path = $this->proof->store('payment-proofs', 'local');
-
+        // Disk PRIVAT: bukti transfer memuat nama & nomor rekening orang.
         $payment->update([
             'status' => PaymentStatus::AwaitingVerification,
-            'proof_path' => $path,
+            'proof_path' => $this->proof->store('payment-proofs', 'local'),
         ]);
 
         $this->proof = null;
@@ -174,6 +249,7 @@ new class extends Component
 };
 ?>
 
+
 <div class="kiosk" wire:poll.5s="refreshStatus">
     <div class="kiosk-head">
         <p class="kiosk-brand">Creative Trees Billing Game</p>
@@ -181,6 +257,8 @@ new class extends Component
         <p class="kiosk-type">{{ $unit->unitType->name }}</p>
     </div>
 
+    {{-- Unit sedang dipakai: tidak ada yang bisa dilakukan siapa pun, jadi
+         tidak ada form yang ditawarkan. --}}
     @if ($this->activeSession)
         <div class="card">
             <p class="label center">Unit sedang dipakai</p>
@@ -199,23 +277,46 @@ new class extends Component
             <p class="muted center">Pindai lagi kode ini setelah unit selesai dipakai.</p>
         </div>
 
-    @elseif ($this->payment?->status === PaymentStatus::Paid)
+    @elseif (! $this->customer)
         <div class="card">
-            <p class="emoji">&#9989;</p>
-            <p class="title">Pembayaran diterima</p>
-            <p class="muted center">TV sedang dinyalakan. Selamat bermain!</p>
+            <p class="label center">{{ $registering ? 'Buat akun' : 'Masuk untuk mulai main' }}</p>
+
+            <form wire:submit="{{ $registering ? 'register' : 'signIn' }}">
+                @if ($registering)
+                    <input type="text" wire:model="name" maxlength="60" placeholder="Nama" class="field" required>
+                @endif
+
+                <input type="tel" wire:model="phone" inputmode="numeric" autocomplete="tel"
+                       placeholder="Nomor WhatsApp — 081234567890" class="field" required>
+
+                <input type="password" wire:model="pin" inputmode="numeric" maxlength="6" autocomplete="off"
+                       placeholder="{{ $registering ? 'Buat PIN 6 angka' : 'PIN' }}" class="field" required>
+
+                @if ($error)
+                    <p class="alert">{{ $error }}</p>
+                @endif
+
+                <button type="submit" class="btn">
+                    {{ $registering ? 'Daftar & lanjut' : 'Masuk' }}
+                </button>
+            </form>
+
+            <button type="button" class="linkish"
+                    wire:click="$toggle('registering')">
+                {{ $registering ? 'Sudah punya akun? Masuk' : 'Belum punya akun? Daftar' }}
+            </button>
         </div>
 
     @elseif ($this->payment?->status === PaymentStatus::AwaitingVerification)
         <div class="card">
             <p class="emoji">&#128340;</p>
             <p class="title">Menunggu kasir memeriksa</p>
-            <p class="muted center">Bukti sudah terkirim. Unit menyala begitu kasir memastikan uangnya masuk.</p>
+            <p class="muted center">Bukti sudah terkirim. Saldo bertambah begitu kasir memastikan uangnya masuk.</p>
         </div>
 
     @elseif ($this->payment?->status === PaymentStatus::Pending && $this->payment->method === PaymentMethod::Qris)
         <div class="card">
-            <p class="label center">Bayar dengan QRIS</p>
+            <p class="label center">Isi saldo dengan QRIS</p>
             <p class="amount">{{ Rupiah::format($this->payment->amount) }}</p>
             @if ($qrUrl)
                 <img src="{{ $qrUrl }}" alt="Kode QRIS" class="qr">
@@ -246,45 +347,75 @@ new class extends Component
         </div>
 
     @else
+        {{-- Saldo ditaruh PALING ATAS: itu satu-satunya angka yang menentukan
+             apakah pelanggan bisa langsung main atau harus isi dulu. --}}
         <div class="card">
-            <form wire:submit="order">
-                <p class="label">Pilih paket</p>
-                @foreach ($this->packages as $package)
-                    <label class="option" wire:key="pkg-{{ $package->id }}">
-                        <span>
-                            <input type="radio" wire:model.live="packageId" value="{{ $package->id }}">
-                            <span class="option-name">{{ $package->name }}</span>
-                            <span class="option-sub">{{ $package->duration_minutes }} menit</span>
+            <p class="label center">Halo, {{ $this->customer->name }}</p>
+            <p class="amount">{{ Rupiah::format($this->customer->balance) }}</p>
+            <p class="muted center">Saldo Anda</p>
+            @if ($notice)
+                <p class="notice">{{ $notice }}</p>
+            @endif
+        </div>
+
+        <div class="card">
+            <p class="label">Pilih paket</p>
+            @foreach ($this->packages as $package)
+                @php($terjangkau = $this->customer->canAfford($package->price))
+                <label class="option {{ $terjangkau ? '' : 'option-off' }}" wire:key="pkg-{{ $package->id }}">
+                    <span>
+                        <input type="radio" wire:model.live="packageId" value="{{ $package->id }}" @disabled(! $terjangkau)>
+                        <span class="option-name">{{ $package->name }}</span>
+                        <span class="option-sub">
+                            {{ $package->duration_minutes }} menit
+                            @unless ($terjangkau) &middot; saldo kurang @endunless
                         </span>
-                        <span class="option-price">{{ Rupiah::format($package->price) }}</span>
+                    </span>
+                    <span class="option-price">{{ Rupiah::format($package->price) }}</span>
+                </label>
+            @endforeach
+            @error('packageId') <p class="error">{{ $message }}</p> @enderror
+
+            @if ($error)
+                <p class="alert">{{ $error }}</p>
+            @endif
+
+            <button type="button" class="btn" wire:click="play" wire:loading.attr="disabled" wire:target="play">
+                <span wire:loading.remove wire:target="play">Mulai main</span>
+                <span wire:loading wire:target="play">Menyalakan TV&hellip;</span>
+            </button>
+        </div>
+
+        <div class="card">
+            <p class="label">Isi saldo</p>
+            <div class="methods" style="margin-bottom:.5rem">
+                @foreach ([25000, 50000, 100000] as $nominal)
+                    <label class="option" wire:key="amt-{{ $nominal }}">
+                        <input type="radio" wire:model.live="topUpAmount" value="{{ $nominal }}">
+                        <span class="option-name">{{ Rupiah::format($nominal) }}</span>
                     </label>
                 @endforeach
-                @error('packageId') <p class="error">{{ $message }}</p> @enderror
+            </div>
+            @error('topUpAmount') <p class="error">{{ $message }}</p> @enderror
 
-                <p class="label" style="margin-top:1rem">Cara bayar</p>
-                <div class="methods">
-                    @foreach ($this->availableMethods as $available)
-                        <label class="option" wire:key="m-{{ $available->value }}">
-                            <input type="radio" wire:model.live="method" value="{{ $available->value }}">
-                            <span class="option-name">{{ $available->getLabel() }}</span>
-                        </label>
-                    @endforeach
-                </div>
-                @error('method') <p class="error">{{ $message }}</p> @enderror
-                <p class="muted" style="margin-top:.5rem;font-size:.75rem">Bayar tunai? Silakan ke kasir.</p>
+            <div class="methods">
+                @foreach ($this->availableMethods as $available)
+                    <label class="option" wire:key="m-{{ $available->value }}">
+                        <input type="radio" wire:model.live="method" value="{{ $available->value }}">
+                        <span class="option-name">{{ $available->getLabel() }}</span>
+                    </label>
+                @endforeach
+            </div>
+            @error('method') <p class="error">{{ $message }}</p> @enderror
+            <p class="muted" style="margin-top:.5rem;font-size:.75rem">Isi saldo tunai? Silakan ke kasir.</p>
 
-                <input type="text" wire:model="customerName" maxlength="100" placeholder="Nama (opsional)" class="field">
-
-                @if ($error)
-                    <p class="alert">{{ $error }}</p>
-                @endif
-
-                <button type="submit" class="btn" wire:loading.attr="disabled" wire:target="order">
-                    <span wire:loading.remove wire:target="order">Bayar &amp; mulai main</span>
-                    <span wire:loading wire:target="order">Menyiapkan&hellip;</span>
-                </button>
-            </form>
+            <button type="button" class="btn btn-quiet" wire:click="topUp" wire:loading.attr="disabled" wire:target="topUp">
+                <span wire:loading.remove wire:target="topUp">Isi saldo</span>
+                <span wire:loading wire:target="topUp">Menyiapkan&hellip;</span>
+            </button>
         </div>
+
+        <button type="button" class="linkish" wire:click="signOut">Keluar</button>
     @endif
 
     <p class="foot">Sesi baru berjalan setelah pembayaran diterima.</p>
