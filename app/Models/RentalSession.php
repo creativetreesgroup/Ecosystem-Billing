@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Domain\Billing\PaymentMethod;
+use App\Domain\Billing\PaymentStatus;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use Database\Factories\RentalSessionFactory;
@@ -37,6 +38,22 @@ class RentalSession extends Model
             'extra_amount' => 'integer',
             'total_amount' => 'integer',
         ];
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    /**
+     * Pembayaran yang benar-benar lunas. Laporan pendapatan hanya boleh
+     * menghitung ini — sesi yang selesai tapi buktinya belum diverifikasi
+     * kasir BUKAN pemasukan, dan menghitungnya membuat laporan berbohong
+     * tepat pada angka yang dipakai menutup kas.
+     */
+    public function settledPayment(): HasOne
+    {
+        return $this->hasOne(Payment::class)->where('status', PaymentStatus::Paid);
     }
 
     public function unit(): BelongsTo

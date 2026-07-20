@@ -6,6 +6,7 @@ use App\Domain\Sessions\SessionStatus;
 use App\Models\RentalSession;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
@@ -65,6 +66,16 @@ final class SalesSummary
         return $this->sessions = RentalSession::query()
             ->with('unit.unitType')
             ->where('status', SessionStatus::Completed)
+            // Selesai TIDAK berarti sudah dibayar. Sejak pembayaran mandiri
+            // ada (QRIS lewat gateway, transfer dengan bukti), sebuah sesi
+            // bisa berakhir sementara uangnya belum terbukti masuk — QRIS
+            // dibatalkan di tengah, atau bukti transfer masih menunggu
+            // diperiksa kasir. Menghitungnya sebagai pendapatan membuat
+            // laporan berbohong tepat pada angka yang dipakai menutup kas.
+            //
+            // Sesi yang ditutup kasir tetap ikut: kasir menerima uangnya
+            // langsung, jadi pembayarannya dicatat Lunas sejak detik itu.
+            ->whereHas('payments', fn (Builder $query) => $query->where('status', PaymentStatus::Paid))
             ->whereBetween('ended_at', [$start, $end])
             ->get();
     }

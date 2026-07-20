@@ -3,12 +3,14 @@
 namespace App\Domain\Sessions\Actions;
 
 use App\Domain\Billing\PaymentMethod;
+use App\Domain\Billing\PaymentStatus;
 use App\Domain\Billing\SessionTotal;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Sessions\Events\SessionEnded;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Models\RentalSession;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -21,7 +23,7 @@ class CompleteSessionAction
      * dan dibiarkan null oleh penutupan manual kasir. Lihat komentar fencing
      * di dalam transaksi.
      */
-    public function handle(RentalSession $session, ?PaymentMethod $paymentMethod = null, ?string $expectedExpiryToken = null): RentalSession
+    public function handle(RentalSession $session, ?PaymentMethod $paymentMethod = null, ?string $expectedExpiryToken = null, ?User $verifiedBy = null): RentalSession
     {
         if ($session->type === SessionType::Open && ! $session->payment_method && ! $paymentMethod) {
             throw new InvalidArgumentException('Metode pembayaran wajib dipilih untuk sesi open play.');
@@ -29,7 +31,7 @@ class CompleteSessionAction
 
         $justCompleted = false;
 
-        $completed = DB::transaction(function () use ($session, $paymentMethod, $expectedExpiryToken, &$justCompleted) {
+        $completed = DB::transaction(function () use ($session, $paymentMethod, $expectedExpiryToken, &$justCompleted, $verifiedBy) {
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== SessionStatus::Active) {
@@ -62,6 +64,20 @@ class CompleteSessionAction
                 'total_amount' => $totalAmount,
                 'payment_method' => $locked->payment_method ?? $paymentMethod,
                 'paid_at' => $locked->paid_at ?? $endedAt,
+            ]);
+
+            // Pembayaran dicatat sebagai baris tersendiri, bukan cuma kolom
+            // di sesi. Yang lewat sini adalah penyelesaian OLEH KASIR: kasir
+            // yang menerima uangnya, jadi statusnya langsung Lunas. Jalur
+            // mandiri (QRIS lewat gateway, transfer dengan bukti) membuat
+            // barisnya dengan status Pending dan baru menjadi Lunas setelah
+            // terbukti — di sana kolom terisi tidak berarti uang masuk.
+            $locked->payments()->create([
+                'method' => $locked->payment_method,
+                'status' => PaymentStatus::Paid,
+                'amount' => $totalAmount,
+                'verified_by' => $verifiedBy?->id,
+                'verified_at' => $endedAt,
             ]);
 
             activity()
