@@ -7,6 +7,7 @@ use App\Domain\Devices\Drivers\ManualDriver;
 use App\Domain\Devices\Drivers\TasmotaDriver;
 use App\Domain\Devices\Events\UnitPowerStateChanged;
 use App\Domain\Devices\Jobs\VerifyUnitPoweredOffJob;
+use App\Domain\Devices\Jobs\VerifyUnitPoweredOnJob;
 use App\Models\DeviceAlert;
 use App\Models\Integration;
 use App\Models\Unit;
@@ -79,6 +80,23 @@ class DeviceManager
 
             return null;
         }
+    }
+
+    /**
+     * Kembaran powerOff(): perintah nyala pun tidak pernah bisa dipercaya.
+     *
+     * Home Assistant menjawab HTTP 200 untuk turn_on walau entity-nya sedang
+     * "unavailable" dan TV tidak bereaksi sama sekali — terbukti saat UAT di
+     * TCL Android TV. Jadi jawaban suksesnya tidak membuktikan apa pun, dan
+     * verifikasinya harus terjadi belakangan, di luar transaksi billing.
+     */
+    public function powerOn(Unit $unit): ?CommandResult
+    {
+        $result = $this->attempt($unit, fn (TvControl $driver) => $driver->powerOn($unit));
+
+        VerifyUnitPoweredOnJob::dispatch($unit->id)->delay(now()->addSeconds(8));
+
+        return $result;
     }
 
     /**

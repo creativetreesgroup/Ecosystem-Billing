@@ -334,6 +334,84 @@ class NetworkScanner
     }
 
     /**
+     * Apakah perangkat dengan MAC ini masih hidup di jaringan.
+     *
+     * Dipakai membedakan DUA hal yang dilaporkan Home Assistant dengan kata
+     * yang sama, "unavailable": TV yang standby (normal) versus TV yang
+     * dicabut atau jaringannya putus (gangguan sungguhan). Android TV memutus
+     * koneksi remote saat standby, jadi dari sudut pandang HA keduanya
+     * identik — padahal yang satu tidak boleh melahirkan alert sama sekali.
+     *
+     * Diuji di TV sungguhan: TCL dalam standby tetap menjawab ping dan
+     * membuka port 6466/6467. Yang benar-benar mati tidak menjawab keduanya.
+     */
+    public function isMacOnNetwork(string $mac): bool
+    {
+        $mac = self::normaliseMac($mac);
+
+        if ($mac === null) {
+            return false;
+        }
+
+        $ip = $this->ipForMac($mac);
+
+        if ($ip === null) {
+            return false;
+        }
+
+        // Satu ketukan TCP lebih tegas daripada ping: ICMP kadang diblokir
+        // firewall TV, sedangkan port remote-nya justru harus terbuka agar
+        // perangkatnya berguna sama sekali.
+        foreach ([6466, 8008] as $port) {
+            $socket = @fsockopen($ip, $port, $errorCode, $errorMessage, 1.5);
+
+            if ($socket !== false) {
+                fclose($socket);
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * IP untuk sebuah MAC, dari tabel ARP kernel. Kebalikan dari macFor().
+     */
+    private function ipForMac(string $mac): ?string
+    {
+        if (is_readable('/proc/net/arp')) {
+            foreach (file('/proc/net/arp', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+                $columns = preg_split('/\s+/', trim($line)) ?: [];
+
+                if (self::normaliseMac($columns[3] ?? '') === $mac) {
+                    return $columns[0];
+                }
+            }
+
+            return null;
+        }
+
+        $output = @shell_exec('arp -an 2>/dev/null');
+
+        if (! is_string($output)) {
+            return null;
+        }
+
+        foreach (preg_split('/\r?\n/', $output) ?: [] as $line) {
+            if (preg_match('/\((\d+\.\d+\.\d+\.\d+)\) at ([0-9a-f:]+)/i', $line, $matches) !== 1) {
+                continue;
+            }
+
+            if (self::normaliseMac($matches[2]) === $mac) {
+                return $matches[1];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * MAC perangkat, dibaca dari tabel ARP kernel.
      *
      * SSDP hanya memberi IP. MAC-nya dibutuhkan untuk Wake-on-LAN, dan

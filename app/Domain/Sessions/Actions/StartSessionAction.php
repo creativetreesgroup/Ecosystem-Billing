@@ -80,7 +80,10 @@ class StartSessionAction
                 'paid_at' => $type === SessionType::Package ? now() : null,
             ]);
 
-            $this->devices->attempt($lockedUnit, fn ($driver) => $driver->powerOn($lockedUnit));
+            // powerOn(), bukan attempt(...powerOn): powerOn() ikut
+            // menjadwalkan verifikasi. Jawaban sukses dari Home Assistant
+            // tidak membuktikan TV menyala (lihat VerifyUnitPoweredOnJob).
+            $this->devices->powerOn($lockedUnit);
 
             if ($endsAt) {
                 $warningMinutes = Setting::get('warning_before_minutes')['minutes'] ?? 5;

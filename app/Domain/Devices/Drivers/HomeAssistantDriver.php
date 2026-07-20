@@ -4,6 +4,7 @@ namespace App\Domain\Devices\Drivers;
 
 use App\Domain\Devices\Capability;
 use App\Domain\Devices\CommandResult;
+use App\Domain\Devices\NetworkScanner;
 use App\Domain\Devices\PowerState;
 use App\Domain\Devices\TvControl;
 use App\Domain\Devices\WakeOnLan;
@@ -63,6 +64,22 @@ class HomeAssistantDriver implements TvControl
         return $this->callService('media_player', 'turn_off', $unit->control_ref);
     }
 
+    /**
+     * TV standby tetap hidup di jaringan; TV yang dicabut tidak. MAC-nya
+     * dipakai sebagai penanda, jadi unit tanpa tv_mac tetap dianggap
+     * tidak terhubung — tidak ada bukti untuk menyimpulkan sebaliknya.
+     */
+    private function isStandbyRatherThanGone(Unit $unit): PowerState
+    {
+        if (blank($unit->tv_mac)) {
+            return PowerState::Unreachable;
+        }
+
+        return app(NetworkScanner::class)->isMacOnNetwork($unit->tv_mac)
+            ? PowerState::Standby
+            : PowerState::Unreachable;
+    }
+
     public function state(Unit $unit): PowerState
     {
         try {
@@ -83,7 +100,14 @@ class HomeAssistantDriver implements TvControl
             return match ($response->json('state')) {
                 'on', 'playing', 'paused', 'idle', 'buffering' => PowerState::On,
                 'off', 'standby' => PowerState::Standby,
-                'unavailable' => PowerState::Unreachable,
+                // "unavailable" dari Home Assistant berarti DUA hal yang
+                // sangat berbeda, dan HA tidak bisa membedakannya: Android TV
+                // memutus koneksi remote-nya saat standby, persis seperti saat
+                // dicabut. Tanpa pembedaan ini, SETIAP unit yang menganggur
+                // melahirkan alert "Tidak terhubung" sepanjang malam — dan
+                // gangguan yang sungguhan tenggelam di antara ratusan yang
+                // palsu. Ditemukan saat UAT di TCL sungguhan.
+                'unavailable' => $this->isStandbyRatherThanGone($unit),
                 default => PowerState::Unknown,
             };
         } catch (ConnectionException $e) {
