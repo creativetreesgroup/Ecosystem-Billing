@@ -1235,6 +1235,42 @@ Kenapa yang ini:
   dependensi Filament yang terpasang.
 - Tidak menyentuh jalur uang sama sekali: ia hanya menggambar tautan.
 
+## Menampilkan QR DI LAYAR TV: diuji di perangkat asli, tidak bisa lewat HA
+
+Diuji langsung pada TCL Android TV yang sudah terpasang, bukan disimpulkan dari
+dokumentasi:
+
+- `media_player.play_media` dengan `media_content_type: url` **dijawab HTTP 200
+  oleh Home Assistant tetapi TV tidak pernah mengambil halamannya** — nol
+  permintaan masuk ke server, dan app yang aktif berubah jadi `android`
+  (dialog sistem), bukan browser.
+- `source_list` entity-nya KOSONG, jadi tidak ada daftar app yang bisa dipilih.
+- Peluncuran per paket: `com.tcl.browser` ADA di TV ini; `com.android.chrome`,
+  `com.google.android.tv.browser`, dan `org.mozilla.firefox` semuanya memantul
+  ke Play Store (tidak terpasang). Browser bawaan TCL bisa dibuka, tapi TIDAK
+  bisa disuruh membuka alamat tertentu lewat HA.
+
+Kesimpulan: menampilkan halaman kita di layar TV **tidak bisa lewat Home
+Assistant**. Yang tersisa: aplikasi Cast Receiver terdaftar Google (butuh HTTPS
+publik — bentrok dengan §14 LAN-only), aplikasi Android TV sendiri (sideload per
+unit), atau stik HDMI kecil per unit yang menampilkan halaman kios.
+
+**Yang penting: alur yang diinginkan TIDAK bergantung pada ini.** Stiker QR di
+bingkai TV memberi hasil yang sama persis — pindai, masuk, main, TV menyala.
+Satu-satunya yang hilang adalah QR-nya lenyap dari layar saat ada yang bermain,
+dan itu hal visual, bukan fungsional. Membangun kiosnya lebih dulu dengan stiker
+membuat seluruh alurnya jalan hari ini; layar TV bisa menyusul kapan saja tanpa
+mengubah apa pun di belakangnya.
+
+## `php artisan serve` mengikat ke 127.0.0.1 — kios mustahil dijangkau
+
+Ditemukan saat menguji TV. Server pengembangan bawaan hanya mendengarkan di
+localhost, jadi TV MAUPUN HP pelanggan tidak akan pernah bisa membuka halaman
+kios. Untuk menguji dari perangkat lain: `php artisan serve --host=0.0.0.0`.
+Di outlet, nginx (lihat `deploy/`) memang sudah mendengarkan di semua alamat —
+jadi ini murni jebakan saat pengembangan, tapi jebakan yang membuat seluruh
+fitur tampak rusak padahal kodenya benar.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2). **Diminta lagi & ditegaskan
