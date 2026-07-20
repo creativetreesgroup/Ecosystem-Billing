@@ -1,28 +1,78 @@
-# Infrastruktur kontrol device (§7) — TERPISAH dari deploy aplikasi utama
-# (lihat deploy/, Fase 6). Home Assistant butuh network_mode: host untuk
-# device discovery (mDNS/SSDP ke TV Android di jaringan lokal) — ini
-# mengharuskan Docker Engine Linux; tidak berfungsi lewat Docker Desktop
-# macOS/Windows (batasan platform Docker, bukan pilihan desain). Untuk dev
-# di luar Linux, jalankan unit dengan control_driver=manual dan lewati
-# compose ini sepenuhnya.
+# Infrastruktur yang dipakai bersama aplikasi — TERPISAH dari deploy aplikasi
+# itu sendiri, yang memakai nginx + supervisor (lihat deploy/ dan RUNBOOK.md).
+# Satu jalur deploy, bukan dua: menaruh aplikasi di sini juga akan membuat
+# deploy/supervisor menjadi salinan kedua yang diam-diam menyimpang.
+#
+# ═══ KENAPA INI TIDAK BISA DI VPS ═══
+#
+# Home Assistant harus berada di jaringan yang SAMA dengan TV. Ia menemukan
+# perangkat lewat mDNS/SSDP — paket multicast yang tidak melewati router — dan
+# berbicara ke TV di alamat lokal seperti 192.168.100.7. VPS di pusat data
+# tidak punya jalan ke sana sama sekali. Hal yang sama berlaku untuk
+# Wake-on-LAN (siaran UDP di segmen lokal) dan untuk pemindai jaringan kita.
+#
+# Jadi mesin di outlet BUKAN pilihan, melainkan syarat. VPS baru masuk akal
+# untuk panel & database, dengan agen terpisah di outlet yang memegang
+# perangkat — arsitektur yang belum ada di V1 (lihat DECISIONS.md).
+#
+#   docker compose -f docker-compose.devices.yml up -d
+#
 services:
+  # network_mode: host WAJIB, bukan pilihan gaya: tanpa itu Home Assistant
+  # tidak pernah menemukan TV, karena mDNS/SSDP tidak melewati batas jaringan
+  # Docker. Ini mengharuskan Docker Engine di Linux — di Docker Desktop
+  # macOS/Windows host networking tidak bekerja seperti aslinya, jadi untuk
+  # pengembangan di luar Linux pakai control_driver=manual.
   home-assistant:
-    image: homeassistant/home-assistant:2026.7.2
+    # Versi DIPATOK, bukan :stable. Ini versi yang benar-benar diuji dengan
+    # TCL Android TV pada UAT — pembaruan otomatis Home Assistant pernah
+    # mengubah perilaku integrasi, dan di outlet itu berarti TV berhenti
+    # merespons di tengah jam operasional tanpa ada yang mengubah apa pun.
+    # Naikkan versinya secara sadar, lalu uji ulang siklus penuhnya.
+    image: ghcr.io/home-assistant/home-assistant:2026.7.2
     container_name: ctb-home-assistant
     restart: unless-stopped
     network_mode: host
     volumes:
       - ./docker/home-assistant/config:/config
     environment:
-      - TZ=Asia/Jakarta
+      - TZ=${APP_TIMEZONE:-Asia/Jakarta}
 
+  # Broker untuk unit ber-driver Tasmota. Anonim dimatikan; tanpa berkas
+  # passwordfile container ini sengaja GAGAL start (fail secure, §3.5).
+  # Berkas kredensial dibuat manusia di mesin outlet dan tidak ikut di
+  # repositori — lihat komentar di docker/mosquitto/config/mosquitto.conf.
   mosquitto:
     image: eclipse-mosquitto:2.1.2-alpine
     container_name: ctb-mosquitto
     restart: unless-stopped
     ports:
-      - "1883:1883"
+      - '1883:1883'
     volumes:
       - ./docker/mosquitto/config:/mosquitto/config
       - ./docker/mosquitto/data:/mosquitto/data
       - ./docker/mosquitto/log:/mosquitto/log
+
+  mysql:
+    image: mysql:8.4
+    container_name: ctb-mysql
+    restart: unless-stopped
+    ports:
+      # Dipetakan ke 127.0.0.1 saja: database tidak boleh terjangkau dari
+      # jaringan outlet, cukup dari mesin yang menjalankan aplikasinya.
+      - '127.0.0.1:${DB_PORT:-3306}:3306'
+    environment:
+      MYSQL_DATABASE: '${DB_DATABASE}'
+      MYSQL_USER: '${DB_USERNAME}'
+      MYSQL_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_ROOT_PASSWORD: '${DB_PASSWORD}'
+    volumes:
+      - ctb-mysql:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-p${DB_PASSWORD}']
+      interval: 10s
+      retries: 6
+      start_period: 30s
+
+volumes:
+  ctb-mysql:

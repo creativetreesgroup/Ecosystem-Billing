@@ -35,6 +35,8 @@ Cek status: `sudo supervisorctl status`. Restart satu proses: `sudo supervisorct
 - Badge `power_state = unreachable` muncul di dashboard dalam ≤ 90 detik (`units:poll-state` tiap 30 detik untuk unit HA; LWT MQTT langsung untuk unit Tasmota).
 - Cek fisik: TV/plug menyala? Kabel LAN/WiFi tersambung? Router/switch/AP menyala?
 - Cek Home Assistant/Mosquitto sendiri hidup (lihat tabel proses di atas + `docker compose -f docker-compose.devices.yml ps`).
+- MySQL kini ikut di compose yang sama. Aplikasinya sendiri TETAP di nginx + supervisor (lihat `deploy/`) — sengaja satu jalur deploy, bukan dua.
+- Home Assistant dipatok ke versi yang diuji di UAT. Menaikkannya adalah keputusan sadar: uji ulang siklus penuh (mulai sesi → TV nyala → stop → TV mati) sebelum outlet dibuka.
 - **Dilarang mengandalkan ping** sebagai bukti TV menyala — networked standby tetap membalas ping walau layar mati (§7). Satu-satunya sumber kebenaran adalah `media_player` state HA atau `stat/+/POWER` MQTT.
 
 ## Insiden: Reverb mati
