@@ -2,15 +2,76 @@
 
 namespace App\Filament\Resources\Integrations\Schemas;
 
+use App\Domain\Devices\NetworkScanner;
 use App\Models\Integration;
+use Filament\Actions\Action;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Alignment;
+use Filament\Support\Enums\Width;
+use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Facades\Cache;
 
 class IntegrationForm
 {
+    /**
+     * Mencari sendiri alamat Home Assistant di jaringan.
+     *
+     * Ini satu-satunya dari tiga langkah pemasangan yang BISA diotomatiskan.
+     * Token harus dibuat manusia di dalam HA, dan kode pairing 6 digit harus
+     * dibaca dari layar TV — keduanya memang titik keamanan, bukan kekurangan
+     * yang bisa ditambal. Alamatnya sekadar fakta jaringan, jadi tidak ada
+     * alasan menyuruh operator mengetiknya.
+     */
+    private static function findOnNetworkAction(): Action
+    {
+        return Action::make('findHomeAssistant')
+            ->label('Cari di jaringan')
+            ->icon(Heroicon::OutlinedMagnifyingGlass)
+            ->modalWidth(Width::Medium)
+            ->modalAlignment(Alignment::Center)
+            ->modalFooterActionsAlignment(Alignment::Center)
+            ->modalIcon(fn (): string => self::foundAddresses() === []
+                ? 'heroicon-o-magnifying-glass-circle'
+                : 'heroicon-o-check-circle')
+            ->modalIconColor(fn (): string => self::foundAddresses() === [] ? 'warning' : 'success')
+            ->modalHeading(fn (): string => self::foundAddresses() === []
+                ? 'Home Assistant tidak ditemukan'
+                : 'Home Assistant ditemukan')
+            ->modalDescription(fn (): ?string => self::foundAddresses() === []
+                ? 'Tidak ada yang membuka port 8123 di jaringan ini. Pastikan Home Assistant sudah terpasang dan berjalan, dan berada di jaringan yang sama dengan mesin ini.'
+                : 'Pilih alamat yang benar, lalu isikan tokennya secara terpisah.')
+            ->modalSubmitActionLabel('Pakai alamat ini')
+            ->modalCancelActionLabel('Tutup')
+            ->schema(fn (): array => self::foundAddresses() === [] ? [] : [
+                Radio::make('base_url')
+                    ->hiddenLabel()
+                    ->options(array_combine(self::foundAddresses(), self::foundAddresses()))
+                    ->required(),
+            ])
+            ->action(fn (array $data, Set $set) => $set('base_url', $data['base_url']));
+    }
+
+    /**
+     * Di-cache sebentar: Filament mengevaluasi closure schema lebih dari sekali
+     * dalam SATU permintaan, dan penyapuan /24 memakan waktu nyata.
+     *
+     * @return array<int, string>
+     */
+    private static function foundAddresses(): array
+    {
+        return Cache::remember(
+            'integrations.home-assistant.found',
+            now()->addMinute(),
+            fn (): array => app(NetworkScanner::class)->findHomeAssistant(),
+        );
+    }
+
     public static function configure(Schema $schema): Schema
     {
         return $schema
@@ -27,6 +88,7 @@ class IntegrationForm
                             ->placeholder(fn (?Integration $record): ?string => $record?->key?->baseUrlPlaceholder())
                             ->url()
                             ->helperText('Alamat Home Assistant dari sudut pandang mesin ini. Kalau HA berjalan di mesin lain, gunakan IP-nya — bukan localhost.')
+                            ->suffixAction(self::findOnNetworkAction())
                             ->columnSpanFull(),
 
                         // Token TIDAK PERNAH dikirim balik ke browser.

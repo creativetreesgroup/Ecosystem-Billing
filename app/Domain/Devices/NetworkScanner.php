@@ -108,6 +108,69 @@ class NetworkScanner
     }
 
     /**
+     * Alamat Home Assistant di jaringan ini, dicari dengan menyapu /24 pada
+     * port 8123.
+     *
+     * SSDP tidak dipakai di sini: HA hanya mengiklankan diri lewat SSDP kalau
+     * integrasi ssdp-nya aktif, sedangkan port 8123 SELALU terbuka begitu HA
+     * berjalan — itu satu-satunya penanda yang bisa diandalkan pada instalasi
+     * yang baru dipasang, yang justru saat pemindaian ini paling dibutuhkan.
+     *
+     * Sambungannya asinkron dan dibuka serentak: satu per satu dengan timeout
+     * yang layak akan memakan menit, bukan detik.
+     *
+     * @return array<int, string> mis. ["http://192.168.100.10:8123"]
+     */
+    public function findHomeAssistant(int $port = 8123): array
+    {
+        $prefix = preg_replace('/\.\d+$/', '', $this->localAddress());
+
+        if ($prefix === null || $prefix === '' || $prefix === '0.0.0') {
+            return [];
+        }
+
+        $pending = [];
+
+        for ($host = 1; $host <= 254; $host++) {
+            $ip = "{$prefix}.{$host}";
+            $socket = @stream_socket_client(
+                "tcp://{$ip}:{$port}",
+                $errorCode,
+                $errorMessage,
+                0.1,
+                STREAM_CLIENT_ASYNC_CONNECT | STREAM_CLIENT_CONNECT,
+            );
+
+            if ($socket !== false) {
+                $pending[$ip] = $socket;
+            }
+        }
+
+        if ($pending === []) {
+            return [];
+        }
+
+        // Satu jeda untuk SEMUA sambungan sekaligus, bukan per alamat.
+        usleep(900_000);
+
+        $found = [];
+
+        foreach ($pending as $ip => $socket) {
+            $read = [];
+            $write = [$socket];
+            $except = [];
+
+            if (@stream_select($read, $write, $except, 0, 0) > 0 && @stream_socket_get_name($socket, true)) {
+                $found[] = "http://{$ip}:{$port}";
+            }
+
+            fclose($socket);
+        }
+
+        return $found;
+    }
+
+    /**
      * Satu balasan per IP — perangkat menjawab berkali-kali untuk tiap layanan
      * yang ia iklankan, dan operator tidak peduli pada layanannya.
      *

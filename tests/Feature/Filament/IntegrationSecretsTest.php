@@ -2,9 +2,11 @@
 
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\IntegrationKey;
+use App\Domain\Devices\NetworkScanner;
 use App\Filament\Resources\Integrations\Pages\EditIntegration;
 use App\Models\Integration;
 use App\Models\User;
+use Filament\Actions\Testing\TestAction;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
@@ -83,4 +85,26 @@ test('the database wins over .env, but .env still covers an empty row', function
     Integration::for(IntegrationKey::HomeAssistant)->update(['is_active' => false]);
 
     expect(app(DeviceManager::class)->homeAssistant()->isConfigured())->toBeTrue();
+});
+
+/**
+ * Alamat HA adalah SATU-SATUNYA dari tiga langkah pemasangan yang bisa
+ * diotomatiskan. Token harus dibuat manusia di dalam HA, dan kode pairing 6
+ * digit harus dibaca dari layar TV — keduanya titik keamanan, bukan kekurangan
+ * yang bisa ditambal.
+ */
+test('the address can be found on the network and filled in', function () {
+    $this->mock(NetworkScanner::class)
+        ->shouldReceive('findHomeAssistant')
+        ->andReturn(['http://192.168.100.10:8123']);
+
+    $integration = Integration::factory()->create(['base_url' => null]);
+    $action = TestAction::make('findHomeAssistant')->schemaComponent('base_url');
+
+    Livewire::actingAs(User::factory()->owner()->create())
+        ->test(EditIntegration::class, ['record' => $integration->getRouteKey()])
+        ->mountAction($action)
+        ->setActionData(['base_url' => 'http://192.168.100.10:8123'])
+        ->callMountedAction()
+        ->assertSchemaStateSet(['base_url' => 'http://192.168.100.10:8123']);
 });
