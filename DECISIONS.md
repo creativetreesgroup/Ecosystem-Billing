@@ -1271,6 +1271,35 @@ Di outlet, nginx (lihat `deploy/`) memang sudah mendengarkan di semua alamat —
 jadi ini murni jebakan saat pengembangan, tapi jebakan yang membuat seluruh
 fitur tampak rusak padahal kodenya benar.
 
+## OTP WhatsApp: WAHA dipilih, dipasang belakangan
+
+Pemilik produk memilih **WAHA** (WhatsApp HTTP API, self-hosted) sebagai
+pengirim OTP, tapi belum sekarang. Karena itu `OtpChannel` sengaja dibiarkan
+sebagai kontrak tipis — satu nomor, satu kode — dan pemilihannya ada di SATU
+baris di AppServiceProvider. Memasang WAHA nanti tidak menyentuh satu pun
+aturan keamanan OTP yang sudah ditest.
+
+Yang menguntungkan: WAHA berjalan di Docker (cocok dengan
+`docker-compose.devices.yml` yang sudah ada) dan tidak menagih per pesan.
+
+**Risiko yang harus tetap diingat saat memasangnya:** WAHA menyambung lewat
+WhatsApp Web, bukan API resmi Meta. Meta rutin memblokir nomor yang memakai
+cara ini. Untuk sistem yang memegang uang, nomor terblokir berarti **tidak ada
+pelanggan yang bisa masuk sama sekali** sampai ada nomor pengganti — jadi:
+
+- Pakai nomor khusus, BUKAN nomor pribadi pemilik outlet.
+- Sediakan jalur masuk cadangan yang tidak lewat WhatsApp.
+
+## PIN tetap ada, bukan digantikan OTP
+
+OTP terlihat lebih modern, tapi ia memindahkan syarat masuk ke INTERNET. Di
+outlet, internet putus berarti tidak ada satu pun pelanggan yang bisa masuk —
+padahal TV, panel, dan database semuanya masih hidup di jaringan lokal.
+
+Karena itu PIN dipertahankan sebagai jalur masuk yang bekerja offline, dan OTP
+menjadi cara mendaftar/memulihkan akun. Keduanya sudah ada dan ditest; yang
+belum hanyalah penyedia pengirimannya.
+
 ## Backlog eksplisit (bukan dikerjakan, dicatat sebagai pengingat)
 
 - Akun pelanggan + saldo/top-up tanpa expiry (V2). **Diminta lagi & ditegaskan
