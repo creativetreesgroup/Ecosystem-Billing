@@ -85,13 +85,19 @@ final class UnitKioskScreen
 
         $image = imagecreatetruecolor($w, $h);
 
-        $card = imagecolorallocate($image, 18, 20, 28);
-        $line = imagecolorallocate($image, 38, 42, 56);
-        $white = imagecolorallocate($image, 246, 247, 250);
-        $muted = imagecolorallocate($image, 132, 140, 160);
-        $accent = imagecolorallocate($image, 56, 189, 248);
-        $panel = imagecolorallocate($image, 232, 240, 255);
-        $module = imagecolorallocate($image, 11, 18, 32);
+        // Palet dari pemilik produk: espresso #261311 sebagai latar, emerald
+        // #1c3934 sebagai kartu. Sisanya diturunkan dari keduanya — krem hangat
+        // untuk panel QR (kontras tertinggi terhadap espresso tanpa terasa
+        // dingin seperti putih murni), dan emas lembut sebagai satu-satunya
+        // aksen. Satu aksen saja: dua warna sorot pada layar yang dilihat
+        // sekilas justru membuat mata bingung harus ke mana dulu.
+        $card = imagecolorallocate($image, 28, 57, 52);      // emerald #1c3934
+        $line = imagecolorallocate($image, 44, 78, 71);
+        $white = imagecolorallocate($image, 244, 239, 231);
+        $muted = imagecolorallocate($image, 147, 168, 162);
+        $accent = imagecolorallocate($image, 216, 166, 87);
+        $panel = imagecolorallocate($image, 244, 238, 228);
+        $module = imagecolorallocate($image, 26, 13, 12);    // espresso pekat
 
         // Kartu utama, dengan bayangan halus supaya terangkat dari latarnya.
         $cardW = 880 * $s;
@@ -99,7 +105,7 @@ final class UnitKioskScreen
         $cardX = (int) (($w - $cardW) / 2);
         $cardY = (int) (($h - $cardH) / 2);
 
-        self::backdrop($image, $w, $h, $cardX, $cardY, $cardW, $cardH);
+        self::backdrop($image, $w, $h);
         self::roundedRect($image, $cardX, $cardY, $cardX + $cardW, $cardY + $cardH, 44 * $s, $card);
         self::roundedOutline($image, $cardX, $cardY, $cardX + $cardW, $cardY + $cardH, 44 * $s, $line);
 
@@ -125,7 +131,6 @@ final class UnitKioskScreen
         $panelX = (int) (($w - $panelSize) / 2);
         $panelY = $cardY + 286 * $s;
 
-        self::softShadow($image, $panelX, $panelY, $panelSize, $panelSize, 56 * $s);
         self::roundedRect($image, $panelX, $panelY, $panelX + $panelSize, $panelY + $panelSize, 56 * $s, $panel);
         self::drawQr($image, $unit, $panelX, $panelY, $panelSize, $module, $panel);
 
@@ -178,7 +183,15 @@ final class UnitKioskScreen
         $cell = (int) ($panelSize / ($modules + $quiet * 2));
         $origin = (int) (($panelSize - $cell * $modules) / 2);
 
-        $dot = max(2, (int) ($cell * 0.86));
+        // Modul digambar sebagai kotak yang sudutnya HANYA dibulatkan bila
+        // tidak ada tetangga di kedua sisi sudut itu. Hasilnya modul yang
+        // bersebelahan menyatu jadi bentuk mengalir, sementara modul menyendiri
+        // menjadi lingkaran penuh.
+        //
+        // Aman dipindai: pusat tiap modul tetap terisi penuh, dan pemindai
+        // membaca posisi modul — bukan bentuknya. Yang tidak boleh diganggu
+        // hanyalah kontras dan zona hening, dan keduanya utuh.
+        $radius = (int) ($cell / 2);
 
         for ($my = 0; $my < $modules; $my++) {
             for ($mx = 0; $mx < $modules; $mx++) {
@@ -186,12 +199,41 @@ final class UnitKioskScreen
                     continue;
                 }
 
-                imagefilledellipse(
-                    $image,
-                    $x + $origin + $mx * $cell + (int) ($cell / 2),
-                    $y + $origin + $my * $cell + (int) ($cell / 2),
-                    $dot, $dot, $module,
-                );
+                $left = $x + $origin + $mx * $cell;
+                $top = $y + $origin + $my * $cell;
+
+                imagefilledrectangle($image, $left, $top, $left + $cell, $top + $cell, $module);
+
+                $atas = self::isDark($matrix, $mx, $my - 1, $modules);
+                $bawah = self::isDark($matrix, $mx, $my + 1, $modules);
+                $kiri = self::isDark($matrix, $mx - 1, $my, $modules);
+                $kanan = self::isDark($matrix, $mx + 1, $my, $modules);
+
+                foreach ([
+                    [! $atas && ! $kiri, $left, $top, 1, 1],
+                    [! $atas && ! $kanan, $left + $cell, $top, -1, 1],
+                    [! $bawah && ! $kiri, $left, $top + $cell, 1, -1],
+                    [! $bawah && ! $kanan, $left + $cell, $top + $cell, -1, -1],
+                ] as [$bulatkan, $cxCorner, $cyCorner, $dx, $dy]) {
+                    if (! $bulatkan) {
+                        continue;
+                    }
+
+                    // Potong sudutnya dengan warna panel, lalu kembalikan
+                    // lengkungannya dengan seperempat lingkaran.
+                    imagefilledrectangle(
+                        $image,
+                        $cxCorner, $cyCorner,
+                        $cxCorner + $radius * $dx, $cyCorner + $radius * $dy,
+                        $panel,
+                    );
+                    imagefilledellipse(
+                        $image,
+                        $cxCorner + $radius * $dx, $cyCorner + $radius * $dy,
+                        $radius * 2, $radius * 2,
+                        $module,
+                    );
+                }
             }
         }
 
@@ -208,6 +250,23 @@ final class UnitKioskScreen
         }
     }
 
+    private static function isDark(mixed $matrix, int $x, int $y, int $modules): bool
+    {
+        if ($x < 0 || $y < 0 || $x >= $modules || $y >= $modules) {
+            return false;
+        }
+
+        // Penanda sudut digambar terpisah, jadi ia tidak boleh dianggap
+        // tetangga — kalau tidak, modul di sebelahnya ikut menyatu ke sana dan
+        // bentuk penandanya rusak. Justru bentuk itu yang pertama dicari
+        // pemindai.
+        if (self::isFinder($x, $y, $modules)) {
+            return false;
+        }
+
+        return $matrix->get($x, $y) === 1;
+    }
+
     private static function isFinder(int $x, int $y, int $modules): bool
     {
         return ($x < 7 && $y < 7)
@@ -216,38 +275,34 @@ final class UnitKioskScreen
     }
 
     /**
-     * Gradasi, cahaya, vignet, DAN bayangan kartu — semuanya digambar pada
-     * 1/16 ukuran lalu diperbesar.
+     * Latar espresso dengan cahaya sangat halus di belakang kartu.
      *
-     * Perbesaran itu yang memberi bayangannya blur: GD tidak punya gaussian
-     * blur yang layak, dan mem-blur kanvas 3840×2160 mahal sekali. Menggambar
-     * bayangan pada 120×67 lalu memperbesarnya 16× menghasilkan tepi yang
-     * benar-benar lembut, gratis, sebagai efek samping penghalusan resample.
+     * Digambar pada 1/8 ukuran lalu diperbesar: gradasi dan cahaya adalah
+     * peralihan warna halus, jadi hasilnya identik di mata sementara waktunya
+     * turun dari sebelas detik ke bawah satu detik. Penghalusan saat
+     * memperbesar sekaligus menghapus sisa gerigi lingkarannya.
      *
-     * Alasan sama untuk gradasi & cahaya: keduanya peralihan warna halus, jadi
-     * hasil akhirnya identik di mata sementara waktunya turun dari 11 detik
-     * ke bawah satu detik.
+     * TANPA bayangan kartu. Sempat ada, dan di layar TV justru terlihat seperti
+     * kotoran di sekeliling kartu, bukan kedalaman — pemilik produk memintanya
+     * dihapus setelah melihatnya langsung. Pemisahan kartu dari latar kini
+     * dikerjakan kontras warna (emerald di atas espresso), yang jauh lebih
+     * bersih dari jarak beberapa meter.
      */
-    private static function backdrop(GdImage $image, int $w, int $h, int $cardX, int $cardY, int $cardW, int $cardH): void
+    private static function backdrop(GdImage $image, int $w, int $h): void
     {
-        // 1/8, bukan 1/16: pada 1/16 sudut membulat bayangan kartu hanya
-        // selebar 2-3 piksel dan setelah diperbesar terbaca sebagai kotak
-        // berjenjang. 1/8 masih sangat murah (240×135) tapi tepinya halus.
         $div = 8;
         $sw = (int) ($w / $div);
         $sh = (int) ($h / $div);
         $small = imagecreatetruecolor($sw, $sh);
 
-        // Gradasi vertikal lembut.
         for ($y = 0; $y < $sh; $y++) {
             $t = $y / $sh;
-            $colour = imagecolorallocate($small, (int) (9 + 7 * $t), (int) (11 + 10 * $t), (int) (19 + 18 * $t));
+            $colour = imagecolorallocate($small, (int) (38 - 6 * $t), (int) (19 - 3 * $t), (int) (17 - 2 * $t));
             imagefilledrectangle($small, 0, $y, $sw, $y, $colour);
         }
 
-        // Cahaya di belakang kartu. Radiusnya sengaja MELEBIHI kanvas supaya
-        // tepi lingkarannya tidak pernah terlihat sebagai garis — versi
-        // sebelumnya berhenti di dalam layar dan terbaca sebagai elips.
+        // Radius melebihi kanvas supaya tepi lingkarannya tidak pernah terlihat
+        // sebagai garis di layar.
         $cx = (int) ($sw / 2);
         $cy = (int) ($sh / 2);
         $radius = (int) ($sw * 0.95);
@@ -255,57 +310,13 @@ final class UnitKioskScreen
         for ($r = $radius; $r > 0; $r--) {
             $t = 1 - ($r / $radius);
             $ease = $t * $t * $t * $t;
-            $colour = imagecolorallocate($small, (int) (9 + 13 * $ease), (int) (11 + 18 * $ease), (int) (19 + 30 * $ease));
+            $colour = imagecolorallocate($small, (int) (36 + 14 * $ease), (int) (19 + 10 * $ease), (int) (17 + 8 * $ease));
             imagefilledellipse($small, $cx, $cy, $r * 2, $r * 2, $colour);
-        }
-
-        // Bayangan kartu, digambar tepat di bawahnya lalu ikut diperbesar.
-        $sx = (int) ($cardX / $div);
-        $sy = (int) ($cardY / $div);
-        $sW = (int) ($cardW / $div);
-        $sH = (int) ($cardH / $div);
-
-        // Banyak lapis dengan beda warna SATU nilai. Sedikit lapis dengan beda
-        // besar terbaca sebagai cincin bertingkat; ini yang membuat bayangannya
-        // benar-benar lembut setelah diperbesar.
-        $layers = 14;
-
-        for ($i = $layers; $i >= 1; $i--) {
-            $t = $i / $layers;
-            $shade = imagecolorallocate(
-                $small,
-                (int) max(0, 9 - 5 * (1 - $t) - 1),
-                (int) max(0, 12 - 6 * (1 - $t) - 1),
-                (int) max(0, 21 - 9 * (1 - $t) - 1),
-            );
-            self::roundedRect($small, $sx - $i, $sy - $i + 4, $sx + $sW + $i, $sy + $sH + $i + 4, (int) (44 / $div) + $i, $shade);
         }
 
         imagecopyresampled($image, $small, 0, 0, 0, 0, $w, $h, $sw, $sh);
 
         unset($small);
-    }
-
-    /**
-     * Bayangan TIPIS di bawah panel QR.
-     *
-     * Warnanya diinterpolasi dari warna kartu ke gelap, bukan hitam beralpha:
-     * imagecolorallocatealpha butuh alpha blending aktif dan tetap menumpuk
-     * jadi tepi pekat kalau lapisannya banyak. Beberapa lapis dengan beda
-     * warna kecil memberi tepi yang jauh lebih halus.
-     */
-    private static function softShadow(GdImage $image, int $x, int $y, int $w, int $h, int $radius, int $layers = 14): void
-    {
-        for ($i = $layers; $i >= 1; $i--) {
-            $t = $i / $layers;
-            $shade = imagecolorallocate(
-                $image,
-                (int) (18 - 8 * (1 - $t)),
-                (int) (20 - 9 * (1 - $t)),
-                (int) (28 - 12 * (1 - $t)),
-            );
-            self::roundedRect($image, $x - $i, $y - $i + 4, $x + $w + $i, $y + $h + $i + 4, $radius + $i, $shade);
-        }
     }
 
     private static function pill(GdImage $image, int $canvasWidth, string $text, string $font, int $size, int $y, int $fill, int $ink, float $tracking = 0): void
