@@ -31,3 +31,4 @@ Thumbs.db
 /docker/mosquitto/log/*
 !/docker/mosquitto/log/.gitkeep
 /docker/mosquitto/config/passwordfile
+storage/app/kiosk-screens/

@@ -3,6 +3,7 @@
 use App\Domain\Kiosk\UnitKioskScreen;
 use App\Models\Unit;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 
 // Root diarahkan ke panel supaya kasir yang mengetik alamat server saja
 // (tanpa /admin) tetap sampai ke tempat yang benar.
@@ -30,7 +31,19 @@ Route::get('/kios/{unit:code}', function (Unit $unit) {
 Route::get('/kios/{unit:code}/qr.jpg', function (Unit $unit) {
     abort_unless($unit->is_active, 404);
 
-    return response(UnitKioskScreen::jpegFor($unit), 200, [
+    // Disimpan sebagai BERKAS, bukan di cache database.
+    //
+    // Menggambarnya makan ~750 ms, jadi menyimpannya jelas perlu. Tapi versi
+    // pertama memakai Cache::remember dan gagal: penyimpan cache di sini adalah
+    // database, dan JPEG 200 KB mentah membuat query-nya meledak. Gambar memang
+    // tempatnya di disk — bukan di kolom teks.
+    $path = 'kiosk-screens/'.$unit->code.'-'.$unit->updated_at?->timestamp.'.jpg';
+
+    if (! Storage::disk('local')->exists($path)) {
+        Storage::disk('local')->put($path, UnitKioskScreen::jpegFor($unit));
+    }
+
+    return response(Storage::disk('local')->get($path), 200, [
         'Content-Type' => 'image/jpeg',
         // Cast mengambil ulang gambarnya tiap kali ditampilkan; tautannya tidak
         // pernah berubah selama kode unitnya tetap.
