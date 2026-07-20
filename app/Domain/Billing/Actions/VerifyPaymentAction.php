@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\DB;
  */
 class VerifyPaymentAction
 {
-    public function __construct(private readonly StartPaidKioskSessionAction $startSession) {}
+    public function __construct(private readonly ApplySettledPaymentAction $applySettled) {}
 
     public function handle(Payment $payment, User $verifiedBy): Payment
     {
@@ -54,9 +54,10 @@ class VerifyPaymentAction
             return $locked->fresh();
         });
 
-        // Kalau ini tagihan kios yang menunggu, sesinya berjalan sekarang —
-        // pelanggan tidak perlu memanggil kasir lagi setelah buktinya diterima.
-        $this->startSession->handle($verified);
+        // Akibatnya dijalankan sekarang: sesi kios berjalan, atau saldo
+        // pelanggan bertambah. Pelanggan tidak perlu memanggil kasir lagi
+        // setelah buktinya diterima.
+        $this->applySettled->handle($verified);
 
         return $verified;
     }

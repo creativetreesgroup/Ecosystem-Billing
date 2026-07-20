@@ -18,7 +18,7 @@ class SettleQrisPaymentAction
 {
     public function __construct(
         private readonly MidtransGateway $gateway,
-        private readonly StartPaidKioskSessionAction $startSession,
+        private readonly ApplySettledPaymentAction $applySettled,
     ) {}
 
     public function handle(Payment $payment): Payment
@@ -61,9 +61,10 @@ class SettleQrisPaymentAction
             return $locked->fresh();
         });
 
-        // Uang lunas = sesinya boleh berjalan. Di luar transaksi supaya
-        // perintah TV dan penjadwalan tidak menahan kunci baris pembayaran.
-        $this->startSession->handle($updated);
+        // Uang lunas = akibatnya dijalankan (sesi kios berjalan, atau saldo
+        // bertambah). Di luar transaksi supaya perintah TV dan penjadwalan
+        // tidak menahan kunci baris pembayaran.
+        $this->applySettled->handle($updated);
 
         return $updated;
     }

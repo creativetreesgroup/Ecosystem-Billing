@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'unit_id', 'opened_by', 'customer_name', 'type', 'package_id',
     'started_at', 'ends_at', 'ended_at', 'status', 'expiry_token',
     'base_amount', 'extra_amount', 'total_amount', 'payment_method',
-    'paid_at', 'voided_by', 'void_reason',
+    'paid_at', 'voided_by', 'void_reason', 'customer_id',
 ])]
 class RentalSession extends Model
 {
@@ -38,6 +38,11 @@ class RentalSession extends Model
             'extra_amount' => 'integer',
             'total_amount' => 'integer',
         ];
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 
     public function payments(): HasMany

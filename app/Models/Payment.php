@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * transfer bisa palsu, salah nominal, atau milik transaksi lain.
  */
 #[Fillable([
-    'rental_session_id', 'method', 'status', 'amount', 'reference',
+    'rental_session_id', 'customer_id', 'method', 'status', 'amount', 'reference',
     'proof_path', 'verified_by', 'verified_at', 'rejection_reason',
 ])]
 class Payment extends Model
@@ -41,6 +41,11 @@ class Payment extends Model
     public function rentalSession(): BelongsTo
     {
         return $this->belongsTo(RentalSession::class);
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 
     public function verifiedBy(): BelongsTo
