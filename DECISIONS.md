@@ -1219,6 +1219,33 @@ WAJIB ditutup dengan `git diff` sebelum apa pun dilanjutkan.
   member hanyalah teks yang menyamar jadi relasi. Saat V2 dikerjakan, field
   ini menjadi Select ber-`getSearchResultsUsing()` + `createOptionForm()`
   supaya tamu tanpa akun tetap bisa dilayani tanpa memaksa buat member.
+- **Kios QR di layar TV — self-service tanpa kasir (V2+, ide pemilik produk).**
+  Alur yang diinginkan: TV mati menampilkan QR → pemain memindai → pilih login
+  atau main sebagai tamu → main (bisa berjam-jam sampai sehari penuh) → selesai
+  → bayar → QR muncul lagi untuk pemain berikutnya.
+
+  **Ini permukaan produk baru, bukan fitur tambahan.** Menampilkan halaman kita
+  sendiri di TV butuh Cast Receiver app terdaftar di Google + hosting HTTPS
+  publik, sementara §14 mengharuskan panel LAN-only tanpa port forwarding.
+  Alternatifnya aplikasi Android TV sendiri (sideload) atau stik HDMI per unit.
+  Ketiganya proyek tersendiri.
+
+  **Hambatan sesungguhnya bukan teknis, melainkan jaminan pembayaran.** Di V1
+  kasir memegang uangnya di depan; kios mandiri menghapus penjaga itu. Kalau
+  pembayaran terjadi di AKHIR dan tidak ada kasir, tidak ada apa pun yang
+  menghalangi orang bermain 8 jam lalu pergi.
+
+  Konsekuensinya: **"tanpa akun" dan "bayar di akhir" TIDAK BISA digabung.**
+  Tamu tanpa akun wajib prabayar (saldo/QRIS di muka); yang bayar di akhir
+  wajib punya akun dengan saldo atau otorisasi pembayaran tersimpan. Tiga
+  penutup risiko yang mungkin: saldo prabayar (paling aman, sudah di backlog),
+  pre-auth Midtrans (butuh gateway yang mendukung hold), atau deposit (butuh
+  kasir juga — sehingga menghapus alasan kios ada).
+
+  Keputusan model pembayaran ini WAJIB diambil sebelum satu baris kode kios
+  ditulis. Membangun kiosnya lebih dulu berarti membangun mesin yang bisa
+  menagih tapi tidak bisa menjamin tertagih.
+
 - Payment gateway (Midtrans) + verifikasi otomatis bukti transfer (V2)
 - Notifikasi WhatsApp (V2, butuh nomor pelanggan yang belum ada sumbernya di V1)
 - Engine diskon/voucher (V2)
