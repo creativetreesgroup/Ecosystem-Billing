@@ -512,10 +512,23 @@ class UnitGridWidget extends TableWidget
         return Action::make('togglePower')
             ->iconButton()
             ->size(Size::Small)
-            ->tooltip(fn (?Unit $record) => $record?->power_state === PowerState::On ? 'Matikan TV' : 'Nyalakan TV')
+            // Ikon & warnanya mengikuti KEADAAN TV, bukan aksinya, dan diambil
+            // dari PowerState — sumber yang sama dengan badge di atas kartu.
+            //
+            // Sebelumnya tombol ini selalu abu dengan ikon daya yang sama,
+            // sehingga tidak memberi tahu apa pun: kasir harus membaca badge di
+            // pojok kartu untuk tahu TV-nya menyala atau tidak, lalu menebak
+            // apa yang akan terjadi kalau ditekan. Kini keduanya sepakat —
+            // badge dan tombol berwarna sama, berikon sama.
+            //
+            // Yang AKAN dilakukan tetap dijelaskan tooltip dan judul modal;
+            // warna tombol tidak dipakai untuk itu, karena tombol merah
+            // bertuliskan "Nyalakan TV" hanya membingungkan.
+            ->tooltip(fn (?Unit $record) => $record?->power_state?->getLabel().' — '
+                .($record?->power_state === PowerState::On ? 'ketuk untuk mematikan' : 'ketuk untuk menyalakan'))
             ->label(fn (?Unit $record) => $record?->power_state === PowerState::On ? 'Matikan TV' : 'Nyalakan TV')
-            ->color('gray')
-            ->icon('heroicon-o-power')
+            ->color(fn (?Unit $record) => $record?->power_state?->getColor() ?? 'gray')
+            ->icon(fn (?Unit $record) => $record?->power_state?->getIcon() ?? Heroicon::OutlinedPower)
             ->requiresConfirmation()
             ->modalWidth(Width::Medium)
             // Teks bawaan ("Apakah Anda yakin ingin melakukan ini?") tidak
