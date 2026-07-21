@@ -6,6 +6,9 @@ use App\Domain\Billing\Events\TransferProofSubmitted;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Domain\Billing\Rupiah;
+use App\Domain\Discounts\DiscountEngine;
+use App\Domain\Discounts\DiscountTarget;
+use App\Domain\Discounts\Exceptions\DiscountNotApplicableException;
 use App\Domain\Sessions\Exceptions\SessionTooShortException;
 use App\Domain\Sessions\SessionType;
 use App\Domain\Wallet\Exceptions\CreditNotAllowedException;
@@ -69,6 +72,9 @@ new class extends Component
 
     public ?int $packageId = null;
 
+    /** Kode voucher yang diketik pelanggan di modal konfirmasi paket. */
+    public string $voucherCode = '';
+
     public ?string $method = null;
 
     public ?int $topUpAmount = null;
@@ -112,6 +118,32 @@ new class extends Component
         // Dari cache (dibuang tepat saat paket berubah): dibaca tiap poll,
         // jadi tidak perlu query DB per ketukan.
         return Package::activeForUnitType($this->unit->unit_type_id);
+    }
+
+    /**
+     * Pratinjau voucher untuk paket yang sedang dikonfirmasi. Read-only: hanya
+     * menampilkan potongan sebelum bayar — penjaga sesungguhnya (kuota di bawah
+     * kunci) tetap di dalam transaksi PlayFromWalletAction saat menebus.
+     *
+     * @return array{ok: bool, discount?: int, final?: int, label?: string, message?: string}|null
+     */
+    #[Computed]
+    public function voucherResult(): ?array
+    {
+        $code = trim($this->voucherCode);
+        $package = $this->packageId ? $this->packages->firstWhere('id', $this->packageId) : null;
+
+        if ($code === '' || ! $package) {
+            return null;
+        }
+
+        try {
+            $result = app(DiscountEngine::class)->preview($code, DiscountTarget::Package, (int) $package->price, $this->customer);
+
+            return ['ok' => true, 'discount' => $result->discount, 'final' => $result->finalAmount, 'label' => $result->label];
+        } catch (DiscountNotApplicableException $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
     }
 
     /** Jumlah halaman grid paket, 4 per halaman. */
@@ -436,6 +468,7 @@ new class extends Component
     {
         $this->confirm = null;
         $this->error = null;
+        $this->voucherCode = '';
     }
 
     public function play(): void
@@ -452,6 +485,7 @@ new class extends Component
                 $this->customer,
                 $this->unit,
                 Package::findOrFail($this->packageId),
+                trim($this->voucherCode) ?: null,
             );
         } catch (InsufficientBalanceException) {
             $this->confirm = null;
@@ -461,6 +495,13 @@ new class extends Component
         } catch (UnitAlreadyActiveException) {
             $this->confirm = null;
             $this->error = 'Unit ini baru saja dipakai orang lain.';
+
+            return;
+        } catch (DiscountNotApplicableException $e) {
+            // Voucher jadi tak berlaku antara pratinjau & tebus (mis. kuota habis
+            // detik itu). Tetap di modal supaya pelanggan bisa hapus kodenya &
+            // lanjut tanpa voucher.
+            $this->error = $e->getMessage();
 
             return;
         } catch (InvalidArgumentException) {
@@ -474,6 +515,7 @@ new class extends Component
         }
 
         $this->confirm = null;
+        $this->voucherCode = '';
         unset($this->activeSession);
     }
 
@@ -1100,6 +1142,9 @@ new class extends Component
          tidak ada yang bisa disentuh di belakangnya secara tak sengaja. --}}
     @if ($confirm === 'play')
         @php($pkg = $this->packages->firstWhere('id', $packageId))
+        @php($vr = $this->voucherResult)
+        @php($vrOk = $vr && ($vr['ok'] ?? false))
+        @php($charge = $vrOk ? $vr['final'] : (int) $pkg?->price)
         <div class="modal-backdrop">
             <div class="modal">
                 <div class="center"><span class="icon-badge">@svg('heroicon-o-play')</span></div>
@@ -1109,9 +1154,24 @@ new class extends Component
                     <div><span>Paket</span><b>{{ $pkg?->name }}</b></div>
                     <div><span>Durasi</span><b>{{ $pkg?->duration_minutes }} menit</b></div>
                     <div><span>Harga</span><b>{{ Rupiah::format((int) $pkg?->price) }}</b></div>
-                    <div class="confirm-total"><span>Sisa saldo nanti</span><b>{{ Rupiah::format($this->customer->balance - (int) $pkg?->price) }}</b></div>
+                    @if ($vrOk)
+                        <div><span>Voucher</span><b style="color:var(--ok)">− {{ Rupiah::format($vr['discount']) }}</b></div>
+                    @endif
+                    <div class="confirm-total"><span>Sisa saldo nanti</span><b>{{ Rupiah::format($this->customer->balance - $charge) }}</b></div>
                 </div>
-                <button type="button" class="btn" wire:click="play" wire:loading.attr="disabled" wire:target="play">
+
+                {{-- Voucher: diketik lalu lepas fokus (blur) untuk pratinjau —
+                     tanpa network per ketukan. Kode dipotong ulang di server saat
+                     menebus (kuota di bawah kunci). --}}
+                <input type="text" wire:model.blur="voucherCode" placeholder="Punya kode voucher? (opsional)"
+                       class="field" style="text-transform:uppercase" autocomplete="off" maxlength="30">
+                @if ($vr && ! $vrOk)
+                    <p class="error">{{ $vr['message'] }}</p>
+                @elseif ($vrOk)
+                    <p class="notice" style="margin-top:.5rem">Voucher "{{ $vr['label'] }}" dipakai.</p>
+                @endif
+
+                <button type="button" class="btn btn-block-gap" wire:click="play" wire:loading.attr="disabled" wire:target="play">
                     <span wire:loading.remove wire:target="play">Ya, mulai main</span>
                     <span wire:loading wire:target="play"><span class="spin"></span> Menyalakan TV&hellip;</span>
                 </button>

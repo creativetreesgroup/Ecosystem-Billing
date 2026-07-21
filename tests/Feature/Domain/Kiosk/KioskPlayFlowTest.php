@@ -10,6 +10,7 @@ use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Domain\Wallet\Actions\PlayFromWalletAction;
 use App\Models\Customer;
+use App\Models\Discount;
 use App\Models\Package;
 use App\Models\Unit;
 use App\Models\User;
@@ -52,6 +53,33 @@ test('choosing a package and pressing play in one go starts the session', functi
 
     expect($this->unit->fresh()->activeSession)->not->toBeNull()
         ->and($this->customer->fresh()->balance)->toBe(40_000);
+});
+
+test('a valid voucher discounts the package at the kiosk', function () {
+    Discount::factory()->percentage(20)->create(['code' => 'HEMAT20']);
+
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->set('voucherCode', 'HEMAT20')
+        ->call('play')
+        ->assertHasNoErrors();
+
+    // 10.000 − 20% = 8.000. Saldo 50k → 42k.
+    expect($this->customer->fresh()->balance)->toBe(42_000);
+});
+
+test('the confirm modal previews a valid voucher and refuses a bad one', function () {
+    Discount::factory()->percentage(20)->create(['code' => 'HEMAT20']);
+
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('playChoice', (string) $this->package->id)
+        ->call('askPlay')
+        ->set('voucherCode', 'HEMAT20')
+        ->assertSee('dipakai')          // pratinjau berhasil
+        ->set('voucherCode', 'NGACO')
+        ->assertSee('tidak ditemukan'); // kode salah ditolak dengan pesan
 });
 
 /**
