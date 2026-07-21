@@ -103,7 +103,8 @@ class PlayFromWalletAction
 
             // Tebus voucher DI DALAM transaksi: mengunci baris diskon &
             // memvalidasi ulang kuota, lalu memakai nominal AUTORITATIF-nya
-            // (bukan pratinjau) untuk menagih. total_amount ikut disesuaikan.
+            // (bukan pratinjau). discount_amount disimpan supaya total tetap
+            // konsisten saat penyelesaian (SessionTotal menguranginya).
             $charge = $package->price;
 
             if ($voucherCode) {
@@ -112,11 +113,15 @@ class PlayFromWalletAction
                     DiscountTarget::Package,
                     $package->price,
                     $customer,
-                    ['customer_id' => $customer->id, 'rental_session_id' => $session->id],
+                    ['rental_session_id' => $session->id],
                 );
 
                 $charge = $package->price - $redemption->amount;
-                $session->update(['total_amount' => $charge]);
+                $session->update([
+                    'discount_amount' => $redemption->amount,
+                    'voucher_code' => $voucherCode,
+                    'total_amount' => $charge,
+                ]);
             }
 
             $this->wallet->spend($customer, $charge, $session);

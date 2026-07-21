@@ -27,7 +27,7 @@ class DiscountEngine
      * Hitung potongan tanpa mencatat apa pun. Melempar bila voucher tak berlaku
      * (pesan sudah ramah-pelanggan).
      */
-    public function preview(string $code, DiscountTarget $target, int $baseAmount, Customer $customer): DiscountResult
+    public function preview(string $code, DiscountTarget $target, int $baseAmount, ?Customer $customer = null): DiscountResult
     {
         $discount = $this->findVoucher($code);
 
@@ -39,9 +39,9 @@ class DiscountEngine
      * potongannya. WAJIB dipanggil di dalam transaksi pemotongan supaya kunci &
      * pencatatan atomik dengan pembayarannya.
      *
-     * @param  array{customer_id?: int, rental_session_id?: int, payment_id?: int}  $link
+     * @param  array{rental_session_id?: int, payment_id?: int}  $link
      */
-    public function redeem(string $code, DiscountTarget $target, int $baseAmount, Customer $customer, array $link): DiscountRedemption
+    public function redeem(string $code, DiscountTarget $target, int $baseAmount, ?Customer $customer, array $link): DiscountRedemption
     {
         $discount = Discount::query()
             ->where('code', Str::upper(trim($code)))
@@ -57,7 +57,7 @@ class DiscountEngine
 
         return DiscountRedemption::create([
             'discount_id' => $discount->id,
-            'customer_id' => $customer->id,
+            'customer_id' => $customer?->id,
             'amount' => $result->discount,
             ...$link,
         ]);
@@ -81,7 +81,7 @@ class DiscountEngine
      * Semua aturan berlaku-tidaknya sebuah diskon, di satu tempat. Melempar pada
      * pelanggaran pertama; kalau lolos, mengembalikan potongan terhitung.
      */
-    private function evaluate(Discount $discount, DiscountTarget $target, int $baseAmount, Customer $customer): DiscountResult
+    private function evaluate(Discount $discount, DiscountTarget $target, int $baseAmount, ?Customer $customer): DiscountResult
     {
         if (! $discount->is_active) {
             throw new DiscountNotApplicableException('Voucher ini sedang tidak aktif.');
@@ -109,7 +109,10 @@ class DiscountEngine
             throw new DiscountNotApplicableException('Kuota voucher ini sudah habis.');
         }
 
-        if ($discount->max_uses_per_customer !== null
+        // Kuota per-pelanggan hanya berlaku bila ada akun. Sesi kasir (nama bebas,
+        // tanpa akun) tak bisa dilacak per orang — kuota totalnya tetap menjaga.
+        if ($customer !== null
+            && $discount->max_uses_per_customer !== null
             && $discount->redemptions()->where('customer_id', $customer->id)->count() >= $discount->max_uses_per_customer) {
             throw new DiscountNotApplicableException('Kamu sudah memakai voucher ini.');
         }

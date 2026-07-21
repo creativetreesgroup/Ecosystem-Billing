@@ -2,6 +2,7 @@
 
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Discounts\Exceptions\DiscountNotApplicableException;
+use App\Domain\Sessions\Actions\CompleteSessionAction;
 use App\Domain\Wallet\Actions\PlayFromWalletAction;
 use App\Domain\Wallet\Wallet;
 use App\Models\Customer;
@@ -37,6 +38,22 @@ test('a valid voucher charges the discounted price and records the redemption', 
     expect($redemption)->not->toBeNull()
         ->and($redemption->amount)->toBe(5_000)
         ->and($redemption->customer_id)->toBe($this->customer->id);
+});
+
+/**
+ * Diskon harus bertahan sampai penyelesaian: dulu SessionTotal (base+extra)
+ * menimpa total_amount balik ke harga penuh saat sesi selesai/kedaluwarsa,
+ * membuang potongannya. discount_amount mencegah itu.
+ */
+test('a package discount survives completion, total stays discounted', function () {
+    Discount::factory()->percentage(20)->create(['code' => 'HEMAT20']);
+    $session = app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit, $this->package, 'HEMAT20');
+
+    $completed = app(CompleteSessionAction::class)->handle($session->fresh());
+
+    expect($completed->total_amount)->toBe(20_000)   // tetap diskon, bukan 25.000
+        ->and($completed->discount_amount)->toBe(5_000)
+        ->and($completed->payments()->sole()->amount)->toBe(20_000);
 });
 
 test('without a voucher the full price is charged', function () {

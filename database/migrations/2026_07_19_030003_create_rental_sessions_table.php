@@ -29,6 +29,12 @@ return new class extends Migration
             $table->uuid('expiry_token');
             $table->unsignedInteger('base_amount')->default(0);
             $table->unsignedInteger('extra_amount')->default(0);
+            // Diskon (V2): potongan yang dikurangkan dari total. Untuk paket
+            // diisi saat mulai (dari voucher); untuk Open Play diisi saat berhenti
+            // (persen atas tagihan akhir). voucher_code menyimpan kode antara mulai
+            // & berhenti pada Open Play. Selalu tercatat di discount_redemptions.
+            $table->unsignedInteger('discount_amount')->default(0);
+            $table->string('voucher_code')->nullable();
             $table->unsignedInteger('total_amount')->nullable();
             // 'wallet' digabung dari add_wallet_to_payment_method_enums (bayar dari saldo).
             $table->enum('payment_method', ['cash', 'qris', 'transfer', 'wallet'])->nullable();

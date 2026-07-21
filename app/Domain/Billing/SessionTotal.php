@@ -23,9 +23,15 @@ final class SessionTotal
     public static function for(RentalSession $session, CarbonInterface $at): int
     {
         if ($session->type === SessionType::Package) {
-            return $session->base_amount + $session->extra_amount;
+            // Paket: diskon voucher (bila ada) sudah dihitung saat mulai dan
+            // disimpan di discount_amount, jadi total penyelesaian tetap konsisten
+            // dengan yang ditagih — tidak menyimpang balik ke harga penuh.
+            return max(0, $session->base_amount + $session->extra_amount - $session->discount_amount);
         }
 
+        // Open Play: tagihan mentah per menit. Diskon (persen atas tagihan akhir)
+        // diterapkan di StopKioskOpenPlayAction saat berhenti, bukan di sini —
+        // supaya perhitungan waktunya tetap murni.
         return OpenPlayBillingCalculator::calculate(
             elapsedSeconds: (int) $session->started_at->diffInSeconds($at),
             hourlyRateRupiah: $session->unit->unitType->hourly_rate,

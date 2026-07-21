@@ -4,6 +4,8 @@ namespace App\Domain\Sessions\Actions;
 
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Devices\DeviceManager;
+use App\Domain\Discounts\DiscountEngine;
+use App\Domain\Discounts\DiscountTarget;
 use App\Domain\Sessions\Events\SessionStarted;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
 use App\Domain\Sessions\Jobs\ExpireRentalSession;
@@ -22,7 +24,10 @@ use InvalidArgumentException;
 
 class StartSessionAction
 {
-    public function __construct(private readonly DeviceManager $devices) {}
+    public function __construct(
+        private readonly DeviceManager $devices,
+        private readonly DiscountEngine $discounts,
+    ) {}
 
     public function handle(
         Unit $unit,
@@ -31,6 +36,7 @@ class StartSessionAction
         ?Package $package = null,
         ?string $customerName = null,
         ?PaymentMethod $paymentMethod = null,
+        ?string $voucherCode = null,
     ): RentalSession {
         if ($type === SessionType::Package && ! $package) {
             throw new InvalidArgumentException('Paket wajib dipilih untuk sesi tipe paket.');
@@ -48,7 +54,7 @@ class StartSessionAction
             throw new InvalidArgumentException("Paket \"{$package->name}\" bukan untuk tipe unit {$unit->code}.");
         }
 
-        $session = DB::transaction(function () use ($unit, $openedBy, $type, $package, $customerName, $paymentMethod) {
+        $session = DB::transaction(function () use ($unit, $openedBy, $type, $package, $customerName, $paymentMethod, $voucherCode) {
             $lockedUnit = Unit::query()->whereKey($unit->id)->lockForUpdate()->firstOrFail();
 
             $alreadyActive = RentalSession::query()
@@ -80,6 +86,25 @@ class StartSessionAction
                 'payment_method' => $type === SessionType::Package ? $paymentMethod : null,
                 'paid_at' => $type === SessionType::Package ? now() : null,
             ]);
+
+            // Voucher paket (opsional, dari kasir). Sesi kasir tak punya akun,
+            // jadi customer null — kuota total tetap dijaga, kuota per-pelanggan
+            // tak berlaku. discount_amount disimpan → SessionTotal menguranginya,
+            // jadi harga yang ditagih & dilaporkan sudah terpotong.
+            if ($voucherCode && $type === SessionType::Package) {
+                $redemption = $this->discounts->redeem(
+                    $voucherCode,
+                    DiscountTarget::Package,
+                    $package->price,
+                    null,
+                    ['rental_session_id' => $session->id],
+                );
+
+                $session->update([
+                    'discount_amount' => $redemption->amount,
+                    'voucher_code' => $voucherCode,
+                ]);
+            }
 
             // powerOn(), bukan attempt(...powerOn): powerOn() ikut
             // menjadwalkan verifikasi. Jawaban sukses dari Home Assistant
