@@ -36,6 +36,16 @@ class User extends Authenticatable implements FilamentUser
         return $this->is_active;
     }
 
+    /**
+     * Operator yang dicatat sebagai pembuka sesi kios swalayan — tak ada kasir
+     * di sana, jadi transaksinya dikaitkan ke owner. Dipakai semua action kios
+     * (PlayFromWallet, StartKioskOpenPlay, checkout) supaya satu definisi saja.
+     */
+    public static function kioskOperator(): self
+    {
+        return self::query()->where('role', UserRole::Owner)->orderBy('id')->firstOrFail();
+    }
+
     public function outlet(): BelongsTo
     {
         return $this->belongsTo(Outlet::class);

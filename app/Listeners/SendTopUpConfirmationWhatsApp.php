@@ -30,13 +30,8 @@ class SendTopUpConfirmationWhatsApp implements ShouldQueue
 
         $this->notifier->notify(
             $customer,
-            "Isi saldo {$this->rupiah($event->amount)} berhasil{$bonusLine}. "
-            ."Saldo kamu sekarang {$this->rupiah($customer->balance)}.",
+            'Isi saldo '.Rupiah::format($event->amount)." berhasil{$bonusLine}. "
+            .'Saldo kamu sekarang '.Rupiah::format($customer->balance).'.',
         );
-    }
-
-    private function rupiah(int $amount): string
-    {
-        return Rupiah::format($amount);
     }
 }

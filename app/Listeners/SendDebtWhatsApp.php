@@ -26,13 +26,8 @@ class SendDebtWhatsApp implements ShouldQueue
 
         $this->notifier->notify(
             $customer,
-            "Halo {$customer->name}, saldo kamu minus {$this->rupiah(abs($customer->balance))} dari Open Play. "
+            "Halo {$customer->name}, saldo kamu minus ".Rupiah::format(abs($customer->balance)).' dari Open Play. '
             .'Yuk lunasi dulu sebelum main lagi — cukup isi saldo di kios atau lewat kasir.',
         );
-    }
-
-    private function rupiah(int $amount): string
-    {
-        return Rupiah::format($amount);
     }
 }

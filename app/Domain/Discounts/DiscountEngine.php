@@ -162,7 +162,6 @@ class DiscountEngine
         $amount = $discount->type->discountOn($baseAmount, $discount->value, self::clampsToBase($target));
 
         return new DiscountResult(
-            discountId: $discount->id,
             label: $discount->name,
             discount: $amount,
             finalAmount: $baseAmount - $amount,

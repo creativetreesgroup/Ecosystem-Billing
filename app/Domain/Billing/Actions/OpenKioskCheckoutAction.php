@@ -13,7 +13,6 @@ use App\Models\Payment;
 use App\Models\RentalSession;
 use App\Models\Unit;
 use App\Models\User;
-use App\Models\UserRole;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -84,7 +83,7 @@ class OpenKioskCheckoutAction
 
             $session = RentalSession::create([
                 'unit_id' => $locked->id,
-                'opened_by' => self::kioskOperator()->id,
+                'opened_by' => User::kioskOperator()->id,
                 'package_id' => $package->id,
                 'customer_name' => $customerName ?: null,
                 'type' => SessionType::Package,
@@ -123,15 +122,5 @@ class OpenKioskCheckoutAction
         $payment->update(['reference' => $created['reference']]);
 
         return ['payment' => $payment->fresh(), 'qr_url' => $created['qr_url']];
-    }
-
-    /**
-     * Sesi dari kios tetap butuh "siapa yang membuka". Dipakai akun owner
-     * pertama sebagai penanggung jawab sistem — bukan membiarkan kolomnya
-     * kosong, karena setiap sesi harus bisa ditelusuri ke seseorang.
-     */
-    private static function kioskOperator(): User
-    {
-        return User::query()->where('role', UserRole::Owner)->orderBy('id')->firstOrFail();
     }
 }

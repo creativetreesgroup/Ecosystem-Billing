@@ -28,13 +28,8 @@ class SendSessionSummaryWhatsApp implements ShouldQueue
 
         $this->notifier->notify(
             $session->customer,
-            "Main di {$session->unit->code} selesai. Total {$this->rupiah($session->total_amount)}, "
-            ."saldo kamu {$this->rupiah($session->customer->balance)}. Terima kasih sudah main di Creative Trees!",
+            "Main di {$session->unit->code} selesai. Total ".Rupiah::format((int) $session->total_amount).', '
+            .'saldo kamu '.Rupiah::format($session->customer->balance).'. Terima kasih sudah main di Creative Trees!',
         );
-    }
-
-    private function rupiah(?int $amount): string
-    {
-        return Rupiah::format((int) $amount);
     }
 }

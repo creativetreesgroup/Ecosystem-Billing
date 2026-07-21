@@ -16,7 +16,6 @@ use App\Models\Customer;
 use App\Models\RentalSession;
 use App\Models\Unit;
 use App\Models\User;
-use App\Models\UserRole;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -68,7 +67,7 @@ class StartKioskOpenPlayAction
 
             return RentalSession::create([
                 'unit_id' => $lockedUnit->id,
-                'opened_by' => self::kioskOperator()->id,
+                'opened_by' => User::kioskOperator()->id,
                 'customer_id' => $customer->id,
                 'customer_name' => $customer->name,
                 'type' => SessionType::Open,
@@ -95,10 +94,5 @@ class StartKioskOpenPlayAction
         SessionStarted::dispatch($session->id, $session->unit_id);
 
         return $session;
-    }
-
-    private static function kioskOperator(): User
-    {
-        return User::query()->where('role', UserRole::Owner)->orderBy('id')->firstOrFail();
     }
 }

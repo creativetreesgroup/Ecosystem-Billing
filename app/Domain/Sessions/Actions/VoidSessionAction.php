@@ -27,7 +27,7 @@ class VoidSessionAction
             throw new InvalidArgumentException('Alasan void wajib diisi.');
         }
 
-        $voided = DB::transaction(function () use ($session, $voidedBy, $reason) {
+        $voided = DB::transaction(function () use ($session, $voidedBy, $reason): RentalSession {
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status === SessionStatus::Voided) {

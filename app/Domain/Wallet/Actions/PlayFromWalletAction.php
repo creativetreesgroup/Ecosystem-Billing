@@ -21,7 +21,6 @@ use App\Models\RentalSession;
 use App\Models\Setting;
 use App\Models\Unit;
 use App\Models\User;
-use App\Models\UserRole;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
@@ -82,7 +81,7 @@ class PlayFromWalletAction
 
             $session = RentalSession::create([
                 'unit_id' => $lockedUnit->id,
-                'opened_by' => self::kioskOperator()->id,
+                'opened_by' => User::kioskOperator()->id,
                 'customer_id' => $customer->id,
                 'package_id' => $package->id,
                 'customer_name' => $customer->name,
@@ -148,10 +147,5 @@ class PlayFromWalletAction
         SessionStarted::dispatch($session->id, $session->unit_id);
 
         return $session;
-    }
-
-    private static function kioskOperator(): User
-    {
-        return User::query()->where('role', UserRole::Owner)->orderBy('id')->firstOrFail();
     }
 }

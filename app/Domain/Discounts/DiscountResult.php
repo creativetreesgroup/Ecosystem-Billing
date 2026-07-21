@@ -3,14 +3,13 @@
 namespace App\Domain\Discounts;
 
 /**
- * Hasil perhitungan diskon untuk sebuah transaksi: berapa dipotong, berapa yang
- * harus dibayar, dan diskon mana yang dipakai. Dipakai pratinjau UI maupun saat
- * menebus.
+ * Hasil perhitungan diskon untuk sebuah transaksi: nama diskonnya, berapa
+ * dipotong, dan berapa yang harus dibayar. Dipakai pratinjau UI (menampilkan
+ * potongan sebelum bayar).
  */
 final readonly class DiscountResult
 {
     public function __construct(
-        public int $discountId,
         public string $label,
         public int $discount,
         public int $finalAmount,

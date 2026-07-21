@@ -11,10 +11,11 @@ Route::redirect('/', '/admin');
 
 // Kios pelanggan: SATU-SATUNYA halaman tanpa login di aplikasi ini.
 //
-// Tidak ada akun karena tidak perlu: pelanggan berdiri di depan unitnya, dan
-// memindai kode fisik di sana sudah membuktikan ia ada di tempat. Yang dijaga
-// bukan identitasnya melainkan uangnya — sesi baru berjalan setelah
-// pembayaran terbukti (OpenKioskCheckoutAction).
+// Pelanggan masuk dengan nomor WA (OTP/PIN), lalu main dari SALDO: pilih paket
+// (PlayFromWalletAction) atau Open Play (StartKioskOpenPlayAction), isi saldo
+// lewat QRIS/transfer (OpenTopUpAction). Yang dijaga bukan sekadar identitasnya
+// melainkan uangnya — saldo dipotong di dalam kunci baris, tak ada main tanpa
+// bayar.
 //
 // Tetap LAN-only: halaman ini tidak boleh dijangkau dari internet, sama
 // seperti seluruh panel (§14, tanpa port forwarding).

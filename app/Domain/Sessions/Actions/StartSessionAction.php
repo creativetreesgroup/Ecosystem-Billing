@@ -54,7 +54,7 @@ class StartSessionAction
             throw new InvalidArgumentException("Paket \"{$package->name}\" bukan untuk tipe unit {$unit->code}.");
         }
 
-        $session = DB::transaction(function () use ($unit, $openedBy, $type, $package, $customerName, $paymentMethod, $voucherCode) {
+        $session = DB::transaction(function () use ($unit, $openedBy, $type, $package, $customerName, $paymentMethod, $voucherCode): RentalSession {
             $lockedUnit = Unit::query()->whereKey($unit->id)->lockForUpdate()->firstOrFail();
 
             $alreadyActive = RentalSession::query()
@@ -109,25 +109,24 @@ class StartSessionAction
                 }
             }
 
-            // powerOn(), bukan attempt(...powerOn): powerOn() ikut
-            // menjadwalkan verifikasi. Jawaban sukses dari Home Assistant
-            // tidak membuktikan TV menyala (lihat VerifyUnitPoweredOnJob).
-            $this->devices->powerOn($lockedUnit);
-
-            if ($endsAt) {
-                $warningMinutes = (int) Setting::get(SettingKey::WarningBeforeMinutes);
-
-                ExpireRentalSession::dispatch($session->id, $session->expiry_token)->delay($endsAt);
-                WarnSessionEnding::dispatch($session->id, $session->expiry_token)
-                    ->delay($endsAt->copy()->subMinutes($warningMinutes));
-            }
-
             return $session;
         });
 
-        // Di luar transaksi: bersihkan QR → TV kembali ke game. Panggilan HTTP
-        // ke Home Assistant tidak boleh menahan kunci baris unit.
+        // Di luar transaksi: perangkat & antrean tidak boleh menahan kunci baris
+        // unit selama panggilan HTTP ke Home Assistant — samakan dengan tiga start
+        // action kios lain. powerOn() (bukan attempt) ikut menjadwalkan verifikasi:
+        // jawaban sukses HA belum membuktikan TV menyala (VerifyUnitPoweredOnJob).
+        $this->devices->powerOn($session->unit);
+        // Bersihkan QR → TV kembali ke game.
         $this->devices->clearScreen($session->unit);
+
+        if ($session->ends_at) {
+            $warningMinutes = (int) Setting::get(SettingKey::WarningBeforeMinutes);
+
+            ExpireRentalSession::dispatch($session->id, $session->expiry_token)->delay($session->ends_at);
+            WarnSessionEnding::dispatch($session->id, $session->expiry_token)
+                ->delay($session->ends_at->copy()->subMinutes($warningMinutes));
+        }
 
         SessionStarted::dispatch($session->id, $session->unit_id);
 

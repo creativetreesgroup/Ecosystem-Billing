@@ -31,7 +31,7 @@ class CompleteSessionAction
 
         $justCompleted = false;
 
-        $completed = DB::transaction(function () use ($session, $paymentMethod, $expectedExpiryToken, &$justCompleted, $verifiedBy) {
+        $completed = DB::transaction(function () use ($session, $paymentMethod, $expectedExpiryToken, &$justCompleted, $verifiedBy): RentalSession {
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== SessionStatus::Active) {

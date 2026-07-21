@@ -20,7 +20,7 @@ class ExtendSessionAction
 {
     public function handle(RentalSession $session, int $addedMinutes, int $amount, User $user): RentalSession
     {
-        $extended = DB::transaction(function () use ($session, $addedMinutes, $amount, $user) {
+        $extended = DB::transaction(function () use ($session, $addedMinutes, $amount, $user): RentalSession {
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== SessionStatus::Active || $locked->type !== SessionType::Package) {
