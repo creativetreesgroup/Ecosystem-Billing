@@ -105,7 +105,7 @@ class DiscountEngine
             ->where('is_active', true)
             ->get()
             ->filter(fn (Discount $promo) => $this->reasonUnapplicable($promo, $target, $baseAmount, $customer) === null)
-            ->sortByDesc(fn (Discount $promo) => $promo->type->discountOn($baseAmount, $promo->value))
+            ->sortByDesc(fn (Discount $promo) => $promo->type->discountOn($baseAmount, $promo->value, self::clampsToBase($target)))
             ->first();
     }
 
@@ -154,7 +154,7 @@ class DiscountEngine
             throw new DiscountNotApplicableException($reason);
         }
 
-        $amount = $discount->type->discountOn($baseAmount, $discount->value);
+        $amount = $discount->type->discountOn($baseAmount, $discount->value, self::clampsToBase($target));
 
         return new DiscountResult(
             discountId: $discount->id,
@@ -162,6 +162,15 @@ class DiscountEngine
             discount: $amount,
             finalAmount: $baseAmount - $amount,
         );
+    }
+
+    /**
+     * Potongan dijepit ke nominal dasar untuk semua target KECUALI isi saldo —
+     * di sana potongannya adalah BONUS saldo yang boleh melebihi nominal top-up.
+     */
+    private static function clampsToBase(DiscountTarget $target): bool
+    {
+        return $target !== DiscountTarget::TopUp;
     }
 
     /**

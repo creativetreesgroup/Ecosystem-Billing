@@ -3,6 +3,7 @@
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Discounts\Exceptions\DiscountNotApplicableException;
 use App\Domain\Sessions\Actions\CompleteSessionAction;
+use App\Domain\Sessions\Actions\VoidSessionAction;
 use App\Domain\Wallet\Actions\PlayFromWalletAction;
 use App\Domain\Wallet\Wallet;
 use App\Models\Customer;
@@ -54,6 +55,25 @@ test('a package discount survives completion, total stays discounted', function 
     expect($completed->total_amount)->toBe(20_000)   // tetap diskon, bukan 25.000
         ->and($completed->discount_amount)->toBe(5_000)
         ->and($completed->payments()->sole()->amount)->toBe(20_000);
+});
+
+/**
+ * Void sesi berdiskon membebaskan kuota voucher: sesi dibatalkan = penebusannya
+ * bukan pemakaian sungguhan. Voucher max_uses=1 yang dipakai di sesi ter-void
+ * harus bisa dipakai lagi.
+ */
+test('voiding a discounted session frees the voucher quota for reuse', function () {
+    $owner = User::factory()->owner()->create();
+    Discount::factory()->percentage(20)->create(['code' => 'HEMAT20', 'max_uses' => 1]);
+
+    $a = app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit, $this->package, 'HEMAT20');
+    app(VoidSessionAction::class)->handle($a, $owner, 'Salah buka');
+
+    // Kuota kembali → voucher bisa dipakai lagi pada sesi baru di unit yang sama.
+    $b = app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit->fresh(), $this->package, 'HEMAT20');
+
+    expect($b->discount_amount)->toBe(5_000)
+        ->and(DiscountRedemption::where('rental_session_id', $a->id)->count())->toBe(0); // yang lama terhapus
 });
 
 test('without a voucher the full price is charged', function () {

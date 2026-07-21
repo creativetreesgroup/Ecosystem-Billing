@@ -18,16 +18,20 @@ enum DiscountType: string implements HasLabel
     }
 
     /**
-     * Menghitung potongan dari nominal dasar. Selalu dijepit ke $base supaya
-     * diskon tidak pernah melampaui harganya (harga akhir tak pernah minus), dan
-     * persen dibulatkan ke bawah (integer penuh — tak ada rupiah pecahan).
+     * Menghitung potongan/bonus dari nominal dasar. Persen dibulatkan ke bawah
+     * (integer penuh — tak ada rupiah pecahan).
+     *
+     * $clampToBase menjepit hasil ke $base: BENAR untuk POTONGAN (diskon tak
+     * boleh melampaui harga → harga akhir tak pernah minus), tapi SALAH untuk
+     * BONUS isi saldo — bonus tetap boleh lebih besar dari nominal top-up
+     * (mis. "isi 20rb, bonus 25rb"). Pemanggil menyetelnya per target.
      */
-    public function discountOn(int $base, int $value): int
+    public function discountOn(int $base, int $value, bool $clampToBase = true): int
     {
         $raw = $this === self::Percentage
             ? intdiv($base * $value, 100)
             : $value;
 
-        return max(0, min($raw, $base));
+        return $clampToBase ? max(0, min($raw, $base)) : max(0, $raw);
     }
 }

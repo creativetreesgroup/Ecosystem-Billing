@@ -7,6 +7,7 @@ use App\Domain\Sessions\Events\SessionEnded;
 use App\Domain\Sessions\Exceptions\IllegalSessionTransitionException;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Wallet\Wallet;
+use App\Models\DiscountRedemption;
 use App\Models\RentalSession;
 use App\Models\User;
 use App\Models\WalletTransaction;
@@ -54,6 +55,12 @@ class VoidSessionAction
                     $this->wallet->refund($locked->customer, $charged, $locked, $voidedBy);
                 }
             }
+
+            // Bebaskan kuota voucher: sesi ini dibatalkan, jadi penebusannya bukan
+            // pemakaian sungguhan. Tanpa ini, voucher max_uses=1 yang dipakai di
+            // sesi yang lalu di-void "habis" selamanya padahal transaksinya batal.
+            // Jejak pembatalannya sendiri tetap tercatat di activity log.
+            DiscountRedemption::query()->where('rental_session_id', $locked->id)->delete();
 
             $locked->update([
                 'status' => SessionStatus::Voided,

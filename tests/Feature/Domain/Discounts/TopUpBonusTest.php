@@ -53,6 +53,20 @@ test('a cash top-up voucher credits the bonus immediately', function () {
     expect($customer->fresh()->balance)->toBe(60_000); // 50k + bonus 10k
 });
 
+/**
+ * Bonus isi saldo BOLEH melebihi nominal top-up (mis. "isi 20rb, bonus 25rb") —
+ * beda dari potongan harga yang dijepit ke harga. Dulu min(raw, base) memangkas
+ * bonusnya ke nominal top-up.
+ */
+test('a fixed top-up bonus can exceed the top-up amount', function () {
+    Discount::factory()->fixed(25_000)->forTargets([DiscountTarget::TopUp])->create(['code' => 'BIGBONUS']);
+    $customer = Customer::factory()->create();
+
+    app(SettleCashTopUpAction::class)->handle($customer, 20_000, User::factory()->create(), 'BIGBONUS');
+
+    expect($customer->fresh()->balance)->toBe(45_000); // 20rb + bonus 25rb (tak dijepit ke 20rb)
+});
+
 test('a bad top-up voucher is rejected at checkout, no payment created', function () {
     $customer = Customer::factory()->create();
 
