@@ -278,38 +278,48 @@ sudo usermod -aG docker $USER && newgrp docker   # agar tak perlu sudo
 sudo systemctl enable --now docker               # auto-start saat PC menyala
 ```
 
-### 4.1 Docker di PC lokal (REKOMENDASI)
+### 4.1 Docker di PC lokal (REKOMENDASI) — satu perintah
+
+**Cara termudah — cukup jalankan installer**, sisanya otomatis (buat `.env`,
+generate semua kunci/password, deteksi IP LAN, build, nyalakan stack + Grafana,
+buat owner):
 
 ```bash
-# 1) Ambil kode
 git clone https://github.com/<org>/creative-trees-billing.git
 cd creative-trees-billing
-
-# 2) Siapkan .env (contoh khusus Docker sudah disediakan)
-cp .env.docker .env
-#    WAJIB diedit: APP_URL & VITE_REVERB_HOST = IP LAN server (mis. 192.168.1.10),
-#    DB_PASSWORD, DB_ROOT_PASSWORD, GRAFANA_PASSWORD, REVERB_APP_*.
-
-# 3) Kunci aplikasi + kredensial Reverb
-docker compose run --rm app php artisan key:generate
-docker compose run --rm app php artisan reverb:generate   # isi REVERB_APP_ID/KEY/SECRET ke .env
-
-# 4) Nyalakan (aplikasi + monitoring). Migrasi & optimasi jalan otomatis di entrypoint.
-docker compose --profile monitoring up -d
-
-# 5) Buat akun owner pertama + outlet default (interaktif). Migrasi sudah jalan
-#    otomatis di entrypoint. JANGAN pakai make:filament-user — `users.role` &
-#    `outlet_id` wajib terisi, jadi command khusus ini yang mengisinya benar.
-docker compose exec app php artisan app:create-owner
-#    Non-interaktif juga bisa:
-#    docker compose exec app php artisan app:create-owner \
-#      --name="Owner" --email="owner@outlet.test" --password="rahasia-kuat"
+./install.sh
 ```
+
+Itu saja. Di akhir installer menampilkan alamat panel + Grafana beserta
+passwordnya. Opsi (semua opsional):
+
+```bash
+SERVER_IP=192.168.1.10 ./install.sh          # paksa IP kalau deteksi keliru
+OWNER_NAME="Owner" OWNER_EMAIL="owner@outlet.test" OWNER_PASSWORD="rahasia-kuat" ./install.sh   # owner tanpa tanya-jawab
+WITH_MONITORING=0 ./install.sh               # tanpa Grafana/Prometheus
+```
+
+Installer aman diulang — kunci yang sudah ada tidak ditimpa.
+
+<details>
+<summary>Apa yang dilakukan installer (kalau ingin manual)</summary>
+
+```bash
+cp .env.docker .env
+#   Isi: APP_URL & VITE_REVERB_HOST = IP LAN server; DB_PASSWORD, DB_ROOT_PASSWORD,
+#   GRAFANA_PASSWORD; REVERB_APP_ID/KEY/SECRET; APP_KEY (base64:...).
+docker compose build
+docker compose --profile monitoring up -d       # migrasi & optimasi jalan otomatis di entrypoint
+docker compose exec app php artisan app:create-owner
+#   JANGAN pakai make:filament-user — users.role & outlet_id wajib terisi, jadi
+#   command inilah yang mengisinya benar (bikin outlet default + owner sekaligus).
+```
+</details>
 
 Selesai. Buka:
 
-- Panel kasir/owner: `http://192.168.1.10` (root diarahkan ke `/admin`)
-- Grafana: `http://192.168.1.10:3000` (login dari `GRAFANA_USER`/`GRAFANA_PASSWORD`)
+- Panel kasir/owner: `http://<IP-server>` (root diarahkan ke `/admin`)
+- Grafana: `http://<IP-server>:3000` (user `admin`, password ditampilkan installer / ada di `.env` `GRAFANA_PASSWORD`)
 
 > **Realtime tidak jalan?** 99% karena `VITE_REVERB_HOST` masih `localhost`.
 > Isi IP LAN server, lalu `docker compose up -d --force-recreate app reverb`.
