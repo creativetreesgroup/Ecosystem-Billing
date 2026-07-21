@@ -41,6 +41,11 @@ class AdminPanelProvider extends PanelProvider
             // didaftarkan di panel — view-nya memanggil filament('filament-apex-charts')
             // dan akan melempar LogicException kalau tidak terdaftar.
             ->plugin(FilamentApexChartsPlugin::make())
+            // Lonceng notifikasi tersimpan (tabel notifications). Push realtime
+            // lewat Reverb (config/filament.php → broadcasting.echo sudah disetel);
+            // polling 30 detik hanya cadangan bila WebSocket putus.
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('30s')
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
