@@ -496,7 +496,12 @@ new class extends Component
 
         $session = $this->activeSession;
 
-        if (! $session) {
+        // Kepemilikan WAJIB dicek di SERVER, bukan cuma menyembunyikan tombol:
+        // method publik Livewire bisa dipanggil langsung dari klien. Tanpa ini,
+        // siapa pun yang membuka /kios/<unit> (bahkan anonim) bisa menghentikan
+        // & menagih sesi Open Play pelanggan lain. customer_id sesi Open Play tak
+        // pernah null, jadi pengunjung anonim (customer null) juga tertolak.
+        if (! $session || $session->customer_id !== $this->customer?->id) {
             return;
         }
 

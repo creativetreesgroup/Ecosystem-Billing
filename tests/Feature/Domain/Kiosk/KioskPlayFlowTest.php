@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Billing\Actions\StartKioskOpenPlayAction;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Domain\Billing\SalesSummary;
@@ -205,6 +206,29 @@ test('Open Play starts and stops from the kiosk, settling from balance', functio
 
     expect($this->unit->fresh()->activeSession)->toBeNull()
         ->and($this->customer->fresh()->balance)->toBe(47_000);
+});
+
+/**
+ * KEAMANAN: stopOpenPlay adalah method publik Livewire — kepemilikan WAJIB dicek
+ * di server, bukan cuma menyembunyikan tombol. Pelanggan lain (atau anonim) yang
+ * membuka /kios/<unit> tak boleh menghentikan & menagih sesi Open Play orang lain.
+ */
+test('a customer cannot stop another customers Open Play session', function () {
+    $this->unit->unitType->update(['hourly_rate' => 6_000]);
+
+    $victimSession = app(StartKioskOpenPlayAction::class)->handle($this->customer->fresh(), $this->unit);
+    $victimSession->update(['started_at' => now()->subMinutes(30)]);
+
+    $attacker = Customer::factory()->create(['balance' => 99_000]);
+
+    Livewire::actingAs($attacker, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->call('stopOpenPlay');
+
+    // Sesi korban TETAP berjalan; tak ada yang ditagih (korban maupun penyerang).
+    expect($this->unit->fresh()->activeSession)->not->toBeNull()
+        ->and($this->customer->fresh()->balance)->toBe(50_000)
+        ->and($attacker->fresh()->balance)->toBe(99_000);
 });
 
 /**

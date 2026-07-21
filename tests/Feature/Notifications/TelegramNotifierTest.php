@@ -4,6 +4,7 @@ use App\Models\User;
 use App\Notifications\BellNotifier;
 use App\Notifications\TelegramNotifier;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Defer\DeferredCallbackCollection;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -38,14 +39,22 @@ test('it is silent when not configured', function () {
 
 /**
  * Satu notifikasi lonceng → SATU pesan Telegram ke chat ops (bukan per-user).
+ * Leg Telegram-nya DITUNDA pasca-respons supaya tak menahan permintaan pelanggan;
+ * terminate() menjalankan callback tertunda itu di dalam tes.
  */
-test('a bell notification reaches Telegram exactly once', function () {
+test('a bell notification reaches Telegram exactly once, after response', function () {
     config(['services.telegram.bot_token' => 'BOT', 'services.telegram.chat_id' => '1']);
     Http::fake(['api.telegram.org/*' => Http::response(['ok' => true])]);
     User::factory()->create(['is_active' => true]);
     User::factory()->create(['is_active' => true]);
 
     BellNotifier::send(Notification::make()->title('Alert')->body('TV mati'));
+
+    // Belum terkirim SEBELUM respons (ditunda) — inilah yang tak menahan pelanggan.
+    Http::assertNothingSent();
+
+    // Jalankan callback tertunda (di produksi: middleware pasca-respons).
+    app(DeferredCallbackCollection::class)->invoke();
 
     Http::assertSentCount(1);
 });

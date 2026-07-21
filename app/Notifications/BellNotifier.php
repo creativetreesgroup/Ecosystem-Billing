@@ -30,8 +30,15 @@ class BellNotifier
                 event(new DatabaseNotificationsSent($user));
             });
 
-        // Sekali ke Telegram ops (bukan per-user): owner/staf menerima notifikasi
-        // yang sama di HP tanpa harus membuka panel. Diam bila belum dikonfigurasi.
-        TelegramNotifier::send((string) $notification->getTitle(), (string) $notification->getBody());
+        // Telegram ke ops DITUNDA sampai setelah respons dikirim: panggilannya ke
+        // internet publik (api.telegram.org) bisa lambat/hang (timeout+retry
+        // sampai ~30s), dan tak boleh menahan permintaan PELANGGAN yang memicunya
+        // (upload bukti transfer, stop Open Play). Lonceng panel tetap instan
+        // (notifyNow di atas); hanya leg Telegram yang ditunda. defer() jalan
+        // pasca-respons tanpa butuh worker.
+        $title = (string) $notification->getTitle();
+        $body = (string) $notification->getBody();
+
+        defer(fn () => TelegramNotifier::send($title, $body));
     }
 }
