@@ -2,6 +2,8 @@
 
 use App\Models\Package;
 use App\Models\UnitType;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -51,4 +53,28 @@ test('moving a package to another unit type busts the old type cache', function 
 
     expect(Package::activeForUnitType($old->id))->toHaveCount(0)
         ->and(Package::activeForUnitType($new->id))->toHaveCount(1);
+});
+
+/**
+ * Yang DICACHE harus array mentah, bukan objek model. Store redis produksi
+ * meng-unserialize dengan `allowed_classes: false` (config `cache.serializable_classes`,
+ * default keamanan Laravel), jadi objek apa pun terbaca sebagai __PHP_Incomplete_Class
+ * dan meledak di return type — inilah 500 di layar kios. Test suite pakai cache
+ * `array` yang tak menserialisasi, jadi invariannya dijaga langsung di sini: isi
+ * cache = array mentah, sementara kontrak keluaran tetap Collection<Package>.
+ */
+test('activeForUnitType caches raw arrays, not Eloquent objects', function () {
+    $type = UnitType::factory()->create();
+    Package::factory()->for($type, 'unitType')->create(['is_active' => true, 'price' => 15000]);
+
+    $result = Package::activeForUnitType($type->id);
+
+    $cached = Cache::get('packages:active:unit_type:'.$type->id);
+    expect($cached)->toBeArray()
+        ->and($cached[0])->toBeArray();
+
+    expect($result)->toBeInstanceOf(Collection::class)
+        ->and($result->first())->toBeInstanceOf(Package::class)
+        ->and($result->first()->price)->toBeInt()
+        ->and($result->first()->is_active)->toBeTrue();
 });

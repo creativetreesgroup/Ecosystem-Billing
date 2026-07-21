@@ -31,15 +31,26 @@ class Package extends Model
      * detik, per HP yang terbuka). Disimpan di cache dan dibuang tepat saat
      * paket berubah, jadi bukan satu query DB tiap ketukan poll.
      *
+     * Yang DICACHE adalah atribut mentah (array scalar), bukan objek model.
+     * `config('cache.serializable_classes') === false` (default keamanan Laravel:
+     * cegah gadget-chain saat APP_KEY bocor) membuat store redis meng-unserialize
+     * dengan `allowed_classes: false` — objek apa pun terbaca sebagai
+     * __PHP_Incomplete_Class dan meledak di return type. Array mentah aman;
+     * hydrate() menyusun ulang Collection<Package> yang identik dengan query asli.
+     *
      * @return Collection<int, Package>
      */
     public static function activeForUnitType(int $unitTypeId): Collection
     {
-        return Cache::rememberForever(self::cacheKey($unitTypeId), fn () => static::query()
+        $rows = Cache::rememberForever(self::cacheKey($unitTypeId), fn (): array => static::query()
             ->where('unit_type_id', $unitTypeId)
             ->where('is_active', true)
             ->orderBy('duration_minutes')
-            ->get());
+            ->get()
+            ->map->getAttributes()
+            ->all());
+
+        return static::hydrate($rows);
     }
 
     /**
