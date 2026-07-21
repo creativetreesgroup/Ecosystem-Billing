@@ -72,6 +72,7 @@ class StartPaidKioskSessionAction
         // baris, dan kegagalannya tidak boleh membatalkan pembayaran yang
         // uangnya sudah masuk (prinsip arsitektur #1).
         $this->devices->powerOn($started->unit);
+        $this->devices->clearScreen($started->unit);
 
         if ($started->ends_at) {
             $warning = (int) Setting::get(SettingKey::WarningBeforeMinutes);

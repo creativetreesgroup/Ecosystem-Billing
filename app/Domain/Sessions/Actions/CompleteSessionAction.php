@@ -86,14 +86,17 @@ class CompleteSessionAction
                 ->event('completed')
                 ->log('Sesi selesai');
 
-            $this->devices->powerOff($locked->unit);
-
             $justCompleted = true;
 
             return $locked->fresh();
         });
 
+        // Perintah TV DI LUAR transaksi: panggilan HTTP ke Home Assistant tidak
+        // boleh menahan kunci baris sesi. Sesi berakhir → TV tampilkan QR lagi
+        // untuk pelanggan berikutnya (bukan dimatikan — kios swalayan butuh QR
+        // terlihat supaya bisa dipindai).
         if ($justCompleted) {
+            $this->devices->showIdleScreen($completed->unit);
             SessionEnded::dispatch($completed->id, $completed->unit_id);
         }
 

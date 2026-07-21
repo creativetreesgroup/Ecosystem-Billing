@@ -97,6 +97,10 @@ class StartSessionAction
             return $session;
         });
 
+        // Di luar transaksi: bersihkan QR → TV kembali ke game. Panggilan HTTP
+        // ke Home Assistant tidak boleh menahan kunci baris unit.
+        $this->devices->clearScreen($session->unit);
+
         SessionStarted::dispatch($session->id, $session->unit_id);
 
         return $session;

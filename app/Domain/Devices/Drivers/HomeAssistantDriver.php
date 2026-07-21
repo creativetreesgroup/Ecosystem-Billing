@@ -59,6 +59,25 @@ class HomeAssistantDriver implements TvControl
         return $this->callService('media_player', 'turn_on', $unit->control_ref);
     }
 
+    /**
+     * Cast layar QR ke TV lewat media_player.play_media. URL-nya memakai
+     * APP_URL (harus IP LAN mesin outlet), sebab yang mengunduh gambar itu
+     * perangkat Cast di TV, bukan server. ?v= memaksa Cast mengambil versi
+     * terbaru, bukan gambar lama yang mungkin masih disimpannya.
+     */
+    public function showIdleScreen(Unit $unit): CommandResult
+    {
+        return $this->callService('media_player', 'play_media', $unit->control_ref, [
+            'media_content_id' => route('kiosk.unit.qr', ['unit' => $unit->code]).'?v='.now()->timestamp,
+            'media_content_type' => 'image/jpeg',
+        ]);
+    }
+
+    public function clearScreen(Unit $unit): CommandResult
+    {
+        return $this->callService('media_player', 'media_stop', $unit->control_ref);
+    }
+
     public function powerOff(Unit $unit): CommandResult
     {
         return $this->callService('media_player', 'turn_off', $unit->control_ref);

@@ -97,12 +97,18 @@ test('broadcasts SessionEnded', function () {
     Event::assertDispatched(SessionEnded::class);
 });
 
-test('manual driver power-off raises a device alert on completion', function () {
+/**
+ * Akhir sesi TIDAK lagi mematikan TV: kios swalayan butuh QR tetap tampil untuk
+ * pelanggan berikutnya, jadi sesi selesai memicu showIdleScreen (cast QR), bukan
+ * powerOff. Unit manual (tanpa kontrol jaringan) karena itu tidak lagi
+ * memunculkan alert "matikan TV manual" — statusnya terlihat langsung di panel.
+ */
+test('completing a session shows the idle QR screen instead of powering off', function () {
     $unit = Unit::factory()->create(['control_driver' => ControlDriver::Manual]);
     $kasir = User::factory()->create();
     $session = app(StartSessionAction::class)->handle($unit, $kasir, SessionType::Open);
 
     app(CompleteSessionAction::class)->handle($session, PaymentMethod::Cash);
 
-    expect(DeviceAlert::where('unit_id', $unit->id)->exists())->toBeTrue();
+    expect(DeviceAlert::where('unit_id', $unit->id)->exists())->toBeFalse();
 });

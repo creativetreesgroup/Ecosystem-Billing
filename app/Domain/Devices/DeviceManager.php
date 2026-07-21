@@ -104,6 +104,18 @@ class DeviceManager
      * merespons, jaringan putus, dll) — jadwalkan verifikasi belakangan
      * lewat VerifyUnitPoweredOffJob alih-alih memblokir alur billing.
      */
+    /** Cast layar QR menganggur ke TV. Best-effort — sesi tetap sah walau gagal. */
+    public function showIdleScreen(Unit $unit): ?CommandResult
+    {
+        return $this->attempt($unit, fn (TvControl $driver) => $driver->showIdleScreen($unit));
+    }
+
+    /** Bersihkan QR agar TV kembali ke game. Best-effort. */
+    public function clearScreen(Unit $unit): ?CommandResult
+    {
+        return $this->attempt($unit, fn (TvControl $driver) => $driver->clearScreen($unit));
+    }
+
     public function powerOff(Unit $unit): ?CommandResult
     {
         $result = $this->attempt($unit, fn (TvControl $driver) => $driver->powerOff($unit));
