@@ -47,34 +47,37 @@ class ApplySettledPaymentAction
             return;
         }
 
-        // Penjaga ganda-kredit: buku besar mencatat payment_id, jadi pembayaran
-        // yang sudah pernah menambah saldo tidak pernah menambahkannya lagi.
-        // Tanpa ini, penjadwal yang menanyakan status tiap menit akan
-        // menggandakan saldo pelanggan setiap putaran.
-        $sudahDikreditkan = $payment->customer
-            ->walletTransactions()
-            ->where('payment_id', $payment->id)
-            ->exists();
-
-        if ($sudahDikreditkan) {
-            return;
-        }
-
         // Voucher isi saldo memberi BONUS saldo, dan HANYA di sini — saat uangnya
         // benar-benar masuk. Bonus + kredit dibungkus satu transaksi supaya tak
         // pernah ada bonus tanpa kredit (atau sebaliknya). Voucher yang jadi tak
         // berlaku sejak checkout (mis. kuota habis) → kredit polos + log, jangan
         // gagalkan penyelesaian: uangnya sudah masuk.
         $bonus = 0;
+        $credited = false;
 
-        DB::transaction(function () use ($payment, &$bonus): void {
+        DB::transaction(function () use ($payment, &$bonus, &$credited): void {
+            // Kunci baris pelanggan, LALU cek "sudah dikreditkan" DI DALAM kunci.
+            // Buku besar mencatat payment_id; dulu ceknya di luar transaksi, jadi
+            // dua penyelesaian bersamaan untuk pembayaran yang sama sama-sama
+            // membaca "belum" lalu mengkredit dua kali. Mengunci + mengecek dalam
+            // satu transaksi membuatnya idempoten sungguhan — aman walau nanti
+            // ditambah webhook atau tombol "cek ulang QRIS".
+            $customer = $payment->customer->newQuery()
+                ->whereKey($payment->customer_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($customer->walletTransactions()->where('payment_id', $payment->id)->exists()) {
+                return;
+            }
+
             // Voucher (disimpan saat checkout) atau promo otomatis bila tak ada.
             try {
                 $bonus = $this->discounts->apply(
                     $payment->voucher_code,
                     DiscountTarget::TopUp,
                     $payment->amount,
-                    $payment->customer,
+                    $customer,
                     ['payment_id' => $payment->id],
                 )?->amount ?? 0;
             } catch (DiscountNotApplicableException $e) {
@@ -84,12 +87,16 @@ class ApplySettledPaymentAction
                 ]);
             }
 
-            $this->wallet->topUp($payment->customer, $payment->amount + $bonus, $payment);
+            $this->wallet->topUp($customer, $payment->amount + $bonus, $payment);
+            $credited = true;
         });
 
         // Di luar transaksi: konfirmasi ke pelanggan (WhatsApp) bahwa saldonya
-        // sudah bertambah. Best-effort — kegagalannya tak boleh membatalkan
-        // saldo yang sudah masuk.
-        WalletToppedUp::dispatch($payment->customer_id, $payment->amount, $bonus);
+        // sudah bertambah. HANYA bila kredit ini yang baru terjadi — bukan
+        // penyelesaian ulang yang no-op. Best-effort — kegagalannya tak boleh
+        // membatalkan saldo yang sudah masuk.
+        if ($credited) {
+            WalletToppedUp::dispatch($payment->customer_id, $payment->amount, $bonus);
+        }
     }
 }

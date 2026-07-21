@@ -76,9 +76,13 @@ return [
     | dinding outlet — kalau tidak, "tanggal 19" di laporan sebenarnya berisi
     | 19 Jul 07:00 s/d 20 Jul 07:00 WIB dan pendapatan bocor ke hari lain.
     |
+    | Fallback SENGAJA Asia/Jakarta, bukan UTC: kalau APP_DISPLAY_TIMEZONE lupa
+    | diisi, laporan pendapatan tak boleh diam-diam bergeser 7 jam dan membuat
+    | dua instalasi melaporkan angka berbeda. Isi env-nya bila outlet di zona lain.
+    |
     */
 
-    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'UTC'),
+    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'Asia/Jakarta'),
 
     /*
     |--------------------------------------------------------------------------

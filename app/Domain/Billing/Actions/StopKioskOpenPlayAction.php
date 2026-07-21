@@ -15,6 +15,7 @@ use App\Domain\Sessions\Exceptions\SessionTooShortException;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Wallet\Events\CustomerWentIntoDebt;
 use App\Domain\Wallet\Wallet;
+use App\Models\Customer;
 use App\Models\RentalSession;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -63,7 +64,19 @@ class StopKioskOpenPlayAction
 
             $justStopped = true;
 
-            $customer = $locked->customer;
+            // Kunci baris pelanggan sebagai baca PERTAMA — lewat kolom
+            // customer_id, BUKAN relasi $locked->customer (yang memicu SELECT
+            // non-kunci lebih dulu). Dua stop Open Play bersamaan untuk pelanggan
+            // yang sama (dua unit) dulu menghitung split saldo/kredit dari saldo
+            // basi lalu spend() menembus lantai 0 → InsufficientBalanceException
+            // tak tertangkap (500 kios / job backstop batal). Selain itu, pola
+            // baca-non-kunci-lalu-FOR-UPDATE pada baris yang sama memicu error
+            // MariaDB 1020 "record has changed" saat ada modifikasi bersamaan.
+            // Mengunci duluan membuat proses lain MENUNGGU kunci lalu membaca
+            // saldo terkini — split dihitung dari saldo yang stabil.
+            $customer = $locked->customer_id !== null
+                ? Customer::query()->whereKey($locked->customer_id)->lockForUpdate()->firstOrFail()
+                : null;
 
             // Voucher Open Play: potongan dihitung dari TAGIHAN AKHIR di sini
             // (bukan saat mulai — tagihannya belum ada). Gagal ditebus (mis.

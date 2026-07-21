@@ -30,7 +30,8 @@ if [ "$1" = "php-fpm" ]; then
     # fakerphp/faker yang di-exclude --no-dev, dan membuat data contoh +
     # user @creativetrees.test yang tak boleh masuk DB outlet sungguhan).
     # Aplikasi berjalan penuh tanpa seed — setting jatuh ke nilai bawaan enum.
-    # Owner dibuat manual: `php artisan make:filament-user`.
+    # Owner + outlet default dibuat manual: `php artisan app:create-owner`
+    # (BUKAN make:filament-user — role & outlet_id wajib terisi).
 
     chown -R www-data:www-data storage bootstrap/cache
     echo "[entrypoint] siap."

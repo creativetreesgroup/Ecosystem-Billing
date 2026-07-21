@@ -103,8 +103,15 @@ class ViewUnit extends ViewRecord
                         ->weight(FontWeight::Bold),
                     TextEntry::make('total_pendapatan')
                         ->label('Total pendapatan')
+                        // Hanya sesi yang pembayarannya BENAR-BENAR lunas — sama
+                        // dengan SalesSummary. Sesi selesai yang QRIS/transfernya
+                        // tak pernah settle bukan pendapatan; menghitungnya
+                        // menggelembungkan kartu ini di atas laporan resmi.
                         ->state(fn (Unit $record): string => Rupiah::format(
-                            (int) $record->rentalSessions()->where('status', SessionStatus::Completed)->sum('total_amount')
+                            (int) $record->rentalSessions()
+                                ->where('status', SessionStatus::Completed)
+                                ->whereHas('settledPayment')
+                                ->sum('total_amount')
                         ))
                         ->size(TextSize::Large)
                         ->weight(FontWeight::Bold)

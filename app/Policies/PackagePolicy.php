@@ -33,6 +33,16 @@ class PackagePolicy
         return $user->role === UserRole::Owner;
     }
 
+    /**
+     * Wajib eksplisit: Filament menganggap metode policy yang TIDAK ADA sebagai
+     * "boleh", jadi tanpa ini DeleteBulkAction di tabel terbuka untuk siapa pun
+     * yang bisa mencapainya, mengabaikan pembatasan delete per-baris.
+     */
+    public function deleteAny(User $user): bool
+    {
+        return $user->role === UserRole::Owner;
+    }
+
     public function restore(User $user, Package $package): bool
     {
         return $user->role === UserRole::Owner;

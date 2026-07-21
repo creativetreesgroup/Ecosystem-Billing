@@ -297,10 +297,13 @@ docker compose run --rm app php artisan reverb:generate   # isi REVERB_APP_ID/KE
 # 4) Nyalakan (aplikasi + monitoring). Migrasi & optimasi jalan otomatis di entrypoint.
 docker compose --profile monitoring up -d
 
-# 5) Buat akun owner pertama (interaktif). Migrasi sudah jalan otomatis di
-#    entrypoint, jadi tinggal buat user lalu konfigurasi outlet/tipe unit/paket/
-#    unit lewat panel.
-docker compose exec app php artisan make:filament-user
+# 5) Buat akun owner pertama + outlet default (interaktif). Migrasi sudah jalan
+#    otomatis di entrypoint. JANGAN pakai make:filament-user — `users.role` &
+#    `outlet_id` wajib terisi, jadi command khusus ini yang mengisinya benar.
+docker compose exec app php artisan app:create-owner
+#    Non-interaktif juga bisa:
+#    docker compose exec app php artisan app:create-owner \
+#      --name="Owner" --email="owner@outlet.test" --password="rahasia-kuat"
 ```
 
 Selesai. Buka:

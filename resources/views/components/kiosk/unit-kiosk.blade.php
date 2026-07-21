@@ -28,6 +28,7 @@ use App\Models\Payment;
 use App\Models\Setting;
 use App\Models\Unit;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -289,6 +290,21 @@ new class extends Component
     public function continueWithPhone(): void
     {
         $this->error = null;
+
+        // Batas per-IP: langkah nomor ini satu-satunya pintu tanpa login. Tanpa
+        // batas ini seorang penyerang di Wi-Fi outlet bisa menyapu daftar nomor
+        // untuk menebak siapa yang member (cabang OTP vs daftar membocorkannya)
+        // dan memicu OTP WhatsApp berbayar ke nomor asli. Batas per-nomor sudah
+        // ada di OtpService; ini menutup penyapuan LINTAS-nomor dari satu sumber.
+        $ipKey = 'kiosk-phone:'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($ipKey, maxAttempts: 10)) {
+            $this->error = 'Terlalu banyak percobaan. Coba lagi sebentar.';
+
+            return;
+        }
+
+        RateLimiter::hit($ipKey, decaySeconds: 60);
 
         $phone = CustomerPhone::normalise($this->phone);
 

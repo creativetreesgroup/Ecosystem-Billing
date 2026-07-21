@@ -63,6 +63,12 @@ class EnforceOpenPlayCeiling extends Command
                 $this->line("Auto-stop {$session->unit->code}: tagihan mencapai plafon kredit.");
             } catch (SessionTooShortException) {
                 // Terlalu dini untuk dihentikan — biarkan, putaran berikutnya.
+            } catch (\Throwable $e) {
+                // Satu sesi bermasalah tidak boleh membatalkan seluruh batch:
+                // sesi lain yang juga menembus plafon tetap harus dihentikan
+                // menit ini. Dilaporkan (fail-loud) lalu batch dilanjutkan.
+                report($e);
+                $this->error("Gagal auto-stop {$session->unit->code}: {$e->getMessage()}");
             }
         }
 
