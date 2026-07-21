@@ -31,9 +31,6 @@ x-app: &app-base
       condition: service_healthy
     redis:
       condition: service_healthy
-  volumes:
-    - app-storage:/var/www/html/storage/app
-    - app-logs:/var/www/html/storage/logs
   networks: [ctb]
 
 services:
@@ -41,6 +38,14 @@ services:
     <<: *app-base
     environment:
       <<: *app-env
+    # Volume persisten HANYA di container app: ia satu-satunya yang menulis
+    # unggahan/QR ke storage/app dan yang butuh lognya awet. Kalau volume yang
+    # sama dipasang di app+reverb+worker+scheduler sekaligus, keempatnya BALAPAN
+    # menyemai volume-baru dari image saat start pertama → "mkdir private: file
+    # exists" dan stack gagal naik. Worker/reverb/scheduler menulis ke DB & stdout.
+    volumes:
+      - app-storage:/var/www/html/storage/app
+      - app-logs:/var/www/html/storage/logs
     healthcheck:
       test: ["CMD", "fpm-healthcheck"]
       interval: 15s
