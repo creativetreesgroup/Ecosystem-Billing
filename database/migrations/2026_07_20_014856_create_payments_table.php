@@ -16,9 +16,14 @@ return new class extends Migration
             // transfer ditolak lalu diunggah ulang. Menimpa barisnya akan
             // menghapus jejak percobaan yang gagal — justru jejak itu yang
             // dicari saat ada sengketa nominal.
-            $table->foreignId('rental_session_id')->constrained()->cascadeOnDelete();
+            // nullable digabung dari let_payments_top_up_a_wallet: isi saldo tidak
+            // terikat sesi mana pun.
+            $table->foreignId('rental_session_id')->nullable()->constrained()->cascadeOnDelete();
+            // digabung dari let_payments_top_up_a_wallet: pembayaran isi saldo.
+            $table->foreignId('customer_id')->nullable()->constrained()->nullOnDelete();
 
-            $table->enum('method', ['cash', 'qris', 'transfer']);
+            // 'wallet' digabung dari add_wallet_to_payment_method_enums.
+            $table->enum('method', ['cash', 'qris', 'transfer', 'wallet']);
             $table->enum('status', ['pending', 'awaiting_verification', 'paid', 'rejected', 'expired']);
             $table->unsignedInteger('amount');
 

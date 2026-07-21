@@ -24,6 +24,10 @@ return new class extends Migration
             // Tidak pernah dikirim balik ke browser (lihat IntegrationForm).
             $table->text('token')->nullable();
 
+            // digabung dari add_options_to_integrations: konfigurasi tambahan per
+            // integrasi (mis. mode sandbox/produksi).
+            $table->json('options')->nullable();
+
             $table->boolean('is_active')->default(true);
             $table->timestamp('verified_at')->nullable();
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Customers\CardNumber;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -17,6 +18,10 @@ return new class extends Migration
             // sambil berdiri di depan TV.
             $table->string('phone')->unique();
 
+            // digabung dari add_card_number_to_customers: ID kartu 16 karakter
+            // yang dibacakan pelanggan ke kasir; dibuat sekali oleh model.
+            $table->char('card_number', CardNumber::LENGTH)->unique();
+
             // PIN, bukan kata sandi: diketik di HP sambil berdiri, kadang oleh
             // anak-anak. Disimpan ter-hash — PIN pendek justru LEBIH berbahaya
             // bila bocor mentah, karena orang memakai PIN yang sama di tempat lain.
@@ -29,7 +34,10 @@ return new class extends Migration
             // baris. Yang menjamin adalah: saldo HANYA berubah di dalam
             // transaksi yang mengunci barisnya, dan setiap perubahan menulis
             // satu baris buku besar. Ada test yang membuktikan keduanya cocok.
-            $table->unsignedInteger('balance')->default(0);
+            // BERTANDA (boleh minus): digabung dari make_customer_balance_signed.
+            // Open Play boleh menjadikan saldo minus sampai plafon; penjaganya
+            // di Wallet (spend menolak minus, hanya spendOnCredit yang boleh).
+            $table->integer('balance')->default(0);
 
             $table->boolean('is_active')->default(true);
             $table->timestamp('last_seen_at')->nullable();

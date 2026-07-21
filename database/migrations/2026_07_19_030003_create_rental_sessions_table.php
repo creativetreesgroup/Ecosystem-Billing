@@ -12,6 +12,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('unit_id')->constrained()->restrictOnDelete();
             $table->foreignId('opened_by')->constrained('users')->restrictOnDelete();
+            // digabung dari link_sessions_to_customers: sesi kios milik pelanggan.
+            $table->foreignId('customer_id')->nullable()->constrained()->nullOnDelete();
             $table->string('customer_name')->nullable();
             $table->enum('type', ['open', 'package']);
             $table->foreignId('package_id')->nullable()->constrained()->nullOnDelete();
@@ -28,7 +30,8 @@ return new class extends Migration
             $table->unsignedInteger('base_amount')->default(0);
             $table->unsignedInteger('extra_amount')->default(0);
             $table->unsignedInteger('total_amount')->nullable();
-            $table->enum('payment_method', ['cash', 'qris', 'transfer'])->nullable();
+            // 'wallet' digabung dari add_wallet_to_payment_method_enums (bayar dari saldo).
+            $table->enum('payment_method', ['cash', 'qris', 'transfer', 'wallet'])->nullable();
             $table->timestamp('paid_at')->nullable();
             $table->foreignId('voided_by')->nullable()->constrained('users')->nullOnDelete();
             $table->text('void_reason')->nullable();
