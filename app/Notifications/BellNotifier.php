@@ -29,5 +29,9 @@ class BellNotifier
                 $user->notifyNow($notification->toDatabase());
                 event(new DatabaseNotificationsSent($user));
             });
+
+        // Sekali ke Telegram ops (bukan per-user): owner/staf menerima notifikasi
+        // yang sama di HP tanpa harus membuka panel. Diam bila belum dikonfigurasi.
+        TelegramNotifier::send((string) $notification->getTitle(), (string) $notification->getBody());
     }
 }
