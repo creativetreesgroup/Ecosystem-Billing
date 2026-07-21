@@ -4,6 +4,8 @@ namespace App\Domain\Wallet\Actions;
 
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Devices\DeviceManager;
+use App\Domain\Discounts\DiscountEngine;
+use App\Domain\Discounts\DiscountTarget;
 use App\Domain\Sessions\Events\SessionStarted;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
 use App\Domain\Sessions\Jobs\ExpireRentalSession;
@@ -40,9 +42,10 @@ class PlayFromWalletAction
     public function __construct(
         private readonly Wallet $wallet,
         private readonly DeviceManager $devices,
+        private readonly DiscountEngine $discounts,
     ) {}
 
-    public function handle(Customer $customer, Unit $unit, Package $package): RentalSession
+    public function handle(Customer $customer, Unit $unit, Package $package, ?string $voucherCode = null): RentalSession
     {
         if ($package->unit_type_id !== $unit->unit_type_id) {
             throw new InvalidArgumentException('Paket ini tidak berlaku untuk tipe unit tersebut.');
@@ -52,13 +55,19 @@ class PlayFromWalletAction
             throw new InvalidArgumentException('Unit, paket, atau akun sedang tidak tersedia.');
         }
 
-        // Diperiksa lebih dulu supaya pelanggan mendapat pesan yang masuk akal.
-        // Penjaga sesungguhnya tetap di Wallet, di dalam kunci baris.
-        if (! $customer->canAfford($package->price)) {
+        // Pratinjau diskon lebih dulu supaya pesan afford & galat voucher ramah.
+        // Penjaga sesungguhnya (kuota di bawah kunci, penjaga saldo) tetap di
+        // dalam transaksi. Voucher tak valid melempar DiscountNotApplicable di
+        // sini — dipanggil menangkapnya untuk pesan ke pelanggan.
+        $charge = $voucherCode
+            ? $this->discounts->preview($voucherCode, DiscountTarget::Package, $package->price, $customer)->finalAmount
+            : $package->price;
+
+        if (! $customer->canAfford($charge)) {
             throw new InsufficientBalanceException('Saldo belum cukup untuk paket ini.');
         }
 
-        $session = DB::transaction(function () use ($customer, $unit, $package): RentalSession {
+        $session = DB::transaction(function () use ($customer, $unit, $package, $voucherCode): RentalSession {
             $lockedUnit = Unit::query()->whereKey($unit->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedUnit->activeSession()->exists()) {
@@ -78,6 +87,9 @@ class PlayFromWalletAction
                 'started_at' => $startedAt,
                 'ends_at' => $startedAt->copy()->addMinutes($package->duration_minutes),
                 'expiry_token' => (string) Str::uuid(),
+                // base_amount = harga list; total_amount = setelah diskon. Selisih
+                // keduanya adalah potongan, dan barisnya tercatat di
+                // discount_redemptions untuk rekonsiliasi.
                 'base_amount' => $package->price,
                 'extra_amount' => 0,
                 'total_amount' => $package->price,
@@ -89,7 +101,25 @@ class PlayFromWalletAction
                 'paid_at' => $startedAt,
             ]);
 
-            $this->wallet->spend($customer, $package->price, $session);
+            // Tebus voucher DI DALAM transaksi: mengunci baris diskon &
+            // memvalidasi ulang kuota, lalu memakai nominal AUTORITATIF-nya
+            // (bukan pratinjau) untuk menagih. total_amount ikut disesuaikan.
+            $charge = $package->price;
+
+            if ($voucherCode) {
+                $redemption = $this->discounts->redeem(
+                    $voucherCode,
+                    DiscountTarget::Package,
+                    $package->price,
+                    $customer,
+                    ['customer_id' => $customer->id, 'rental_session_id' => $session->id],
+                );
+
+                $charge = $package->price - $redemption->amount;
+                $session->update(['total_amount' => $charge]);
+            }
+
+            $this->wallet->spend($customer, $charge, $session);
 
             return $session;
         });

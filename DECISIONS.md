@@ -1371,3 +1371,33 @@ Batas yang sengaja dijaga:
   worker `php artisan queue:work redis` berjalan. Keduanya jadi item operasional
   serah terima (§14), bukan sesuatu yang bisa dijamin kode.
 - Tidak menyentuh jalur uang: hanya memindahkan tempat cache & job disimpan.
+
+## V2-A — Engine Diskon & Voucher (Fase A: fondasi + paket)
+
+Satu konsep `Discount` menopang DUA sumber (kode voucher & promo otomatis) supaya
+penerapannya seragam di semua titik harga. Model & keputusan:
+
+- **Tabel:** `discounts` (type percentage/fixed, source voucher/promo, value, targets
+  JSON, jendela berlaku, kuota total & per-pelanggan, min_amount, is_active) +
+  `discount_redemptions` (jejak pemakaian = sumber kebenaran kuota). TIDAK ada
+  perubahan tabel V1: diskon terbaca dari selisih `base_amount` (harga list) dan
+  `total_amount` (setelah diskon) plus baris redemption.
+- **Kuota atomik:** penebusan mengunci baris diskon (`lockForUpdate`) lalu menghitung
+  redemption DI DALAM kunci — meniru pola Wallet, supaya dua penebusan bersamaan tak
+  bisa menembus batas.
+- **preview() vs redeem():** preview read-only untuk menampilkan potongan sebelum
+  bayar; redeem dipanggil DI DALAM transaksi pemotongan (kunci + catat). Nominal
+  autoritatif diambil dari redeem, bukan preview.
+
+Cakupan per permukaan (keputusan profesional, bukan seragam paksa):
+- **Paket:** potong harga (percentage & fixed). ✅ diimplementasi Fase A.
+- **Isi saldo:** BONUS saldo (bayar penuh, saldo bertambah lebih) — bukan potong
+  nominal charge, supaya tak menabrak jumlah charge QRIS/Midtrans. (Fase B)
+- **Open Play:** HANYA percentage atas tagihan akhir — potongan tetap pada tagihan
+  per-menit yang berubah tidak masuk akal. (Fase B)
+
+Manajemen: resource Filament `Diskon` owner-only, tanpa hapus (memegang jejak
+redemption) — nonaktifkan lewat kolom Aktif, konsisten dengan Member & Unit.
+
+Urutan: Fase A (fondasi + voucher paket) SELESAI. Fase B (top-up bonus + Open Play %).
+Fase C (promo otomatis di fondasi yang sama). Tanpa dependensi baru.
