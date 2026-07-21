@@ -161,8 +161,10 @@ test('the payment mix chart emits one stacked series per payment method', functi
 
     $mix = (new SalesSummary('2026-05-01', '2026-05-03'))->dailyPaymentSeries();
 
+    // Saldo ikut sebagai deret keempat: sesi bayar-saldo tetap pendapatan,
+    // hanya dipisahkan dari uang laci yang baru.
     expect($mix['labels'])->toBe(['01 May', '02 May', '03 May'])
-        ->and(array_column($mix['series'], 'name'))->toBe(['Tunai', 'QRIS', 'Transfer']);
+        ->and(array_column($mix['series'], 'name'))->toBe(['Tunai', 'QRIS', 'Transfer', 'Saldo']);
 
     // Tiap deret harus sepanjang labels, kalau tidak batangnya bergeser hari.
     foreach ($mix['series'] as $serie) {

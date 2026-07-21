@@ -253,7 +253,8 @@ class UnitGridWidget extends TableWidget
                         ->visible(fn (Get $get) => $get('type') === 'package'),
                     ToggleButtons::make('payment_method')
                         ->hiddenLabel()
-                        ->options(PaymentMethod::class)
+                        ->options(PaymentMethod::cashierOptions())
+                        ->colors(PaymentMethod::cashierColors())
                         ->inline()
                         ->grouped()
                         ->extraAttributes(self::SEGMENTED_CONTROL)
@@ -401,7 +402,8 @@ class UnitGridWidget extends TableWidget
                     // ikut rata tengah tanpa perlu CSS tambahan.
                     ToggleButtons::make('payment_method')
                         ->hiddenLabel()
-                        ->options(PaymentMethod::class)
+                        ->options(PaymentMethod::cashierOptions())
+                        ->colors(PaymentMethod::cashierColors())
                         ->inline()
                         ->grouped()
                         ->extraAttributes(self::SEGMENTED_CONTROL)
