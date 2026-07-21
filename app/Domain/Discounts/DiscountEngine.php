@@ -63,6 +63,52 @@ class DiscountEngine
         ]);
     }
 
+    /**
+     * Voucher bila kodenya diberi, selain itu PROMO OTOMATIS terbaik untuk
+     * transaksi ini — satu pintu yang dipakai semua titik pemotongan supaya
+     * voucher & promo berlaku seragam. Mengembalikan redemption (potongannya di
+     * ->amount) atau null bila tak ada diskon.
+     *
+     * Voucher tak valid MELEMPAR (pelanggan mengetik kode, berhak tahu sebabnya).
+     * Promo yang gagal ditebus (mis. kuotanya habis persis di antara pemilihan &
+     * penguncian) DILEWATI diam-diam — promo tak boleh menggagalkan pembelian.
+     *
+     * @param  array{rental_session_id?: int, payment_id?: int}  $link
+     */
+    public function apply(?string $voucherCode, DiscountTarget $target, int $baseAmount, ?Customer $customer, array $link): ?DiscountRedemption
+    {
+        if ($voucherCode !== null && trim($voucherCode) !== '') {
+            return $this->redeem($voucherCode, $target, $baseAmount, $customer, $link);
+        }
+
+        $promo = $this->bestPromo($target, $baseAmount, $customer);
+
+        if ($promo === null) {
+            return null;
+        }
+
+        try {
+            return $this->lockAndRecord($promo->id, $target, $baseAmount, $customer, $link);
+        } catch (DiscountNotApplicableException) {
+            return null;
+        }
+    }
+
+    /**
+     * Promo otomatis dengan potongan TERBESAR yang berlaku untuk transaksi ini,
+     * atau null. Read-only — dipakai apply() maupun pratinjau UI.
+     */
+    public function bestPromo(DiscountTarget $target, int $baseAmount, ?Customer $customer): ?Discount
+    {
+        return Discount::query()
+            ->where('source', DiscountSource::Promo)
+            ->where('is_active', true)
+            ->get()
+            ->filter(fn (Discount $promo) => $this->reasonUnapplicable($promo, $target, $baseAmount, $customer) === null)
+            ->sortByDesc(fn (Discount $promo) => $promo->type->discountOn($baseAmount, $promo->value))
+            ->first();
+    }
+
     private function findVoucher(string $code): Discount
     {
         $discount = Discount::query()
@@ -78,43 +124,34 @@ class DiscountEngine
     }
 
     /**
-     * Semua aturan berlaku-tidaknya sebuah diskon, di satu tempat. Melempar pada
-     * pelanggaran pertama; kalau lolos, mengembalikan potongan terhitung.
+     * Kunci baris diskonnya, validasi ulang (kuota di bawah kunci), catat
+     * pemakaian. Dipakai penebusan voucher maupun promo otomatis.
+     *
+     * @param  array{rental_session_id?: int, payment_id?: int}  $link
+     */
+    private function lockAndRecord(int $discountId, DiscountTarget $target, int $baseAmount, ?Customer $customer, array $link): DiscountRedemption
+    {
+        $discount = Discount::query()->whereKey($discountId)->lockForUpdate()->firstOrFail();
+
+        $result = $this->evaluate($discount, $target, $baseAmount, $customer);
+
+        return DiscountRedemption::create([
+            'discount_id' => $discount->id,
+            'customer_id' => $customer?->id,
+            'amount' => $result->discount,
+            ...$link,
+        ]);
+    }
+
+    /**
+     * Validasi + hitung. Melempar dengan pesan ramah bila tak berlaku.
      */
     private function evaluate(Discount $discount, DiscountTarget $target, int $baseAmount, ?Customer $customer): DiscountResult
     {
-        if (! $discount->is_active) {
-            throw new DiscountNotApplicableException('Voucher ini sedang tidak aktif.');
-        }
+        $reason = $this->reasonUnapplicable($discount, $target, $baseAmount, $customer);
 
-        if (! $discount->appliesTo($target)) {
-            throw new DiscountNotApplicableException('Voucher ini tidak berlaku untuk '.$target->getLabel().'.');
-        }
-
-        $now = now();
-
-        if ($discount->starts_at !== null && $now->lt($discount->starts_at)) {
-            throw new DiscountNotApplicableException('Voucher ini belum berlaku.');
-        }
-
-        if ($discount->ends_at !== null && $now->gt($discount->ends_at)) {
-            throw new DiscountNotApplicableException('Voucher ini sudah kedaluwarsa.');
-        }
-
-        if ($baseAmount < $discount->min_amount) {
-            throw new DiscountNotApplicableException('Voucher ini berlaku mulai '.Rupiah::format($discount->min_amount).'.');
-        }
-
-        if ($discount->max_uses !== null && $discount->redemptions()->count() >= $discount->max_uses) {
-            throw new DiscountNotApplicableException('Kuota voucher ini sudah habis.');
-        }
-
-        // Kuota per-pelanggan hanya berlaku bila ada akun. Sesi kasir (nama bebas,
-        // tanpa akun) tak bisa dilacak per orang — kuota totalnya tetap menjaga.
-        if ($customer !== null
-            && $discount->max_uses_per_customer !== null
-            && $discount->redemptions()->where('customer_id', $customer->id)->count() >= $discount->max_uses_per_customer) {
-            throw new DiscountNotApplicableException('Kamu sudah memakai voucher ini.');
+        if ($reason !== null) {
+            throw new DiscountNotApplicableException($reason);
         }
 
         $amount = $discount->type->discountOn($baseAmount, $discount->value);
@@ -125,5 +162,49 @@ class DiscountEngine
             discount: $amount,
             finalAmount: $baseAmount - $amount,
         );
+    }
+
+    /**
+     * Semua aturan berlaku-tidaknya di SATU tempat. Mengembalikan alasan penolakan
+     * (pesan ramah) atau null bila lolos — dipakai evaluate() (melempar) maupun
+     * bestPromo() (menyaring diam-diam).
+     */
+    private function reasonUnapplicable(Discount $discount, DiscountTarget $target, int $baseAmount, ?Customer $customer): ?string
+    {
+        if (! $discount->is_active) {
+            return 'Voucher ini sedang tidak aktif.';
+        }
+
+        if (! $discount->appliesTo($target)) {
+            return 'Voucher ini tidak berlaku untuk '.$target->getLabel().'.';
+        }
+
+        $now = now();
+
+        if ($discount->starts_at !== null && $now->lt($discount->starts_at)) {
+            return 'Voucher ini belum berlaku.';
+        }
+
+        if ($discount->ends_at !== null && $now->gt($discount->ends_at)) {
+            return 'Voucher ini sudah kedaluwarsa.';
+        }
+
+        if ($baseAmount < $discount->min_amount) {
+            return 'Voucher ini berlaku mulai '.Rupiah::format($discount->min_amount).'.';
+        }
+
+        if ($discount->max_uses !== null && $discount->redemptions()->count() >= $discount->max_uses) {
+            return 'Kuota voucher ini sudah habis.';
+        }
+
+        // Kuota per-pelanggan hanya berlaku bila ada akun. Sesi kasir (nama bebas,
+        // tanpa akun) tak bisa dilacak per orang — kuota totalnya tetap menjaga.
+        if ($customer !== null
+            && $discount->max_uses_per_customer !== null
+            && $discount->redemptions()->where('customer_id', $customer->id)->count() >= $discount->max_uses_per_customer) {
+            return 'Kamu sudah memakai voucher ini.';
+        }
+
+        return null;
     }
 }

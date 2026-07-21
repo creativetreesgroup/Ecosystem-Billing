@@ -53,12 +53,11 @@ class SettleCashTopUpAction
                 'voucher_code' => $voucherCode,
             ]);
 
-            // Voucher tunai memberi bonus saldo langsung (uangnya sudah di tangan
-            // kasir). Kode salah menggagalkan transaksi (rollback) — kasir bisa
-            // ulangi tanpa voucher; tidak ada saldo terkredit setengah jalan.
-            $bonus = $voucherCode
-                ? $this->discounts->redeem($voucherCode, DiscountTarget::TopUp, $amount, $customer, ['payment_id' => $payment->id])->amount
-                : 0;
+            // Voucher tunai (bonus saldo langsung; uangnya sudah di tangan kasir)
+            // atau promo otomatis bila tak ada kode. Kode salah menggagalkan
+            // transaksi (rollback) — kasir bisa ulangi tanpa voucher; tidak ada
+            // saldo terkredit setengah jalan.
+            $bonus = $this->discounts->apply($voucherCode, DiscountTarget::TopUp, $amount, $customer, ['payment_id' => $payment->id])?->amount ?? 0;
 
             return $this->wallet->topUp($customer, $amount + $bonus, $payment, $cashier);
         });

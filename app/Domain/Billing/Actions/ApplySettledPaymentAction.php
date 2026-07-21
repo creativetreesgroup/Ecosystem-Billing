@@ -67,21 +67,20 @@ class ApplySettledPaymentAction
         $bonus = 0;
 
         DB::transaction(function () use ($payment, &$bonus): void {
-            if ($payment->voucher_code) {
-                try {
-                    $bonus = $this->discounts->redeem(
-                        $payment->voucher_code,
-                        DiscountTarget::TopUp,
-                        $payment->amount,
-                        $payment->customer,
-                        ['payment_id' => $payment->id],
-                    )->amount;
-                } catch (DiscountNotApplicableException $e) {
-                    Log::warning('Voucher isi saldo gagal ditebus saat lunas; dikredit tanpa bonus.', [
-                        'payment_id' => $payment->id,
-                        'reason' => $e->getMessage(),
-                    ]);
-                }
+            // Voucher (disimpan saat checkout) atau promo otomatis bila tak ada.
+            try {
+                $bonus = $this->discounts->apply(
+                    $payment->voucher_code,
+                    DiscountTarget::TopUp,
+                    $payment->amount,
+                    $payment->customer,
+                    ['payment_id' => $payment->id],
+                )?->amount ?? 0;
+            } catch (DiscountNotApplicableException $e) {
+                Log::warning('Voucher isi saldo gagal ditebus saat lunas; dikredit tanpa bonus.', [
+                    'payment_id' => $payment->id,
+                    'reason' => $e->getMessage(),
+                ]);
             }
 
             $this->wallet->topUp($payment->customer, $payment->amount + $bonus, $payment);

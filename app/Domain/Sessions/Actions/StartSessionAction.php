@@ -87,12 +87,13 @@ class StartSessionAction
                 'paid_at' => $type === SessionType::Package ? now() : null,
             ]);
 
-            // Voucher paket (opsional, dari kasir). Sesi kasir tak punya akun,
-            // jadi customer null — kuota total tetap dijaga, kuota per-pelanggan
-            // tak berlaku. discount_amount disimpan → SessionTotal menguranginya,
-            // jadi harga yang ditagih & dilaporkan sudah terpotong.
-            if ($voucherCode && $type === SessionType::Package) {
-                $redemption = $this->discounts->redeem(
+            // Diskon paket (voucher dari kasir, atau promo otomatis bila tak ada
+            // kode). Sesi kasir tak punya akun, jadi customer null — kuota total
+            // tetap dijaga, kuota per-pelanggan tak berlaku. discount_amount
+            // disimpan → SessionTotal menguranginya, jadi harga yang ditagih &
+            // dilaporkan sudah terpotong.
+            if ($type === SessionType::Package) {
+                $redemption = $this->discounts->apply(
                     $voucherCode,
                     DiscountTarget::Package,
                     $package->price,
@@ -100,10 +101,12 @@ class StartSessionAction
                     ['rental_session_id' => $session->id],
                 );
 
-                $session->update([
-                    'discount_amount' => $redemption->amount,
-                    'voucher_code' => $voucherCode,
-                ]);
+                if ($redemption) {
+                    $session->update([
+                        'discount_amount' => $redemption->amount,
+                        'voucher_code' => $voucherCode,
+                    ]);
+                }
             }
 
             // powerOn(), bukan attempt(...powerOn): powerOn() ikut

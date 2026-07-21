@@ -69,23 +69,22 @@ class StopKioskOpenPlayAction
             // (bukan saat mulai — tagihannya belum ada). Gagal ditebus (mis.
             // kuota habis saat main) → tagih penuh + log; JANGAN gagalkan
             // penghentiannya, pelanggan sudah terlanjur main.
+            // Voucher (disimpan saat mulai) atau promo otomatis bila tak ada kode.
             $discount = 0;
 
-            if ($locked->voucher_code) {
-                try {
-                    $discount = $this->discounts->redeem(
-                        $locked->voucher_code,
-                        DiscountTarget::OpenPlay,
-                        $rawBill,
-                        $customer,
-                        ['rental_session_id' => $locked->id],
-                    )->amount;
-                } catch (DiscountNotApplicableException $e) {
-                    Log::warning('Voucher Open Play gagal ditebus saat berhenti; ditagih penuh.', [
-                        'session_id' => $locked->id,
-                        'reason' => $e->getMessage(),
-                    ]);
-                }
+            try {
+                $discount = $this->discounts->apply(
+                    $locked->voucher_code,
+                    DiscountTarget::OpenPlay,
+                    $rawBill,
+                    $customer,
+                    ['rental_session_id' => $locked->id],
+                )?->amount ?? 0;
+            } catch (DiscountNotApplicableException $e) {
+                Log::warning('Voucher Open Play gagal ditebus saat berhenti; ditagih penuh.', [
+                    'session_id' => $locked->id,
+                    'reason' => $e->getMessage(),
+                ]);
             }
 
             $bill = max(0, $rawBill - $discount);

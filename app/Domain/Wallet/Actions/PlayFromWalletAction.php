@@ -55,15 +55,19 @@ class PlayFromWalletAction
             throw new InvalidArgumentException('Unit, paket, atau akun sedang tidak tersedia.');
         }
 
-        // Pratinjau diskon lebih dulu supaya pesan afford & galat voucher ramah.
-        // Penjaga sesungguhnya (kuota di bawah kunci, penjaga saldo) tetap di
-        // dalam transaksi. Voucher tak valid melempar DiscountNotApplicable di
-        // sini — dipanggil menangkapnya untuk pesan ke pelanggan.
-        $charge = $voucherCode
-            ? $this->discounts->preview($voucherCode, DiscountTarget::Package, $package->price, $customer)->finalAmount
-            : $package->price;
+        // Pratinjau diskon lebih dulu supaya pesan afford & galat voucher ramah:
+        // voucher bila diberi (melempar bila salah), selain itu promo otomatis
+        // terbaik. Penjaga sesungguhnya (kuota di bawah kunci, penjaga saldo)
+        // tetap di dalam transaksi.
+        $previewDiscount = 0;
 
-        if (! $customer->canAfford($charge)) {
+        if ($voucherCode) {
+            $previewDiscount = $this->discounts->preview($voucherCode, DiscountTarget::Package, $package->price, $customer)->discount;
+        } elseif ($promo = $this->discounts->bestPromo(DiscountTarget::Package, $package->price, $customer)) {
+            $previewDiscount = $promo->type->discountOn($package->price, $promo->value);
+        }
+
+        if (! $customer->canAfford($package->price - $previewDiscount)) {
             throw new InsufficientBalanceException('Saldo belum cukup untuk paket ini.');
         }
 
@@ -101,21 +105,21 @@ class PlayFromWalletAction
                 'paid_at' => $startedAt,
             ]);
 
-            // Tebus voucher DI DALAM transaksi: mengunci baris diskon &
-            // memvalidasi ulang kuota, lalu memakai nominal AUTORITATIF-nya
-            // (bukan pratinjau). discount_amount disimpan supaya total tetap
+            // Terapkan diskon DI DALAM transaksi (voucher atau promo otomatis):
+            // mengunci baris diskon & memvalidasi ulang kuota, lalu memakai
+            // nominal AUTORITATIF-nya. discount_amount disimpan supaya total tetap
             // konsisten saat penyelesaian (SessionTotal menguranginya).
             $charge = $package->price;
 
-            if ($voucherCode) {
-                $redemption = $this->discounts->redeem(
-                    $voucherCode,
-                    DiscountTarget::Package,
-                    $package->price,
-                    $customer,
-                    ['rental_session_id' => $session->id],
-                );
+            $redemption = $this->discounts->apply(
+                $voucherCode,
+                DiscountTarget::Package,
+                $package->price,
+                $customer,
+                ['rental_session_id' => $session->id],
+            );
 
+            if ($redemption) {
                 $charge = $package->price - $redemption->amount;
                 $session->update([
                     'discount_amount' => $redemption->amount,

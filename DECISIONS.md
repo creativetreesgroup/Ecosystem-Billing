@@ -1401,3 +1401,24 @@ redemption) — nonaktifkan lewat kolom Aktif, konsisten dengan Member & Unit.
 
 Urutan: Fase A (fondasi + voucher paket) SELESAI. Fase B (top-up bonus + Open Play %).
 Fase C (promo otomatis di fondasi yang sama). Tanpa dependensi baru.
+
+## V2-A lanjut — voucher semua permukaan + promo otomatis (Fase A+/B/C)
+
+- **Diskon bertahan sampai penyelesaian:** `discount_amount` (+ `voucher_code`)
+  disimpan di `rental_sessions`; `SessionTotal` menguranginya untuk paket — dulu
+  total menyimpang balik ke harga penuh saat sesi selesai (bug laten jalur saldo).
+- **Cakupan penuh:** paket (saldo & kasir), Open Play (potongan atas tagihan akhir
+  saat berhenti), isi saldo (BONUS saldo — dikreditkan saat lunas, bukan pending;
+  `voucher_code` di `payments`). Sesi kasir tanpa akun → engine terima `?Customer`
+  (kuota total tetap, per-pelanggan dilewati).
+- **Promo otomatis (Fase C):** satu metode `apply(voucher?, target, base, customer,
+  link)` dipakai SEMUA permukaan — voucher bila diberi (melempar bila salah), selain
+  itu `bestPromo()` (promo aktif dengan potongan terbesar) yang gagal ditebus
+  dilewati diam-diam (promo tak boleh menggagalkan pembelian). Aturan berlaku-tidak
+  dipusatkan di `reasonUnapplicable()` (dipakai evaluate yang melempar & bestPromo
+  yang menyaring).
+- **Refinement:** Open Play menerima voucher/promo persen MAUPUN tetap (potongan
+  tetap atas tagihan akhir yang dihitung sekali tetap masuk akal & dijepit ke
+  tagihan), bukan persen-saja seperti rencana awal — lebih sederhana & fleksibel.
+
+Semua di fondasi Discount yang sama, tanpa dependensi baru. 425 tes.
