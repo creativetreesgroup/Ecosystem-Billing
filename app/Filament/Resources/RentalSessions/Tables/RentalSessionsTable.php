@@ -66,6 +66,16 @@ class RentalSessionsTable
                     ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->placeholder('-')
                     ->sortable(),
+                // Potongan yang diberikan (kode voucher / promo). Hanya tampil
+                // bila ada, supaya baris tanpa diskon tetap ringkas.
+                TextColumn::make('discount_amount')
+                    ->label('Diskon')
+                    ->visibleFrom('lg')
+                    ->color('success')
+                    ->formatStateUsing(fn (?int $state, RentalSession $record) => $state > 0
+                        ? '− '.Rupiah::format($state).($record->voucher_code ? ' ('.$record->voucher_code.')' : '')
+                        : null)
+                    ->placeholder('-'),
                 TextColumn::make('payment_method')
                     ->visibleFrom('md')
                     ->label('Pembayaran')

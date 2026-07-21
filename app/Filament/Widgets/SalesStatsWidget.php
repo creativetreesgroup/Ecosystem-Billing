@@ -54,7 +54,9 @@ class SalesStatsWidget extends StatsOverviewWidget
                 ->color('info'),
 
             Stat::make('Total pendapatan', Rupiah::format($summary->totalRevenue()))
-                ->description('Rata-rata '.Rupiah::format($summary->averageRevenue()).' per sesi')
+                ->description($summary->totalDiscount() > 0
+                    ? 'Diskon diberikan '.Rupiah::format($summary->totalDiscount())
+                    : 'Rata-rata '.Rupiah::format($summary->averageRevenue()).' per sesi')
                 ->descriptionIcon(Heroicon::OutlinedBanknotes)
                 ->chart($this->sparkline($series['revenue']))
                 ->color('success'),
