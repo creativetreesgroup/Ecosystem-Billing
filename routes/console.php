@@ -22,3 +22,9 @@ Schedule::command('units:poll-state')->everyThirtySeconds()->withoutOverlapping(
 // yang masih menggantung (biasanya nol), jadi gateway tidak terbebani.
 // withoutOverlapping() mencegah penumpukan bila satu poll melambat.
 Schedule::command('payments:poll-qris')->everyTenSeconds()->withoutOverlapping();
+
+// Jaring pengaman: pembayaran yang lunas tapi efeknya (kredit saldo / mulai
+// sesi) gagal jalan setelah commit — poll tak akan mencobanya lagi karena
+// statusnya bukan Pending. Tiap 5 menit sudah rapat; kejadiannya langka dan
+// penerapannya idempoten. Lihat ReconcileSettledPayments.
+Schedule::command('payments:reconcile-settled')->everyFiveMinutes()->withoutOverlapping();
