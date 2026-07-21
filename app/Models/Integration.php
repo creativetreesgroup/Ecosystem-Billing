@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
  * Kredensial integrasi perangkat, disimpan terenkripsi.
  *
  * §14 semula mensyaratkan HA_TOKEN hanya lewat .env. Batasan itu dilonggarkan
- * dengan sengaja dan tercatat di DECISIONS.md, karena bentuk .env memaksa
+ * dengan sengaja dan tercatat di README.md, karena bentuk .env memaksa
  * pemilik outlet masuk ke server dan menyunting berkas hanya untuk menempelkan
  * satu token — sesuatu yang pasti dikerjakan dengan cara paling tidak aman
  * (dikirim lewat chat, diketik orang lain) atau tidak dikerjakan sama sekali.

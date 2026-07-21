@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 /**
  * Menampilkan semua TV yang ditemukan Home Assistant di jaringan yang sama,
  * dan menandai mana yang belum dipasangkan ke unit mana pun. Dipakai saat
- * memasang unit baru — lihat RUNBOOK.md "Prosedur menambah unit baru".
+ * memasang unit baru — lihat README.md "Prosedur menambah unit baru".
  */
 class DiscoverUnits extends Command
 {

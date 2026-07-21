@@ -13,7 +13,7 @@ use Illuminate\Foundation\Queue\Queueable;
  * Fencing via expiry_token: kalau sesi sudah diperpanjang atau diselesaikan
  * manual sebelum job ini jalan, token sudah berubah/status sudah bukan active,
  * dan job ini no-op — cara termurah "membatalkan" delayed job yang sudah
- * di-dispatch tanpa perlu ID job untuk di-cancel (lihat DECISIONS.md).
+ * di-dispatch tanpa perlu ID job untuk di-cancel (lihat README.md).
  */
 class ExpireRentalSession implements ShouldQueue
 {

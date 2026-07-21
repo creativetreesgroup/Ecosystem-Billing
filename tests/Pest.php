@@ -22,7 +22,7 @@ pest()->extend(TestCase::class)
 // Concurrency tests spawn real child processes that need to see committed
 // data across separate DB connections — RefreshDatabase's rolled-back
 // transaction is invisible to them, so this suite truncates real tables
-// instead (see DECISIONS.md).
+// instead (see README.md).
 pest()->extend(TestCase::class)
     ->use(DatabaseTruncation::class)
     ->in('Concurrency');

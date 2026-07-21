@@ -6,7 +6,7 @@ set -euo pipefail
 # hardcoded, supaya satu script ini valid di semua environment.
 #
 # APP_DIR/BACKUP_DIR bisa dioverride lewat environment variable (dipakai
-# untuk uji restore lokal — lihat RUNBOOK.md); default cocok untuk instalasi
+# untuk uji restore lokal — lihat README.md); default cocok untuk instalasi
 # production standar di deploy/nginx & deploy/supervisor.
 
 APP_DIR="${APP_DIR:-/var/www/creative-trees-billing}"

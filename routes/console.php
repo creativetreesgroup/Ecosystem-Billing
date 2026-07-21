@@ -11,7 +11,7 @@ Schedule::command('sessions:sweep-expired')->everyMinute()->withoutOverlapping()
 Schedule::command('openplay:enforce-ceiling')->everyMinute()->withoutOverlapping();
 
 // §7 minta polling tiap 45s; Laravel tidak punya preset itu (hanya kelipatan
-// 5/10/15/20/30s), jadi dibulatkan ke preset terdekat — lihat DECISIONS.md.
+// 5/10/15/20/30s), jadi dibulatkan ke preset terdekat — lihat README.md.
 Schedule::command('units:poll-state')->everyThirtySeconds()->withoutOverlapping()->runInBackground();
 
 // Pengganti webhook Midtrans. Mesin outlet tidak boleh menerima koneksi dari

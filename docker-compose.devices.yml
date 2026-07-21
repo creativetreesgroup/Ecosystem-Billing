@@ -1,5 +1,5 @@
 # Infrastruktur yang dipakai bersama aplikasi — TERPISAH dari deploy aplikasi
-# itu sendiri, yang memakai nginx + supervisor (lihat deploy/ dan RUNBOOK.md).
+# itu sendiri, yang memakai nginx + supervisor (lihat deploy/ dan README.md).
 # Satu jalur deploy, bukan dua: menaruh aplikasi di sini juga akan membuat
 # deploy/supervisor menjadi salinan kedua yang diam-diam menyimpang.
 #
@@ -13,7 +13,7 @@
 #
 # Jadi mesin di outlet BUKAN pilihan, melainkan syarat. VPS baru masuk akal
 # untuk panel & database, dengan agen terpisah di outlet yang memegang
-# perangkat — arsitektur yang belum ada di V1 (lihat DECISIONS.md).
+# perangkat — arsitektur yang belum ada di V1 (lihat README.md).
 #
 #   docker compose -f docker-compose.devices.yml up -d
 #
