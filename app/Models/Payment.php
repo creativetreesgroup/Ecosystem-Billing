@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Billing\Events\KioskPaymentSettled;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use Database\Factories\PaymentFactory;
@@ -36,6 +37,21 @@ class Payment extends Model
             'amount' => 'integer',
             'verified_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Saat status BERALIH menjadi lunas (bukan tiap penyimpanan), dorong HP
+     * pelanggannya lewat kanal privat supaya layar kiosnya maju seketika. Satu
+     * tempat menangkap SEMUA jalur penyelesaian (QRIS gateway maupun ACC kasir),
+     * tepat sekali per peralihan — bukan tiap polling penjadwal.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (self $payment): void {
+            if ($payment->wasChanged('status') && $payment->isSettled() && $payment->customer_id !== null) {
+                KioskPaymentSettled::dispatch($payment->customer_id);
+            }
+        });
     }
 
     public function rentalSession(): BelongsTo
