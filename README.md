@@ -297,8 +297,9 @@ docker compose run --rm app php artisan reverb:generate   # isi REVERB_APP_ID/KE
 # 4) Nyalakan (aplikasi + monitoring). Migrasi & optimasi jalan otomatis di entrypoint.
 docker compose --profile monitoring up -d
 
-# 5) Seed data awal (HANYA pertama kali) + buat akun owner
-docker compose exec app php artisan db:seed --force
+# 5) Buat akun owner pertama (interaktif). Migrasi sudah jalan otomatis di
+#    entrypoint, jadi tinggal buat user lalu konfigurasi outlet/tipe unit/paket/
+#    unit lewat panel.
 docker compose exec app php artisan make:filament-user
 ```
 
@@ -309,6 +310,11 @@ Selesai. Buka:
 
 > **Realtime tidak jalan?** 99% karena `VITE_REVERB_HOST` masih `localhost`.
 > Isi IP LAN server, lalu `docker compose up -d --force-recreate app reverb`.
+
+> **Jangan jalankan `php artisan db:seed` di produksi.** Seeder proyek ini
+> dev-only: butuh dependensi dev (dikeluarkan dari image produksi) dan membuat
+> data contoh (user `@creativetrees.test` + sesi historis palsu) yang tak boleh
+> masuk database outlet sungguhan. Aplikasi berjalan penuh tanpa seed.
 
 ### 4.2 Docker di VPS dari GitHub
 
