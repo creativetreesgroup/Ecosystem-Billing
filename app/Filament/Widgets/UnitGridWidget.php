@@ -14,6 +14,7 @@ use App\Domain\Sessions\Actions\CompleteSessionAction;
 use App\Domain\Sessions\Actions\ExtendSessionAction;
 use App\Domain\Sessions\Actions\StartSessionAction;
 use App\Domain\Sessions\SessionType;
+use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
 use App\Models\Package;
 use App\Models\RentalSession;
 use App\Models\Unit;
@@ -331,12 +332,24 @@ class UnitGridWidget extends TableWidget
                     ->required(),
             ])
             ->action(function (array $data, Unit $record): void {
-                app(ExtendSessionAction::class)->handle(
-                    $record->activeSession,
-                    addedMinutes: (int) $data['added_minutes'],
-                    amount: (int) $data['amount'],
-                    user: Auth::user(),
-                );
+                try {
+                    app(ExtendSessionAction::class)->handle(
+                        $record->activeSession,
+                        addedMinutes: (int) $data['added_minutes'],
+                        amount: (int) $data['amount'],
+                        user: Auth::user(),
+                    );
+                } catch (InsufficientBalanceException) {
+                    // Sesi bayar-saldo yang saldonya tak cukup untuk perpanjangan:
+                    // seluruhnya batal (atomik). Kasir minta pelanggan isi saldo dulu.
+                    Notification::make()
+                        ->title('Saldo pelanggan tidak cukup')
+                        ->body('Perpanjangan dibatalkan — minta pelanggan isi saldo dulu.')
+                        ->warning()
+                        ->send();
+
+                    return;
+                }
 
                 Notification::make()->title('Sesi diperpanjang')->success()->send();
             });

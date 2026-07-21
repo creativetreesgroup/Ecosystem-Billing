@@ -2,6 +2,7 @@
 
 namespace App\Domain\Sessions\Actions;
 
+use App\Domain\Billing\PaymentMethod;
 use App\Domain\Sessions\Events\SessionExtended;
 use App\Domain\Sessions\Exceptions\IllegalSessionTransitionException;
 use App\Domain\Sessions\Jobs\ExpireRentalSession;
@@ -9,6 +10,7 @@ use App\Domain\Sessions\Jobs\WarnSessionEnding;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Domain\Settings\SettingKey;
+use App\Domain\Wallet\Wallet;
 use App\Models\RentalSession;
 use App\Models\SessionExtension;
 use App\Models\Setting;
@@ -18,6 +20,8 @@ use Illuminate\Support\Str;
 
 class ExtendSessionAction
 {
+    public function __construct(private readonly Wallet $wallet) {}
+
     public function handle(RentalSession $session, int $addedMinutes, int $amount, User $user): RentalSession
     {
         $extended = DB::transaction(function () use ($session, $addedMinutes, $amount, $user): RentalSession {
@@ -37,6 +41,16 @@ class ExtendSessionAction
                 'extra_amount' => $locked->extra_amount + $amount,
                 'expiry_token' => $newToken,
             ]);
+
+            // Sesi yang dibayar dari SALDO: perpanjangan juga ditarik dari saldo,
+            // di dalam transaksi yang sama. Tanpa ini, extra_amount menaikkan
+            // pendapatan Wallet tapi dompet tak pernah terpotong — pendapatan
+            // hantu + pelanggan main gratis. spend() menegakkan batas saldo
+            // (melempar bila tak cukup → seluruh perpanjangan rollback, atomik).
+            // Sesi non-dompet (tunai/QRIS) uangnya diterima kasir di meja.
+            if ($amount > 0 && $locked->payment_method === PaymentMethod::Wallet && $locked->customer) {
+                $this->wallet->spend($locked->customer, $amount, $locked);
+            }
 
             SessionExtension::create([
                 'rental_session_id' => $locked->id,
