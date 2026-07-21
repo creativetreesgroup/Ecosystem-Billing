@@ -133,7 +133,11 @@ new class extends Component
     #[Computed]
     public function payment(): ?Payment
     {
-        return $this->paymentId ? Payment::find($this->paymentId) : null;
+        // WAJIB lewat relasi pelanggan yang login, BUKAN Payment::find lepas:
+        // paymentId properti publik yang bisa di-tamper. Tanpa filter pemilik,
+        // pelanggan bisa menunjuk pembayaran orang lain — membaca nominalnya, dan
+        // lewat uploadProof() menimpa bukti transfer pembayaran orang lain.
+        return $this->paymentId ? $this->customer?->payments()->find($this->paymentId) : null;
     }
 
     #[Computed]
@@ -459,6 +463,14 @@ new class extends Component
             $this->error = 'Unit ini baru saja dipakai orang lain.';
 
             return;
+        } catch (InvalidArgumentException) {
+            // Paket/unit/akun tak lagi valid — mis. paket dinonaktifkan, atau
+            // playChoice di-tamper ke paket tipe unit lain. Dilempar SEBELUM
+            // saldo dipotong, jadi aman; jangan biarkan jadi 500 ke pelanggan.
+            $this->confirm = null;
+            $this->error = 'Paket ini sedang tidak tersedia. Coba pilih lagi.';
+
+            return;
         }
 
         $this->confirm = null;
@@ -530,6 +542,35 @@ new class extends Component
     {
         $this->reset('paymentId', 'qrUrl', 'topUpAmount', 'method', 'notice');
         $this->tab = 'main';
+    }
+
+    /**
+     * Pesan transien tidak boleh menyeberang antar tab: galat "pilih paket dulu"
+     * dari tab Main tak berarti apa-apa di tab Isi saldo. Livewire memanggil ini
+     * otomatis saat properti $tab berubah (termasuk lewat $set di quick-tile).
+     */
+    public function updatedTab(): void
+    {
+        $this->reset('error', 'notice');
+    }
+
+    /**
+     * Jalan keluar dari layar pembayaran yang menggantung (QRIS/transfer belum
+     * dibayar): tanpa ini pelanggan terkurung di layar itu sampai gateway
+     * meng-Expired-kannya, satu-satunya escape reload penuh. Tagihannya ditandai
+     * Expired supaya tidak ada QR hidup yang bisa terlanjur dibayar setelahnya.
+     */
+    public function cancelPayment(): void
+    {
+        $payment = $this->payment;
+
+        if ($payment && $payment->status === PaymentStatus::Pending) {
+            $payment->update(['status' => PaymentStatus::Expired]);
+        }
+
+        $this->reset('paymentId', 'qrUrl', 'topUpAmount', 'method', 'notice', 'error');
+        unset($this->payment);
+        $this->tab = 'topup';
     }
 
     public function uploadProof(): void
@@ -811,6 +852,7 @@ new class extends Component
                 <img src="{{ $qrUrl }}" alt="Kode QRIS" class="qr">
             @endif
             <p class="card-sub" style="margin:1rem 0 0">Pindai dengan aplikasi bank atau e-wallet. Layar ini berpindah sendiri setelah pembayaran masuk.</p>
+            <button type="button" class="linkish" wire:click="cancelPayment" wire:confirm="Batalkan tagihan isi saldo ini?">Batalkan</button>
         </div>
 
     @elseif ($this->payment?->status === PaymentStatus::Pending && $this->payment->method === PaymentMethod::Transfer)
@@ -851,6 +893,7 @@ new class extends Component
                     <span wire:loading wire:target="uploadProof"><span class="spin"></span> Mengirim&hellip;</span>
                 </button>
             </form>
+            <button type="button" class="linkish" wire:click="cancelPayment" wire:confirm="Batalkan tagihan isi saldo ini?">Batalkan</button>
         </div>
 
     @else

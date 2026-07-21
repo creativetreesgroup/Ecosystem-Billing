@@ -7,6 +7,7 @@ use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Domain\Billing\SalesSummary;
 use App\Domain\Devices\ControlDriver;
+use App\Domain\Sessions\Events\SessionEnded;
 use App\Domain\Sessions\Exceptions\SessionTooShortException;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
@@ -17,6 +18,7 @@ use App\Domain\Wallet\Wallet;
 use App\Models\Customer;
 use App\Models\Unit;
 use App\Models\User;
+use Illuminate\Support\Facades\Event;
 
 /**
  * Open Play boleh membuat saldo MINUS — satu-satunya tempat di seluruh sistem
@@ -188,6 +190,25 @@ test('stopping a second session when the balance is already at the floor stays c
     expect($doneB->status)->toBe(SessionStatus::Completed)
         ->and($customer->fresh()->balance)->toBe(-50_000)
         ->and($customer->fresh()->ledgerBalance())->toBe(-50_000);
+});
+
+/**
+ * REGRESI: menghentikan sesi yang SUDAH selesai (balapan stop-manual vs job
+ * backstop di menit sama) tidak boleh menyiarkan SessionEnded dua kali — efek
+ * samping pasca-transaksi digerbang "benar-benar baru berhenti".
+ */
+test('stopping an already-stopped session does not broadcast SessionEnded again', function () {
+    Event::fake([SessionEnded::class]);
+
+    $customer = Customer::factory()->create();
+    $this->wallet->topUp($customer, 20_000);
+    $session = app(StartKioskOpenPlayAction::class)->handle($customer->fresh(), $this->unit);
+    $session->update(['started_at' => now()->subMinutes(30)]);
+
+    app(StopKioskOpenPlayAction::class)->handle($session);
+    app(StopKioskOpenPlayAction::class)->handle($session->fresh());
+
+    Event::assertDispatchedTimes(SessionEnded::class, 1);
 });
 
 /**

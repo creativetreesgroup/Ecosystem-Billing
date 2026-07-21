@@ -46,8 +46,9 @@ class StopKioskOpenPlayAction
         $bill = SessionTotal::for($session, $endedAt);
 
         $wentIntoDebt = false;
+        $justStopped = false;
 
-        DB::transaction(function () use ($session, $bill, $endedAt, &$wentIntoDebt): void {
+        DB::transaction(function () use ($session, $bill, $endedAt, &$wentIntoDebt, &$justStopped): void {
             // Kunci ulang di dalam transaksi: sesi yang sudah selesai (mis. oleh
             // job backstop plafon) tidak boleh ditagih dua kali.
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
@@ -55,6 +56,8 @@ class StopKioskOpenPlayAction
             if ($locked->status !== SessionStatus::Active) {
                 return;
             }
+
+            $justStopped = true;
 
             $customer = $locked->customer;
             $fromBalance = max(0, min($bill, $customer->balance));
@@ -106,16 +109,21 @@ class StopKioskOpenPlayAction
             ]);
         });
 
-        // Sesi berakhir → TV tampilkan QR lagi untuk pelanggan berikutnya (bukan
-        // dimatikan: kios swalayan butuh QR terlihat supaya bisa dipindai).
-        $this->devices->showIdleScreen($session->unit);
-        SessionEnded::dispatch($session->id, $session->unit_id);
+        // Efek samping HANYA bila sesi ini yang benar-benar menghentikannya —
+        // bukan saat transaksi no-op karena sesi sudah selesai (balapan stop
+        // manual vs job backstop di menit yang sama). Tanpa gerbang ini,
+        // SessionEnded di-broadcast dua kali & idle-screen di-cast ulang.
+        if ($justStopped) {
+            // Sesi berakhir → TV tampilkan QR lagi untuk pelanggan berikutnya
+            // (bukan dimatikan: kios swalayan butuh QR terlihat untuk dipindai).
+            $this->devices->showIdleScreen($session->unit);
+            SessionEnded::dispatch($session->id, $session->unit_id);
 
-        // Di luar transaksi: kalau tagihan menembus saldo ke kredit, owner
-        // diberi tahu supaya utangnya bisa ditagih (bukan sekadar angka merah
-        // yang mudah terlewat di daftar member).
-        if ($wentIntoDebt) {
-            CustomerWentIntoDebt::dispatch($session->customer_id);
+            // Kalau tagihan menembus saldo ke kredit, owner diberi tahu supaya
+            // utangnya bisa ditagih (bukan sekadar angka merah yang terlewat).
+            if ($wentIntoDebt) {
+                CustomerWentIntoDebt::dispatch($session->customer_id);
+            }
         }
 
         return $session->fresh();

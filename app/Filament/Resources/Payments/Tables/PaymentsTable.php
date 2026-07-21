@@ -28,7 +28,7 @@ class PaymentsTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->query(fn () => Payment::query()->with(['rentalSession.unit', 'verifiedBy']))
+            ->query(fn () => Payment::query()->with(['rentalSession.unit', 'customer', 'verifiedBy']))
             // Yang menunggu diperiksa lebih dulu: layar ini dibuka untuk
             // MENGERJAKAN antreannya, bukan membaca arsip pembayaran.
             ->defaultSort('created_at', 'desc')
@@ -93,7 +93,7 @@ class PaymentsTable
             ->modalFooterActionsAlignment(Alignment::Center)
             ->modalIcon(Heroicon::OutlinedBanknotes)
             ->modalIconColor('success')
-            ->modalHeading(fn (Payment $record): string => 'Bukti transfer — '.$record->rentalSession->unit->code)
+            ->modalHeading(fn (Payment $record): string => 'Bukti transfer — '.self::subject($record))
             ->modalDescription('Cocokkan dengan mutasi rekening sebelum menerima. Setelah diterima, angkanya langsung masuk laporan pendapatan.')
             ->modalSubmitActionLabel('Ya, uangnya sudah masuk')
             ->schema([
@@ -107,8 +107,7 @@ class PaymentsTable
                 TextEntry::make('konteks')
                     ->hiddenLabel()
                     ->alignCenter()
-                    ->state(fn (Payment $record): string => ($record->rentalSession->customer_name ?: 'Tanpa nama')
-                        .' · '.$record->rentalSession->unit->code
+                    ->state(fn (Payment $record): string => self::subjectContext($record)
                         .' · '.$record->created_at->setTimezone(config('app.display_timezone'))->format('d M Y H:i'))
                     ->size(TextSize::Small)
                     ->color('gray'),
@@ -144,6 +143,26 @@ class PaymentsTable
                     ->persistent()
                     ->send();
             });
+    }
+
+    /**
+     * Judul subjek pembayaran. Bukti transfer bisa datang dari sesi kios (punya
+     * unit) MAUPUN isi saldo (rental_session_id null) — tanpa cabang ini,
+     * mengakses ->rentalSession->unit pada pembayaran isi saldo membuat kasir
+     * yang memeriksa buktinya kena error "read property on null".
+     */
+    private static function subject(Payment $payment): string
+    {
+        return $payment->rentalSession?->unit?->code ?? 'Isi saldo';
+    }
+
+    private static function subjectContext(Payment $payment): string
+    {
+        if ($payment->rentalSession) {
+            return ($payment->rentalSession->customer_name ?: 'Tanpa nama').' · '.$payment->rentalSession->unit->code;
+        }
+
+        return ($payment->customer?->name ?? 'Tanpa nama').' · Isi saldo';
     }
 
     private static function rejectAction(): Action
