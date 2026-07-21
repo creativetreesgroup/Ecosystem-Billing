@@ -27,16 +27,21 @@ class UnitTypeForm
                             ->label('Nama tipe')
                             ->placeholder('mis. Non-VIP')
                             ->required(),
+                        // minValue WAJIB: kolom unsigned, tarif negatif lolos
+                        // numeric() lalu menabrak kolom → 500. minValue(1) juga
+                        // menutup tarif Rp0 yang membuat Open Play gratis.
                         TextInput::make('hourly_rate')
                             ->label('Tarif per jam')
                             ->required()
                             ->numeric()
+                            ->minValue(1)
                             ->prefix('Rp'),
                         TextInput::make('sort_order')
                             ->label('Urutan tampil')
                             ->helperText('Makin kecil, makin awal muncul di daftar.')
                             ->required()
                             ->numeric()
+                            ->minValue(0)
                             ->default(0),
                     ]),
             ]);

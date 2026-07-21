@@ -20,6 +20,8 @@ class DeviceAlertsTable
     public static function configure(Table $table): Table
     {
         return $table
+            // Terbaru di atas. "Yang belum ditangani lebih dulu" datang dari
+            // filter status default (Open) di bawah, bukan dari sort ini.
             ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('unit.code')
@@ -45,9 +47,6 @@ class DeviceAlertsTable
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
                     ->sortable(),
             ])
-            // Yang belum ditangani lebih dulu, lalu yang terbaru: daftar alert
-            // dibuka justru untuk mengerjakannya, bukan membaca arsipnya.
-            ->defaultSort('created_at', 'desc')
             ->filters([
                 SelectFilter::make('status')
                     ->label('Status')

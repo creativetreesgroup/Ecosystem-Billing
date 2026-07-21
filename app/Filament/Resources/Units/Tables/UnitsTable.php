@@ -7,6 +7,7 @@ use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
 use App\Filament\Resources\Units\UnitResource;
 use App\Models\Unit;
+use App\Models\UserRole;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
@@ -24,6 +25,12 @@ class UnitsTable
 {
     public static function configure(Table $table): Table
     {
+        // Mengaktifkan/menonaktifkan unit adalah wewenang owner (UnitPolicy::update
+        // owner-only). Aksi bulk kustom TIDAK tergerbang policy otomatis, jadi
+        // tanpa gerbang ini kasir — yang tetap bisa membuka daftar unit — bisa
+        // menonaktifkan semua unit sekaligus dan mematikan operasional outlet.
+        $ownerOnly = fn (): bool => auth()->user()?->role === UserRole::Owner;
+
         return $table
             ->defaultSort('code')
             ->columns([
@@ -107,6 +114,7 @@ class UnitsTable
                         ->label('Nonaktifkan')
                         ->icon(Heroicon::OutlinedEyeSlash)
                         ->color('warning')
+                        ->visible($ownerOnly)
                         ->requiresConfirmation()
                         ->modalDescription('Unit nonaktif hilang dari dasbor kasir. Sesi yang sedang berjalan TIDAK ikut ditutup.')
                         ->deselectRecordsAfterCompletion()
@@ -122,6 +130,7 @@ class UnitsTable
                         ->label('Aktifkan')
                         ->icon(Heroicon::OutlinedEye)
                         ->color('success')
+                        ->visible($ownerOnly)
                         ->deselectRecordsAfterCompletion()
                         ->action(function (Collection $records): void {
                             $jumlah = $records->reject(fn (Unit $u) => $u->is_active)
