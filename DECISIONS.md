@@ -1444,3 +1444,29 @@ PELANGGAN dapat WhatsApp lewat WAHA yang sama dengan OTP.
 - Aktivasi: cukup isi WAHA di .env (sudah ada sejak OTP). Kosong = semua diam.
 
 Tanpa dependensi baru. 436 tes.
+
+## Keputusan arsitektur TV: kontrol JARINGAN penuh, TANPA hardware HDMI tambahan
+
+Pemilik menegaskan: sistem TIDAK memakai stik HDMI / Cast dongle / perangkat
+tambahan apa pun. Kontrol TV harus lewat jaringan langsung (IP/DHCP) ke TV.
+
+Ini SUDAH sesuai dengan implementasi sekarang — tak ada yang perlu diubah:
+- QR di-cast sebagai GAMBAR ke TV lewat `media_player.play_media` (HomeAssistantDriver
+  ::showIdleScreen); dibersihkan dengan `media_player.media_stop` (clearScreen);
+  nyala/mati lewat `media_player.turn_on/turn_off`. Semua lewat Home Assistant di
+  LAN — antarmuka `media_player` seragam untuk Android TV/webOS/Chromecast/DLNA.
+- Catatan backlog lama soal "Cast Receiver app / stik HDMI" DIBATALKAN: itu hanya
+  perlu bila mau menampilkan HALAMAN WEB interaktif kita sendiri di TV. Pendekatan
+  cast GAMBAR QR tidak membutuhkannya.
+
+Syarat & batas jujur (realita per-model TV, bukan celah kode — item UAT §14):
+- TV wajib SMART TV yang punya entity `media_player` dan bisa dijangkau Home
+  Assistant di jaringan. TV "bodoh" tanpa jaringan tak bisa dikontrol cara ini.
+- Reservasi DHCP per TV (IP tetap) supaya HA selalu menemukannya — inilah "DHCP"
+  yang dimaksud pemilik.
+- NYALA dari mati total sering tak bisa murni lewat IP (network stack tidur):
+  disediakan Wake-on-LAN sebagai cadangan (butuh MAC TV + WoL diaktifkan di TV),
+  atau HDMI-CEC dari PS5. MATI/cast/segarnya bisa murni jaringan.
+- Pindah input ke HDMI PS5: lewat `media_player.select_source` bila TV
+  mendukung, atau otomatis via HDMI-CEC saat PS5 menyala (CEC bawaan kabel HDMI,
+  bukan perangkat tambahan).
