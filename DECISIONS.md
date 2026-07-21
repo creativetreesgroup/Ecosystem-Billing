@@ -1342,3 +1342,32 @@ belum hanyalah penyedia pengirimannya.
 - Engine diskon/voucher (V2)
 - Multi-outlet penuh: UI ganti-outlet, isolasi query per outlet, laporan gabungan
   lintas outlet (V2 — fondasi kolom sudah ada sejak V1)
+
+## Dependensi baru: `predis/predis` (§2 — justifikasi tertulis, disetujui pemilik)
+
+Backend dipindah ke Redis untuk cache & queue supaya panel & notifikasi terasa
+seketika: cache membaca angka mahal (ringkasan penjualan, setelan) dari memori,
+bukan menghitung ulang query tiap render; queue Redis memproses job & broadcast
+lebih cepat daripada tabel `jobs` di database. Disetujui pemilik lebih dulu
+(aturan §2: tidak menambah dependensi tanpa persetujuan).
+
+Kenapa predis, bukan phpredis:
+
+- **Murni PHP, nol ekstensi sistem.** phpredis (ekstensi PECL/C) lebih cepat,
+  tapi pemasangannya di tingkat sistem — beda per mesin, mudah terlewat saat
+  serah terima. predis cukup `composer install`, jadi mesin outlet mana pun yang
+  bisa menjalankan aplikasinya otomatis punya kliennya.
+- **Sudah dikenal ekosistem Laravel**, tercantum sebagai `suggest` oleh
+  framework, dan bisa ditukar ke phpredis nanti hanya dengan `REDIS_CLIENT`
+  tanpa mengubah kode bila throughput menuntutnya.
+
+Batas yang sengaja dijaga:
+
+- **`SESSION_DRIVER` tetap `database`, BUKAN redis.** Sesi di Redis berarti
+  semua orang (termasuk auth kios pelanggan) logout begitu Redis restart. Sesi
+  di database bertahan; kecepatan sesi bukan leher botol di sini.
+- **`CACHE_STORE=redis`, `QUEUE_CONNECTION=redis`.** Konsekuensinya aplikasi
+  kini BERGANTUNG pada Redis hidup di produksi — dan realtime notifikasi butuh
+  worker `php artisan queue:work redis` berjalan. Keduanya jadi item operasional
+  serah terima (§14), bukan sesuatu yang bisa dijamin kode.
+- Tidak menyentuh jalur uang: hanya memindahkan tempat cache & job disimpan.
