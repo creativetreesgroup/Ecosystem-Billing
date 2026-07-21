@@ -53,14 +53,7 @@ class DiscountEngine
             throw new DiscountNotApplicableException('Kode voucher tidak ditemukan.');
         }
 
-        $result = $this->evaluate($discount, $target, $baseAmount, $customer);
-
-        return DiscountRedemption::create([
-            'discount_id' => $discount->id,
-            'customer_id' => $customer?->id,
-            'amount' => $result->discount,
-            ...$link,
-        ]);
+        return $this->recordFor($discount, $target, $baseAmount, $customer, $link);
     }
 
     /**
@@ -133,6 +126,18 @@ class DiscountEngine
     {
         $discount = Discount::query()->whereKey($discountId)->lockForUpdate()->firstOrFail();
 
+        return $this->recordFor($discount, $target, $baseAmount, $customer, $link);
+    }
+
+    /**
+     * Validasi ulang (di bawah kunci baris yang dipegang pemanggil) lalu catat
+     * pemakaian. Dipisah supaya penebusan voucher (kunci by kode) & promo (kunci
+     * by id) memakai logika pencatatan yang sama persis.
+     *
+     * @param  array{rental_session_id?: int, payment_id?: int}  $link
+     */
+    private function recordFor(Discount $discount, DiscountTarget $target, int $baseAmount, ?Customer $customer, array $link): DiscountRedemption
+    {
         $result = $this->evaluate($discount, $target, $baseAmount, $customer);
 
         return DiscountRedemption::create([
