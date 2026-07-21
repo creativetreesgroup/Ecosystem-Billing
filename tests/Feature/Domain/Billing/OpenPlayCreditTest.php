@@ -157,3 +157,50 @@ test('a played Open Play session is revenue even while the debt is unpaid', func
     $hari = now(SalesSummary::timezone())->toDateString();
     expect((new SalesSummary($hari, $hari))->totalRevenue())->toBe(6_000);
 });
+
+/**
+ * REGRESI: menghentikan sesi saat saldo SUDAH minus (mis. satu pelanggan memakai
+ * dua unit; unit pertama sudah menariknya ke −50k) tidak boleh melempar. Dulu
+ * `min(credit, 50k)` menembus lantai → CreditCeilingReachedException → sesi macet
+ * aktif selamanya & job backstop crash. Kini dijepit ke headroom (0 di lantai).
+ */
+test('stopping a second session when the balance is already at the floor stays clamped, no throw', function () {
+    $customer = Customer::factory()->create();
+    $this->wallet->topUp($customer, 5_000); // credit-eligible + saldo 5.000
+
+    $unitB = Unit::factory()->create([
+        'control_driver' => ControlDriver::Manual,
+        'unit_type_id' => $this->unit->unit_type_id, // tarif sama (Rp 100/menit)
+    ]);
+
+    $a = app(StartKioskOpenPlayAction::class)->handle($customer->fresh(), $this->unit);
+    $b = app(StartKioskOpenPlayAction::class)->handle($customer->fresh(), $unitB);
+
+    // A main lama → menagih jauh melebihi saldo → saldo mentok −50.000.
+    $a->update(['started_at' => now()->subMinutes(600)]); // Rp 60.000
+    app(StopKioskOpenPlayAction::class)->handle($a);
+    expect($customer->fresh()->balance)->toBe(-50_000);
+
+    // B di-stop saat saldo SUDAH −50.000: tidak melempar, tetap terjepit.
+    $b->update(['started_at' => now()->subMinutes(600)]);
+    $doneB = app(StopKioskOpenPlayAction::class)->handle($b);
+
+    expect($doneB->status)->toBe(SessionStatus::Completed)
+        ->and($customer->fresh()->balance)->toBe(-50_000)
+        ->and($customer->fresh()->ledgerBalance())->toBe(-50_000);
+});
+
+/**
+ * REGRESI: pelanggan yang saldonya sudah di/di bawah lantai plafon (berutang
+ * penuh) tidak boleh memulai Open Play lagi — hanya menambah tagihan yang tak
+ * bisa ditarik.
+ */
+test('a customer already at the credit floor cannot start Open Play again', function () {
+    $customer = Customer::factory()->create();
+    $this->wallet->topUp($customer, 1_000); // credit-eligible
+    $this->wallet->adjust($customer, -51_000, 'Denda', User::factory()->owner()->create(), allowNegative: true);
+    expect($customer->fresh()->balance)->toBe(-50_000);
+
+    expect(fn () => app(StartKioskOpenPlayAction::class)->handle($customer->fresh(), $this->unit))
+        ->toThrow(CreditNotAllowedException::class);
+});

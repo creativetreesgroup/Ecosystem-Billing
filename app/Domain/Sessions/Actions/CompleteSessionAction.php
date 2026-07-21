@@ -72,13 +72,21 @@ class CompleteSessionAction
             // mandiri (QRIS lewat gateway, transfer dengan bukti) membuat
             // barisnya dengan status Pending dan baru menjadi Lunas setelah
             // terbukti — di sana kolom terisi tidak berarti uang masuk.
-            $locked->payments()->create([
-                'method' => $locked->payment_method,
-                'status' => PaymentStatus::Paid,
-                'amount' => $totalAmount,
-                'verified_by' => $verifiedBy?->id,
-                'verified_at' => $endedAt,
-            ]);
+            //
+            // HANYA bila belum ada pembayaran lunas: sesi kios prabayar (paket
+            // QRIS/transfer) sudah punya baris Lunas dari checkout. Membuat lagi
+            // di sini menghasilkan baris hantu tanpa referensi gateway yang
+            // merusak rekonsiliasi QRIS/transfer. Penyelesaian kasir (tanpa
+            // pembayaran sebelumnya) tetap membuatnya.
+            if (! $locked->settledPayment()->exists()) {
+                $locked->payments()->create([
+                    'method' => $locked->payment_method,
+                    'status' => PaymentStatus::Paid,
+                    'amount' => $totalAmount,
+                    'verified_by' => $verifiedBy?->id,
+                    'verified_at' => $endedAt,
+                ]);
+            }
 
             activity()
                 ->performedOn($locked)

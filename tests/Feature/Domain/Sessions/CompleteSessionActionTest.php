@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Billing\PaymentMethod;
+use App\Domain\Billing\PaymentStatus;
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Sessions\Actions\CompleteSessionAction;
 use App\Domain\Sessions\Actions\StartSessionAction;
@@ -111,4 +112,47 @@ test('completing a session shows the idle QR screen instead of powering off', fu
     app(CompleteSessionAction::class)->handle($session, PaymentMethod::Cash);
 
     expect(DeviceAlert::where('unit_id', $unit->id)->exists())->toBeFalse();
+});
+
+/**
+ * REGRESI: sesi kios prabayar sudah punya baris pembayaran Lunas dari checkout.
+ * Menyelesaikannya (mis. saat kedaluwarsa) TIDAK boleh menulis baris kedua tanpa
+ * referensi gateway yang merusak rekonsiliasi.
+ */
+test('completing a prepaid session does not write a second payment', function () {
+    $unit = Unit::factory()->create(['control_driver' => ControlDriver::Manual]);
+    $kasir = User::factory()->create();
+    $package = Package::factory()->for($unit->unitType)->create(['price' => 10_000]);
+
+    $session = app(StartSessionAction::class)->handle(
+        $unit, $kasir, SessionType::Package, package: $package, paymentMethod: PaymentMethod::Qris,
+    );
+
+    // Pembayaran prabayar yang sudah lunas (seperti checkout kios QRIS).
+    $session->payments()->create([
+        'method' => PaymentMethod::Qris,
+        'status' => PaymentStatus::Paid,
+        'amount' => 10_000,
+        'reference' => 'ORDER-PREPAID-1',
+        'verified_at' => now(),
+    ]);
+
+    app(CompleteSessionAction::class)->handle($session);
+
+    expect($session->fresh()->payments()->count())->toBe(1);
+});
+
+/**
+ * Sebaliknya: penyelesaian kasir yang BELUM punya pembayaran tetap membuat satu
+ * baris — kalau tidak, pendapatan tunai/QRIS meja hilang dari buku pembayaran.
+ */
+test('completing a cashier session with no prior payment writes exactly one', function () {
+    $unit = Unit::factory()->create(['control_driver' => ControlDriver::Manual]);
+    $kasir = User::factory()->create();
+    $session = app(StartSessionAction::class)->handle($unit, $kasir, SessionType::Open);
+    $session->forceFill(['started_at' => now()->subMinutes(5)])->save();
+
+    app(CompleteSessionAction::class)->handle($session, PaymentMethod::Cash);
+
+    expect($session->fresh()->payments()->count())->toBe(1);
 });

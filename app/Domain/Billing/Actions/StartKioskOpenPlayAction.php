@@ -2,6 +2,7 @@
 
 namespace App\Domain\Billing\Actions;
 
+use App\Domain\Billing\OpenPlay;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Sessions\Events\SessionStarted;
@@ -35,6 +36,13 @@ class StartKioskOpenPlayAction
         // celah akun-buang yang harus ditutup.
         if ($customer->balance <= 0 && ! $customer->isCreditEligible()) {
             throw new CreditNotAllowedException('Isi saldo dulu sebelum Open Play.');
+        }
+
+        // Sudah di/di bawah lantai plafon = pelanggan berutang penuh. Membiarkan
+        // main lagi hanya menambah tagihan yang tidak bisa ditarik (headroom 0),
+        // jadi wajib lunasi dulu.
+        if ($customer->balance <= -OpenPlay::CREDIT_CEILING) {
+            throw new CreditNotAllowedException('Lunasi utang dulu sebelum main lagi.');
         }
 
         $session = DB::transaction(function () use ($customer, $unit): RentalSession {

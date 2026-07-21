@@ -65,12 +65,21 @@ class StopKioskOpenPlayAction
             }
 
             if ($credit > 0) {
-                // Dijepit ke plafon. Kalau auto-stop di plafon gagal dan tagihan
-                // sempat lewat, sisanya dicatat sebagai rugi outlet — bukan
-                // saldo yang jebol tanpa batas.
-                $onCredit = min($credit, OpenPlay::CREDIT_CEILING);
-                $this->wallet->spendOnCredit($customer, $onCredit, OpenPlay::CREDIT_CEILING, $locked);
-                $wentIntoDebt = true;
+                // Dijepit ke SISA jarak menuju lantai −plafon, BUKAN ke nilai
+                // plafon. Kalau saldo sudah minus sebelum tagihan dihitung
+                // (mis. pelanggan memakai dua unit sekaligus, atau owner
+                // membebankan denda), min(credit, 50k) bisa menembus lantai —
+                // spendOnCredit lalu melempar, sesi jadi tak bisa di-stop dan
+                // job backstop ikut crash. headroom = 0 saat sudah di lantai,
+                // jadi tidak ada penarikan kredit dan seluruh tagihan tercatat
+                // sebagai rugi outlet.
+                $headroom = max(0, $customer->balance + OpenPlay::CREDIT_CEILING);
+                $onCredit = min($credit, $headroom);
+
+                if ($onCredit > 0) {
+                    $this->wallet->spendOnCredit($customer, $onCredit, OpenPlay::CREDIT_CEILING, $locked);
+                    $wentIntoDebt = true;
+                }
 
                 if ($credit > $onCredit) {
                     Log::warning('Open Play melewati plafon kredit; selisih tidak tertagih.', [
