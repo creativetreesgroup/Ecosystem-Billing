@@ -7,6 +7,7 @@ use Database\Factories\SettingFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 #[Fillable(['key', 'value'])]
 class Setting extends Model
@@ -20,6 +21,23 @@ class Setting extends Model
             'key' => SettingKey::class,
             'value' => 'array',
         ];
+    }
+
+    /**
+     * Invalidasi cache yang AGRESIF & TEPAT: tiap perubahan setting membuang
+     * cache barisnya seketika — baik lewat put() maupun form Filament (keduanya
+     * menyimpan model), jadi nilai basi tidak pernah bertahan lebih dari satu
+     * penyimpanan, tanpa harus menunggu TTL.
+     */
+    protected static function booted(): void
+    {
+        static::saved(fn (self $setting) => Cache::forget(self::cacheKey($setting->key)));
+        static::deleted(fn (self $setting) => Cache::forget(self::cacheKey($setting->key)));
+    }
+
+    private static function cacheKey(SettingKey $key): string
+    {
+        return 'setting:'.$key->value;
     }
 
     public function label(): string
@@ -37,9 +55,14 @@ class Setting extends Model
      */
     public static function get(SettingKey $key): int|string
     {
-        $stored = static::query()->where('key', $key)->value('value');
+        // Dibaca di banyak jalur panas (mis. menit peringatan tiap mulai sesi);
+        // disimpan di cache selamanya dan dibuang tepat saat berubah (lihat
+        // booted()) — jadi bukan satu query DB per pemanggilan.
+        return Cache::rememberForever(self::cacheKey($key), function () use ($key): int|string {
+            $stored = static::query()->where('key', $key)->value('value');
 
-        return $stored['value'] ?? $key->default();
+            return $stored['value'] ?? $key->default();
+        });
     }
 
     public static function put(SettingKey $key, int|string $value): void
