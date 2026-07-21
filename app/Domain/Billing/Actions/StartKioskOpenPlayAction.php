@@ -5,6 +5,8 @@ namespace App\Domain\Billing\Actions;
 use App\Domain\Billing\OpenPlay;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Devices\DeviceManager;
+use App\Domain\Discounts\DiscountEngine;
+use App\Domain\Discounts\DiscountTarget;
 use App\Domain\Sessions\Events\SessionStarted;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
 use App\Domain\Sessions\SessionStatus;
@@ -27,9 +29,12 @@ use Illuminate\Support\Str;
  */
 class StartKioskOpenPlayAction
 {
-    public function __construct(private readonly DeviceManager $devices) {}
+    public function __construct(
+        private readonly DeviceManager $devices,
+        private readonly DiscountEngine $discounts,
+    ) {}
 
-    public function handle(Customer $customer, Unit $unit): RentalSession
+    public function handle(Customer $customer, Unit $unit, ?string $voucherCode = null): RentalSession
     {
         // Kredit hanya untuk akun yang pernah isi saldo. Akun bersaldo nol yang
         // belum pernah top-up akan berutang dari detik pertama — dan itu persis
@@ -45,7 +50,16 @@ class StartKioskOpenPlayAction
             throw new CreditNotAllowedException('Lunasi utang dulu sebelum main lagi.');
         }
 
-        $session = DB::transaction(function () use ($customer, $unit): RentalSession {
+        // Voucher Open Play divalidasi SEKARANG (tanpa nominal — potongannya baru
+        // dihitung dari tagihan saat berhenti) supaya kode salah ditolak sebelum
+        // pelanggan main, bukan setelahnya. Kodenya disimpan; penebusannya di
+        // StopKioskOpenPlayAction. min_amount 0 dianjurkan untuk voucher Open Play
+        // karena tagihannya belum ada di sini — preview memakai base 0.
+        if ($voucherCode) {
+            $this->discounts->preview($voucherCode, DiscountTarget::OpenPlay, 0, $customer);
+        }
+
+        $session = DB::transaction(function () use ($customer, $unit, $voucherCode): RentalSession {
             $lockedUnit = Unit::query()->whereKey($unit->id)->lockForUpdate()->firstOrFail();
 
             if ($lockedUnit->activeSession()->exists()) {
@@ -65,6 +79,9 @@ class StartKioskOpenPlayAction
                 'base_amount' => 0,
                 'extra_amount' => 0,
                 'total_amount' => 0,
+                // Diterapkan saat berhenti dari tagihan akhir (lihat
+                // StopKioskOpenPlayAction).
+                'voucher_code' => $voucherCode,
                 // Ditagih dari saldo saat berhenti; metodenya Saldo sejak awal
                 // supaya penyelesaiannya tidak pernah menabrak "method null".
                 'payment_method' => PaymentMethod::Wallet,

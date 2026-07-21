@@ -7,6 +7,9 @@ use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Domain\Billing\SessionTotal;
 use App\Domain\Devices\DeviceManager;
+use App\Domain\Discounts\DiscountEngine;
+use App\Domain\Discounts\DiscountTarget;
+use App\Domain\Discounts\Exceptions\DiscountNotApplicableException;
 use App\Domain\Sessions\Events\SessionEnded;
 use App\Domain\Sessions\Exceptions\SessionTooShortException;
 use App\Domain\Sessions\SessionStatus;
@@ -30,6 +33,7 @@ class StopKioskOpenPlayAction
     public function __construct(
         private readonly DeviceManager $devices,
         private readonly Wallet $wallet,
+        private readonly DiscountEngine $discounts,
     ) {}
 
     public function handle(RentalSession $session): RentalSession
@@ -43,12 +47,12 @@ class StopKioskOpenPlayAction
             throw new SessionTooShortException(OpenPlay::MIN_SECONDS - $elapsed);
         }
 
-        $bill = SessionTotal::for($session, $endedAt);
+        $rawBill = SessionTotal::for($session, $endedAt);
 
         $wentIntoDebt = false;
         $justStopped = false;
 
-        DB::transaction(function () use ($session, $bill, $endedAt, &$wentIntoDebt, &$justStopped): void {
+        DB::transaction(function () use ($session, $rawBill, $endedAt, &$wentIntoDebt, &$justStopped): void {
             // Kunci ulang di dalam transaksi: sesi yang sudah selesai (mis. oleh
             // job backstop plafon) tidak boleh ditagih dua kali.
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
@@ -60,6 +64,31 @@ class StopKioskOpenPlayAction
             $justStopped = true;
 
             $customer = $locked->customer;
+
+            // Voucher Open Play: potongan dihitung dari TAGIHAN AKHIR di sini
+            // (bukan saat mulai — tagihannya belum ada). Gagal ditebus (mis.
+            // kuota habis saat main) → tagih penuh + log; JANGAN gagalkan
+            // penghentiannya, pelanggan sudah terlanjur main.
+            $discount = 0;
+
+            if ($locked->voucher_code) {
+                try {
+                    $discount = $this->discounts->redeem(
+                        $locked->voucher_code,
+                        DiscountTarget::OpenPlay,
+                        $rawBill,
+                        $customer,
+                        ['rental_session_id' => $locked->id],
+                    )->amount;
+                } catch (DiscountNotApplicableException $e) {
+                    Log::warning('Voucher Open Play gagal ditebus saat berhenti; ditagih penuh.', [
+                        'session_id' => $locked->id,
+                        'reason' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $bill = max(0, $rawBill - $discount);
             $fromBalance = max(0, min($bill, $customer->balance));
             $credit = $bill - $fromBalance;
 
@@ -96,6 +125,7 @@ class StopKioskOpenPlayAction
                 'ended_at' => $endedAt,
                 'status' => SessionStatus::Completed,
                 'total_amount' => $bill,
+                'discount_amount' => $discount,
                 'paid_at' => $endedAt,
             ]);
 

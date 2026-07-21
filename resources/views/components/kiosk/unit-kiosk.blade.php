@@ -146,6 +146,30 @@ new class extends Component
         }
     }
 
+    /**
+     * Pratinjau voucher Open Play. Tagihannya belum ada di sini, jadi hanya
+     * memvalidasi kode (berlaku/tidak) — potongannya baru terlihat saat berhenti.
+     *
+     * @return array{ok: bool, label?: string, message?: string}|null
+     */
+    #[Computed]
+    public function openVoucherResult(): ?array
+    {
+        $code = trim($this->voucherCode);
+
+        if ($code === '') {
+            return null;
+        }
+
+        try {
+            $result = app(DiscountEngine::class)->preview($code, DiscountTarget::OpenPlay, 0, $this->customer);
+
+            return ['ok' => true, 'label' => $result->label];
+        } catch (DiscountNotApplicableException $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     /** Jumlah halaman grid paket, 4 per halaman. */
     public function packagePageCount(): int
     {
@@ -412,7 +436,7 @@ new class extends Component
         $this->error = null;
 
         try {
-            app(StartKioskOpenPlayAction::class)->handle($this->customer, $this->unit);
+            app(StartKioskOpenPlayAction::class)->handle($this->customer, $this->unit, trim($this->voucherCode) ?: null);
         } catch (CreditNotAllowedException $exception) {
             $this->confirm = null;
             $this->error = $exception->getMessage();
@@ -423,9 +447,16 @@ new class extends Component
             $this->error = 'Unit ini baru saja dipakai orang lain.';
 
             return;
+        } catch (DiscountNotApplicableException $e) {
+            // Voucher tak berlaku — tetap di modal supaya pelanggan bisa hapus
+            // kodenya & lanjut tanpa voucher.
+            $this->error = $e->getMessage();
+
+            return;
         }
 
         $this->confirm = null;
+        $this->voucherCode = '';
         unset($this->activeSession);
     }
 
@@ -1189,6 +1220,18 @@ new class extends Component
                     <div class="confirm-total"><span>Saldo sekarang</span><b>{{ Rupiah::format($this->customer->balance) }}</b></div>
                 </div>
                 <p class="muted center" style="font-size:.8rem;margin:.25rem 0 0">Saldo kepakai jalan. Kalau habis, sisanya jadi utang yang wajib dilunasi. Minimal main 1 menit.</p>
+
+                {{-- Voucher Open Play: potongannya ke tagihan saat berhenti, jadi
+                     di sini hanya divalidasi kodenya. --}}
+                @php($ovr = $this->openVoucherResult)
+                <input type="text" wire:model.blur="voucherCode" placeholder="Punya kode voucher? (opsional)"
+                       class="field" style="text-transform:uppercase;margin-top:.75rem" autocomplete="off" maxlength="30">
+                @if ($ovr && ! ($ovr['ok'] ?? false))
+                    <p class="error">{{ $ovr['message'] }}</p>
+                @elseif ($ovr && ($ovr['ok'] ?? false))
+                    <p class="notice" style="margin-top:.5rem">Voucher "{{ $ovr['label'] }}" dipakai — potongan muncul saat berhenti.</p>
+                @endif
+
                 <button type="button" class="btn btn-block-gap" wire:click="startOpenPlay" wire:loading.attr="disabled" wire:target="startOpenPlay">
                     <span wire:loading.remove wire:target="startOpenPlay">Ya, mulai main</span>
                     <span wire:loading wire:target="startOpenPlay"><span class="spin"></span> Menyalakan TV&hellip;</span>
