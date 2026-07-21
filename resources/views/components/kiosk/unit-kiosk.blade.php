@@ -121,39 +121,15 @@ new class extends Component
     }
 
     /**
-     * Pratinjau voucher untuk paket yang sedang dikonfirmasi. Read-only: hanya
-     * menampilkan potongan sebelum bayar — penjaga sesungguhnya (kuota di bawah
-     * kunci) tetap di dalam transaksi PlayFromWalletAction saat menebus.
+     * Inti pratinjau voucher — satu tempat menangani kode kosong & galat, dipakai
+     * ketiga permukaan (paket, Open Play, isi saldo). Read-only: menampilkan
+     * potongan sebelum bayar; penjaga sesungguhnya (kuota di bawah kunci) tetap
+     * di dalam transaksi saat menebus.
      *
-     * @return array{ok: bool, discount?: int, final?: int, label?: string, message?: string}|null
+     * @return array{ok: bool, result?: \App\Domain\Discounts\DiscountResult, message?: string}|null
+     *                Null bila kode kosong; ['ok'=>false,'message'] bila ditolak.
      */
-    #[Computed]
-    public function voucherResult(): ?array
-    {
-        $code = trim($this->voucherCode);
-        $package = $this->packageId ? $this->packages->firstWhere('id', $this->packageId) : null;
-
-        if ($code === '' || ! $package) {
-            return null;
-        }
-
-        try {
-            $result = app(DiscountEngine::class)->preview($code, DiscountTarget::Package, (int) $package->price, $this->customer);
-
-            return ['ok' => true, 'discount' => $result->discount, 'final' => $result->finalAmount, 'label' => $result->label];
-        } catch (DiscountNotApplicableException $e) {
-            return ['ok' => false, 'message' => $e->getMessage()];
-        }
-    }
-
-    /**
-     * Pratinjau voucher Open Play. Tagihannya belum ada di sini, jadi hanya
-     * memvalidasi kode (berlaku/tidak) — potongannya baru terlihat saat berhenti.
-     *
-     * @return array{ok: bool, label?: string, message?: string}|null
-     */
-    #[Computed]
-    public function openVoucherResult(): ?array
+    private function previewVoucher(DiscountTarget $target, int $base): ?array
     {
         $code = trim($this->voucherCode);
 
@@ -162,36 +138,62 @@ new class extends Component
         }
 
         try {
-            $result = app(DiscountEngine::class)->preview($code, DiscountTarget::OpenPlay, 0, $this->customer);
-
-            return ['ok' => true, 'label' => $result->label];
+            return ['ok' => true, 'result' => app(DiscountEngine::class)->preview($code, $target, $base, $this->customer)];
         } catch (DiscountNotApplicableException $e) {
             return ['ok' => false, 'message' => $e->getMessage()];
         }
     }
 
-    /**
-     * Pratinjau voucher isi saldo: bonus = potongan yang dihitung atas nominal
-     * top-up (bayar penuh, saldo bertambah lebih).
-     *
-     * @return array{ok: bool, bonus?: int, label?: string, message?: string}|null
-     */
+    /** Pratinjau voucher paket: potongan atas harga paket yang dikonfirmasi. */
     #[Computed]
-    public function topUpVoucherResult(): ?array
+    public function voucherResult(): ?array
     {
-        $code = trim($this->voucherCode);
+        $package = $this->packageId ? $this->packages->firstWhere('id', $this->packageId) : null;
 
-        if ($code === '' || ! $this->topUpAmount) {
+        if (! $package) {
             return null;
         }
 
-        try {
-            $result = app(DiscountEngine::class)->preview($code, DiscountTarget::TopUp, (int) $this->topUpAmount, $this->customer);
+        $preview = $this->previewVoucher(DiscountTarget::Package, (int) $package->price);
 
-            return ['ok' => true, 'bonus' => $result->discount, 'label' => $result->label];
-        } catch (DiscountNotApplicableException $e) {
-            return ['ok' => false, 'message' => $e->getMessage()];
+        if (! $preview || ! $preview['ok']) {
+            return $preview;
         }
+
+        return ['ok' => true, 'discount' => $preview['result']->discount, 'final' => $preview['result']->finalAmount, 'label' => $preview['result']->label];
+    }
+
+    /**
+     * Pratinjau voucher Open Play. Tagihannya belum ada di sini, jadi hanya
+     * memvalidasi kode — potongannya baru terlihat saat berhenti.
+     */
+    #[Computed]
+    public function openVoucherResult(): ?array
+    {
+        $preview = $this->previewVoucher(DiscountTarget::OpenPlay, 0);
+
+        if (! $preview || ! $preview['ok']) {
+            return $preview;
+        }
+
+        return ['ok' => true, 'label' => $preview['result']->label];
+    }
+
+    /** Pratinjau voucher isi saldo: bonus = potongan atas nominal top-up. */
+    #[Computed]
+    public function topUpVoucherResult(): ?array
+    {
+        if (! $this->topUpAmount) {
+            return null;
+        }
+
+        $preview = $this->previewVoucher(DiscountTarget::TopUp, (int) $this->topUpAmount);
+
+        if (! $preview || ! $preview['ok']) {
+            return $preview;
+        }
+
+        return ['ok' => true, 'bonus' => $preview['result']->discount, 'label' => $preview['result']->label];
     }
 
     /** Jumlah halaman grid paket, 4 per halaman. */
