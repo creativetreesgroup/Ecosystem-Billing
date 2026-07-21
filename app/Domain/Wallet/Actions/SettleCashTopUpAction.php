@@ -6,6 +6,7 @@ use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Domain\Discounts\DiscountEngine;
 use App\Domain\Discounts\DiscountTarget;
+use App\Domain\Wallet\Events\WalletToppedUp;
 use App\Domain\Wallet\Wallet;
 use App\Models\Customer;
 use App\Models\Payment;
@@ -39,7 +40,9 @@ class SettleCashTopUpAction
             throw new InvalidArgumentException('Nominal isi saldo harus lebih dari nol.');
         }
 
-        return DB::transaction(function () use ($customer, $amount, $cashier, $voucherCode): WalletTransaction {
+        $bonus = 0;
+
+        $transaction = DB::transaction(function () use ($customer, $amount, $cashier, $voucherCode, &$bonus): WalletTransaction {
             // Pembayaran tunai langsung Lunas: kasir yang menerima uangnya,
             // jadi tidak ada yang perlu diverifikasi belakangan. verified_by
             // mencatat SIAPA yang menerimanya.
@@ -61,5 +64,10 @@ class SettleCashTopUpAction
 
             return $this->wallet->topUp($customer, $amount + $bonus, $payment, $cashier);
         });
+
+        // Di luar transaksi: konfirmasi ke pelanggan lewat WhatsApp.
+        WalletToppedUp::dispatch($customer->id, $amount, $bonus);
+
+        return $transaction;
     }
 }

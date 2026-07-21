@@ -58,6 +58,11 @@ test('an open-play stop covered by balance does not notify anyone', function () 
         ->and($owner->fresh()->notifications()->count())->toBe(0);
 });
 
-test('the debt notification listener is registered exactly once', function () {
-    expect(Event::getListeners(CustomerWentIntoDebt::class))->toHaveCount(1);
+/**
+ * Utang memicu DUA listener sah: notifikasi lonceng/Telegram ke owner, dan
+ * WhatsApp ke pelanggan. Tepat dua (bukan lebih) = tak ada yang terdaftar ganda
+ * — dulu pendaftaran manual + auto-discovery pernah menggandakan.
+ */
+test('the debt event has exactly its two listeners, none duplicated', function () {
+    expect(Event::getListeners(CustomerWentIntoDebt::class))->toHaveCount(2);
 });

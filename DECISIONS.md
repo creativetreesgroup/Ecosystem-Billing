@@ -1422,3 +1422,25 @@ Fase C (promo otomatis di fondasi yang sama). Tanpa dependensi baru.
   tagihan), bukan persen-saja seperti rencana awal — lebih sederhana & fleksibel.
 
 Semua di fondasi Discount yang sama, tanpa dependensi baru. 425 tes.
+
+## V2-B — Notifikasi WhatsApp ke pelanggan
+
+Melengkapi cerita notifikasi: ops sudah dapat lonceng panel + Telegram; kini
+PELANGGAN dapat WhatsApp lewat WAHA yang sama dengan OTP.
+
+- **WahaClient** — pola HTTP WAHA (X-Api-Key, chatId 62…@c.us, sendText, timeout+
+  retry, tak melempar, tak pernah log isi pesan) diekstrak ke satu kelas. OTP
+  (WahaOtpChannel) & notifikasi pelanggan (CustomerNotifier) memakainya — sekalian
+  merapikan duplikasi lama.
+- **CustomerNotifier** — kirim WA ke pelanggan; DIAM bila WAHA belum dikonfigurasi
+  atau pelanggan tak punya nomor (tambahan di atas layar kios, bukan pengganti).
+- **4 listener ShouldQueue** (non-blocking — kirim WA = HTTP, tak boleh menahan
+  aksi kios; worker sudah wajib jalan): sesi mau habis (SessionEnding), struk
+  selesai (SessionEnded, hanya sesi pelanggan yang Completed — bukan void), isi
+  saldo berhasil termasuk bonus (WalletToppedUp, event baru di dua aksi top-up),
+  saldo minus (CustomerWentIntoDebt — event lama, kini punya listener owner &
+  pelanggan). OTP kode login tetap lewat WahaOtpChannel (jalur sinkron, memblokir
+  login memang disengaja).
+- Aktivasi: cukup isi WAHA di .env (sudah ada sejak OTP). Kosong = semua diam.
+
+Tanpa dependensi baru. 436 tes.

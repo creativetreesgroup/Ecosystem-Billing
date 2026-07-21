@@ -39,10 +39,10 @@ test('it returns false when WAHA responds with an error', function () {
 
 test('isConfigured is true only when base url and api key are set', function () {
     config(['services.waha.base_url' => null, 'services.waha.api_key' => null]);
-    expect((new WahaOtpChannel)->isConfigured())->toBeFalse();
+    expect(app(WahaOtpChannel::class)->isConfigured())->toBeFalse();
 
     config(['services.waha.base_url' => 'http://waha.lan:3000', 'services.waha.api_key' => 'rahasia']);
-    expect((new WahaOtpChannel)->isConfigured())->toBeTrue();
+    expect(app(WahaOtpChannel::class)->isConfigured())->toBeTrue();
 });
 
 /**

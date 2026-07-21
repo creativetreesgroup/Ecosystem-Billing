@@ -38,7 +38,7 @@ class AppServiceProvider extends ServiceProvider
         // supaya kios yang tidak bisa mengirim OTP ketahuan saat memasang, bukan
         // saat pelanggan pertama sudah berdiri di depan TV.
         $this->app->bind(OtpChannel::class, function (): OtpChannel {
-            $waha = new WahaOtpChannel;
+            $waha = app(WahaOtpChannel::class);
 
             return $waha->isConfigured() ? $waha : new LoggingOtpChannel;
         });

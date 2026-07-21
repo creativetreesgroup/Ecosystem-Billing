@@ -5,6 +5,7 @@ namespace App\Domain\Billing\Actions;
 use App\Domain\Discounts\DiscountEngine;
 use App\Domain\Discounts\DiscountTarget;
 use App\Domain\Discounts\Exceptions\DiscountNotApplicableException;
+use App\Domain\Wallet\Events\WalletToppedUp;
 use App\Domain\Wallet\Wallet;
 use App\Models\Payment;
 use Illuminate\Support\Facades\DB;
@@ -85,5 +86,10 @@ class ApplySettledPaymentAction
 
             $this->wallet->topUp($payment->customer, $payment->amount + $bonus, $payment);
         });
+
+        // Di luar transaksi: konfirmasi ke pelanggan (WhatsApp) bahwa saldonya
+        // sudah bertambah. Best-effort — kegagalannya tak boleh membatalkan
+        // saldo yang sudah masuk.
+        WalletToppedUp::dispatch($payment->customer_id, $payment->amount, $bonus);
     }
 }
