@@ -1,0 +1,1113 @@
+<?php
+
+use App\Domain\Billing\Actions\StartKioskOpenPlayAction;
+use App\Domain\Billing\Actions\StopKioskOpenPlayAction;
+use App\Domain\Billing\Events\TransferProofSubmitted;
+use App\Domain\Billing\PaymentMethod;
+use App\Domain\Billing\PaymentStatus;
+use App\Domain\Billing\Rupiah;
+use App\Domain\Sessions\Exceptions\SessionTooShortException;
+use App\Domain\Sessions\SessionType;
+use App\Domain\Wallet\Exceptions\CreditNotAllowedException;
+use App\Domain\Customers\Actions\AuthenticateCustomerAction;
+use App\Domain\Customers\Actions\RegisterCustomerAction;
+use App\Domain\Customers\CustomerPhone;
+use App\Domain\Customers\Exceptions\TooManyPinAttemptsException;
+use App\Domain\Customers\Otp\OtpService;
+use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
+use App\Domain\Settings\SettingKey;
+use App\Domain\Wallet\Actions\OpenTopUpAction;
+use App\Domain\Wallet\Actions\PlayFromWalletAction;
+use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
+use App\Models\Customer;
+use App\Models\Package;
+use App\Models\Payment;
+use App\Models\Setting;
+use App\Models\Unit;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Computed;
+use Livewire\Component;
+use Livewire\Features\SupportFileUploads\WithFileUploads;
+use Livewire\WithPagination;
+
+/**
+ * Layar yang dilihat pelanggan setelah memindai QR di unitnya.
+ *
+ * Satu komponen, beberapa keadaan — bukan beberapa halaman. Pelanggan berdiri
+ * di depan TV sambil memegang HP; setiap perpindahan halaman adalah satu
+ * kesempatan lagi untuk tersesat atau menutup tab dan kehilangan tagihannya.
+ *
+ * Alur masuk: nomor WhatsApp dulu → kalau nomornya sudah punya akun, kode OTP
+ * dikirim ke WA-nya; kalau belum, daftar (nama + PIN). Kode OTP tetap bisa
+ * dilewati dengan PIN yang dibuat saat mendaftar — supaya pelanggan tidak
+ * pernah terkunci hanya karena WhatsApp-nya telat.
+ */
+new class extends Component
+{
+    use WithFileUploads;
+    use WithPagination;
+
+    public Unit $unit;
+
+    /** phone → otp → (pin) untuk yang sudah punya akun; phone → register untuk yang belum. */
+    public string $step = 'phone';
+
+    public string $phone = '';
+
+    public string $pin = '';
+
+    public string $name = '';
+
+    public string $code = '';
+
+    /** ISO waktu OTP terakhir dikirim — hitung mundur "kirim ulang" dihitung dari sini. */
+    public ?string $otpSentAt = null;
+
+    // Memesan. playChoice = 'open' (Open Play) atau id paket sebagai string.
+    public string $playChoice = '';
+
+    public ?int $packageId = null;
+
+    public ?string $method = null;
+
+    public ?int $topUpAmount = null;
+
+    public ?int $paymentId = null;
+
+    public ?string $qrUrl = null;
+
+    public $proof;
+
+    public ?string $error = null;
+
+    public ?string $notice = null;
+
+    /** Tab dasbor aktif: main (pilih paket) · topup (isi saldo) · history (riwayat). */
+    public string $tab = 'main';
+
+    /** Berapa transaksi per halaman di Riwayat. Diketik manual, default 5. */
+    public int $perPage = 5;
+
+    /** Halaman grid paket. Grid menampilkan 4 per halaman; pager muncul bila >4. */
+    public int $packagePage = 1;
+
+    /** Pembelian yang sedang menunggu konfirmasi: play · topup · null. */
+    public ?string $confirm = null;
+
+    public function mount(Unit $unit): void
+    {
+        $this->unit = $unit;
+    }
+
+    #[Computed]
+    public function customer(): ?Customer
+    {
+        return Auth::guard('customer')->user();
+    }
+
+    #[Computed]
+    public function packages()
+    {
+        // Dari cache (dibuang tepat saat paket berubah): dibaca tiap poll,
+        // jadi tidak perlu query DB per ketukan.
+        return Package::activeForUnitType($this->unit->unit_type_id);
+    }
+
+    /** Jumlah halaman grid paket, 4 per halaman. */
+    public function packagePageCount(): int
+    {
+        return max(1, (int) ceil($this->packages->count() / 4));
+    }
+
+    public function packagePrev(): void
+    {
+        $this->packagePage = max(1, $this->packagePage - 1);
+    }
+
+    public function packageNext(): void
+    {
+        $this->packagePage = min($this->packagePageCount(), $this->packagePage + 1);
+    }
+
+    #[Computed]
+    public function payment(): ?Payment
+    {
+        return $this->paymentId ? Payment::find($this->paymentId) : null;
+    }
+
+    #[Computed]
+    public function activeSession()
+    {
+        return $this->unit->fresh()->activeSession;
+    }
+
+    /**
+     * Halaman berapa pun kembali ke 1 begitu jumlah per halaman diubah —
+     * kalau tidak, mengecilkan per-halaman saat berada di halaman 4 bisa
+     * mendarat di halaman yang tidak ada lagi dan menampilkan daftar kosong.
+     */
+    public function updatedPerPage(): void
+    {
+        $this->resetPage();
+    }
+
+    /**
+     * Riwayat saldo, dibaca langsung dari buku besar — satu-satunya sumber
+     * kebenaran saldo — dan dipaginasi. Jumlah per halaman diketik pelanggan;
+     * dijepit 1..50 di sini supaya angka ekstrem (0, kosong, atau ribuan)
+     * tidak pernah menghasilkan kueri kosong atau berat.
+     */
+    #[Computed]
+    public function transactions()
+    {
+        $perPage = max(1, min(50, $this->perPage));
+
+        // Eager-load payment: tiap baris pemasukan menampilkan metode bayarnya
+        // (QRIS/Transfer/Tunai), dan tanpa ini itu jadi N+1 — satu kueri per
+        // baris, persis yang preventLazyLoading() tolak.
+        return $this->customer
+            ? $this->customer->walletTransactions()->with('payment')->latest()->paginate($perPage)
+            : new Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage);
+    }
+
+    #[Computed]
+    public function transferAccount(): array
+    {
+        return [
+            'bank' => Setting::get(SettingKey::TransferBankName),
+            'number' => Setting::get(SettingKey::TransferAccountNumber),
+            'holder' => Setting::get(SettingKey::TransferAccountHolder),
+        ];
+    }
+
+    /**
+     * Transfer hanya ditawarkan bila rekeningnya lengkap: menawarkannya dengan
+     * rekening kosong berarti mengirim pelanggan ke tujuan yang tidak ada.
+     */
+    #[Computed]
+    public function availableMethods(): array
+    {
+        return Setting::transferAccountIsComplete()
+            ? [PaymentMethod::Qris, PaymentMethod::Transfer]
+            : [PaymentMethod::Qris];
+    }
+
+    // ─── Masuk ──────────────────────────────────────────────────────────────
+
+    /**
+     * Langkah pertama: cukup nomor. Nomor yang sudah punya akun dikirimi OTP;
+     * yang belum diarahkan mendaftar. Membedakan keduanya di sini menjaga alur
+     * tetap satu kolom — pelanggan tidak perlu tahu istilah "daftar" vs "masuk".
+     */
+    public function continueWithPhone(): void
+    {
+        $this->error = null;
+
+        $phone = CustomerPhone::normalise($this->phone);
+
+        if ($phone === null) {
+            $this->error = 'Nomor WhatsApp tidak dikenali. Contoh: 081234567890';
+
+            return;
+        }
+
+        if (Customer::query()->where('phone', $phone)->exists()) {
+            $this->requestOtp();
+
+            return;
+        }
+
+        $this->step = 'register';
+    }
+
+    private function requestOtp(): void
+    {
+        try {
+            app(OtpService::class)->request($this->phone);
+        } catch (TooManyPinAttemptsException $exception) {
+            $this->error = $exception->getMessage();
+
+            return;
+        } catch (ValidationException $exception) {
+            $this->error = collect($exception->errors())->flatten()->first();
+
+            return;
+        }
+
+        $this->code = '';
+        $this->otpSentAt = now()->toIso8601String();
+        $this->step = 'otp';
+    }
+
+    public function resendOtp(): void
+    {
+        $this->error = null;
+        $this->requestOtp();
+    }
+
+    public function verifyOtp(): void
+    {
+        $this->error = null;
+
+        try {
+            $phone = app(OtpService::class)->verify($this->phone, $this->code);
+        } catch (ValidationException $exception) {
+            $this->error = collect($exception->errors())->flatten()->first();
+            $this->code = '';
+
+            return;
+        }
+
+        $customer = Customer::query()->where('phone', $phone)->first();
+
+        if (! $customer || ! $customer->is_active) {
+            $this->error = 'Akun ini tidak bisa dipakai. Hubungi kasir.';
+
+            return;
+        }
+
+        $this->signInAs($customer);
+    }
+
+    /** Jalur cadangan: kalau OTP tak kunjung datang, PIN pendaftaran tetap sah. */
+    public function usePin(): void
+    {
+        $this->error = null;
+        $this->code = '';
+        $this->step = 'pin';
+    }
+
+    public function signInWithPin(): void
+    {
+        $this->error = null;
+
+        try {
+            $customer = app(AuthenticateCustomerAction::class)->handle($this->phone, $this->pin);
+        } catch (TooManyPinAttemptsException $exception) {
+            $this->error = $exception->getMessage();
+
+            return;
+        } catch (ValidationException $exception) {
+            $this->error = collect($exception->errors())->flatten()->first();
+
+            return;
+        }
+
+        $this->signInAs($customer);
+    }
+
+    public function register(): void
+    {
+        $this->error = null;
+
+        try {
+            $customer = app(RegisterCustomerAction::class)->handle($this->name, $this->phone, $this->pin);
+        } catch (ValidationException $exception) {
+            $this->error = collect($exception->errors())->flatten()->first();
+
+            return;
+        }
+
+        $this->signInAs($customer);
+    }
+
+    private function signInAs(Customer $customer): void
+    {
+        Auth::guard('customer')->login($customer);
+        $this->reset('phone', 'pin', 'name', 'code', 'otpSentAt', 'error');
+        $this->step = 'phone';
+    }
+
+    /** Kembali ke langkah nomor tanpa membawa sisa kode/PIN yang salah. */
+    public function editPhone(): void
+    {
+        $this->reset('pin', 'code', 'name', 'otpSentAt', 'error');
+        $this->step = 'phone';
+    }
+
+    public function signOut(): void
+    {
+        Auth::guard('customer')->logout();
+        $this->reset('playChoice', 'packageId', 'method', 'paymentId', 'qrUrl', 'topUpAmount', 'notice', 'error', 'tab', 'confirm');
+    }
+
+    // ─── Bermain & isi saldo (Fase 1: paket + top-up seperti sebelumnya) ──────
+
+    /**
+     * Setiap pembelian lewat satu langkah konfirmasi — "yakin?" dengan rincian
+     * & sisa saldo — sebelum uang benar-benar berpindah. askPlay() memvalidasi
+     * lalu MEMBUKA konfirmasi; play() yang benar-benar menagih dipanggil dari
+     * tombol di dalam konfirmasi itu. Validasi tetap diulang di play(): ia
+     * jalur uang, dan tidak boleh bergantung pada pemanggil memvalidasi lebih
+     * dulu.
+     */
+    public function askPlay(): void
+    {
+        $this->error = null;
+
+        if ($this->playChoice === '') {
+            $this->error = 'Pilih paket atau Open Play dulu.';
+
+            return;
+        }
+
+        // Open Play: main bebas, ditagih per menit. Diperiksa di sini supaya
+        // pelanggan tahu lebih dulu kalau belum boleh berutang, bukan setelah
+        // menekan "Ya".
+        if ($this->playChoice === 'open') {
+            if ($this->customer->balance <= 0 && ! $this->customer->isCreditEligible()) {
+                $this->error = 'Isi saldo dulu sebelum Open Play.';
+
+                return;
+            }
+
+            $this->confirm = 'open';
+
+            return;
+        }
+
+        $this->packageId = (int) $this->playChoice;
+        $this->confirm = 'play';
+    }
+
+    public function startOpenPlay(): void
+    {
+        $this->error = null;
+
+        try {
+            app(StartKioskOpenPlayAction::class)->handle($this->customer, $this->unit);
+        } catch (CreditNotAllowedException $exception) {
+            $this->confirm = null;
+            $this->error = $exception->getMessage();
+
+            return;
+        } catch (UnitAlreadyActiveException) {
+            $this->confirm = null;
+            $this->error = 'Unit ini baru saja dipakai orang lain.';
+
+            return;
+        }
+
+        $this->confirm = null;
+        unset($this->activeSession);
+    }
+
+    /**
+     * Berhenti Open Play. Menit pertama tetap ditagih: kalau belum lewat 60
+     * detik, aksinya menolak dengan sisa waktu, bukan menghentikan sesi.
+     */
+    public function stopOpenPlay(): void
+    {
+        $this->error = null;
+
+        $session = $this->activeSession;
+
+        if (! $session) {
+            return;
+        }
+
+        try {
+            app(StopKioskOpenPlayAction::class)->handle($session);
+        } catch (SessionTooShortException $exception) {
+            $this->error = $exception->getMessage();
+
+            return;
+        }
+
+        unset($this->activeSession, $this->customer);
+
+        // Kalau berhenti meninggalkan saldo minus, langsung arahkan ke pelunasan
+        // dengan nominal sudah terisi sebesar utangnya — pelanggan tidak perlu
+        // mengetik ulang angka yang sistem sudah tahu.
+        $fresh = $this->customer;
+
+        if ($fresh && $fresh->balance < 0) {
+            $this->tab = 'topup';
+            $this->topUpAmount = abs($fresh->balance);
+        }
+    }
+
+    public function cancelConfirm(): void
+    {
+        $this->confirm = null;
+        $this->error = null;
+    }
+
+    public function play(): void
+    {
+        $this->error = null;
+        $this->validate(
+            ['packageId' => 'required|integer'],
+            messages: ['packageId.required' => 'Pilih paket dulu sebelum mulai main.'],
+            attributes: ['packageId' => 'paket'],
+        );
+
+        try {
+            app(PlayFromWalletAction::class)->handle(
+                $this->customer,
+                $this->unit,
+                Package::findOrFail($this->packageId),
+            );
+        } catch (InsufficientBalanceException) {
+            $this->confirm = null;
+            $this->error = 'Saldo belum cukup untuk paket ini. Isi saldo dulu.';
+
+            return;
+        } catch (UnitAlreadyActiveException) {
+            $this->confirm = null;
+            $this->error = 'Unit ini baru saja dipakai orang lain.';
+
+            return;
+        }
+
+        $this->confirm = null;
+        unset($this->activeSession);
+    }
+
+    public function askTopUp(): void
+    {
+        $this->error = null;
+        $this->validateTopUp();
+        $this->confirm = 'topup';
+    }
+
+    private function validateTopUp(): void
+    {
+        $this->validate([
+            'topUpAmount' => 'required|integer|min:'.OpenTopUpAction::MINIMUM.'|max:'.OpenTopUpAction::MAXIMUM,
+            'method' => 'required|in:qris,transfer',
+        ], messages: [
+            'topUpAmount.required' => 'Masukkan nominal isi saldo dulu.',
+            'topUpAmount.min' => 'Nominal minimal '.Rupiah::format(OpenTopUpAction::MINIMUM).'.',
+            'topUpAmount.max' => 'Nominal maksimal '.Rupiah::format(OpenTopUpAction::MAXIMUM).'.',
+            'method.required' => 'Pilih metode pembayaran dulu.',
+        ], attributes: ['topUpAmount' => 'nominal', 'method' => 'metode pembayaran']);
+    }
+
+    public function topUp(): void
+    {
+        $this->error = null;
+        $this->validateTopUp();
+
+        try {
+            ['payment' => $payment, 'qr_url' => $qrUrl] = app(OpenTopUpAction::class)->handle(
+                $this->customer,
+                (int) $this->topUpAmount,
+                PaymentMethod::from($this->method),
+            );
+        } catch (Throwable $exception) {
+            // Pesan mentah tidak pernah ditampilkan: isinya bisa memuat detail
+            // gateway atau jalur berkas. Yang berguna bagi pelanggan hanyalah
+            // langkah berikutnya.
+            report($exception);
+            $this->confirm = null;
+            $this->error = 'Pembayaran sedang tidak bisa dibuat. Coba lagi sebentar, atau isi saldo lewat kasir.';
+
+            return;
+        }
+
+        $this->confirm = null;
+        $this->paymentId = $payment->id;
+        $this->qrUrl = $qrUrl;
+    }
+
+    /**
+     * Dipanggil polling. Sengaja hanya MEMBACA — yang memajukan status
+     * pembayaran tetap penjadwal yang bertanya ke gateway, supaya pelanggan
+     * tidak pernah bisa mendorong statusnya sendiri.
+     */
+    public function refreshStatus(): void
+    {
+        // Hanya menyegarkan bacaan. paymentId SENGAJA tidak direset saat lunas:
+        // layar "Pembayaran berhasil" muncul dari status Paid, dan pelanggan
+        // menutupnya sendiri lewat finishPayment() — supaya konfirmasi lunasnya
+        // benar-benar terlihat, bukan berkedip lalu langsung hilang.
+        unset($this->payment, $this->activeSession, $this->customer);
+    }
+
+    public function finishPayment(): void
+    {
+        $this->reset('paymentId', 'qrUrl', 'topUpAmount', 'method', 'notice');
+        $this->tab = 'main';
+    }
+
+    public function uploadProof(): void
+    {
+        $this->validate(['proof' => 'required|image|max:4096'], attributes: ['proof' => 'bukti transfer']);
+
+        $payment = $this->payment;
+
+        if (! $payment || $payment->status !== PaymentStatus::Pending) {
+            $this->error = 'Tagihan ini sudah tidak menunggu bukti.';
+
+            return;
+        }
+
+        // Disk PRIVAT: bukti transfer memuat nama & nomor rekening orang.
+        $payment->update([
+            'status' => PaymentStatus::AwaitingVerification,
+            'proof_path' => $this->proof->store('payment-proofs', 'local'),
+        ]);
+
+        // Dorong kasir: bukti butuh diverifikasi, dan tidak ada yang menatap
+        // panel menunggunya.
+        TransferProofSubmitted::dispatch($payment->id);
+
+        $this->proof = null;
+        unset($this->payment);
+    }
+};
+?>
+
+@php($centered = ! $this->customer || $this->activeSession)
+
+<div class="kiosk {{ $centered ? 'kiosk--center' : '' }}">
+    {{-- Langganan realtime kanal privat pelanggan (lihat kioskRealtime di layout).
+         wire:ignore supaya Livewire tidak me-render ulang & menggandakan langganan
+         tiap poll; muncul saat login, hilang (leave) saat logout. --}}
+    @if ($this->customer)
+        <div wire:ignore x-data="kioskRealtime({{ $this->customer->id }})"></div>
+    @endif
+    <div class="kiosk-head">
+        <p class="kiosk-brand">Creative Trees</p>
+        <h1 class="kiosk-unit">{{ $unit->code }}</h1>
+        <p class="kiosk-type"><span class="pill">{{ $unit->unitType->name }}</span></p>
+    </div>
+
+    <div class="stack">
+    @if ($this->activeSession)
+        @php($sess = $this->activeSession)
+        @php($mine = $this->customer && $sess->customer_id === $this->customer->id)
+
+        @if ($mine && $sess->type === SessionType::Open)
+            {{-- Open Play milik pelanggan ini: saldo hidup (turun per detik) +
+                 tombol berhenti. Angkanya dihitung di sisi klien dari tarif &
+                 waktu jalan — tagihan pastinya tetap dihitung server saat
+                 berhenti (SessionTotal). --}}
+            <div class="card" wire:poll.10s="refreshStatus"
+                 x-data="{
+                    started: new Date('{{ $sess->started_at->toIso8601String() }}'),
+                    rate: {{ (int) $unit->unitType->hourly_rate }},
+                    balance: {{ (int) $this->customer->balance }},
+                    ceiling: {{ \App\Domain\Billing\OpenPlay::CREDIT_CEILING }},
+                    elapsed: 0, stopping: false,
+                    fmtRp(n) { return (n < 0 ? '−Rp ' : 'Rp ') + Math.abs(n).toLocaleString('id-ID'); },
+                    fmtTime(s) { return [Math.floor(s/3600), Math.floor(s/60)%60, s%60].map(n => String(n).padStart(2,'0')).join(':'); },
+                    get cost() { return Math.floor(this.elapsed * this.rate / 3600); },
+                    get effective() { return this.balance - this.cost; },
+                    tick() {
+                        this.elapsed = Math.max(0, Math.floor((new Date() - this.started) / 1000));
+                        // Plafon: paksa berhenti sebelum tembus batas minus. Ini
+                        // penjaga sisi klien; backstop server menyusul (Fase 4).
+                        if (! this.stopping && this.effective <= -this.ceiling) { this.stopping = true; $wire.stopOpenPlay(); }
+                    }
+                 }" x-init="tick(); setInterval(() => tick(), 1000)">
+                <p class="label center">Sedang main · Open Play</p>
+                <p class="amount" :class="effective < 0 ? 'neg' : ''" x-text="fmtRp(effective)">—</p>
+                <p class="muted center">Sisa saldo · berjalan <span x-text="fmtTime(elapsed)">00:00:00</span></p>
+                @if ($error) <p class="alert">{{ $error }}</p> @endif
+                <button type="button" class="btn btn-block-gap" wire:click="stopOpenPlay"
+                        wire:loading.attr="disabled" wire:target="stopOpenPlay"
+                        :disabled="elapsed < 60"
+                        x-text="elapsed < 60 ? ('Berhenti dalam ' + (60 - elapsed) + ' detik') : 'Berhenti & bayar'">Berhenti &amp; bayar</button>
+            </div>
+
+        @elseif ($mine && $sess->ends_at)
+            {{-- Paket milik pelanggan ini: hitung mundur, tidak ada tombol —
+                 waktunya sudah dibayar di muka. --}}
+            <div class="card" wire:poll.10s="refreshStatus">
+                <p class="label center">Sedang main</p>
+                <p class="timer" x-data="{ display: '--:--:--' }"
+                   x-init="const ends = new Date('{{ $sess->ends_at->toIso8601String() }}');
+                       const tick = () => { const s = Math.max(0, Math.floor((ends - new Date())/1000));
+                           display = [Math.floor(s/3600), Math.floor(s/60)%60, s%60].map(n => String(n).padStart(2,'0')).join(':'); };
+                       tick(); setInterval(tick, 1000);"
+                   x-text="display">--:--:--</p>
+                <p class="muted center">Selamat bermain!</p>
+            </div>
+
+        @else
+            {{-- Sesi orang lain (atau belum login): info saja. --}}
+            <div class="card" wire:poll.10s="refreshStatus">
+                <p class="label center">Unit sedang dipakai</p>
+                @if ($sess->ends_at)
+                    <p class="timer" x-data="{ display: '--:--:--' }"
+                       x-init="const ends = new Date('{{ $sess->ends_at->toIso8601String() }}');
+                           const tick = () => { const s = Math.max(0, Math.floor((ends - new Date())/1000));
+                               display = [Math.floor(s/3600), Math.floor(s/60)%60, s%60].map(n => String(n).padStart(2,'0')).join(':'); };
+                           tick(); setInterval(tick, 1000);"
+                       x-text="display">--:--:--</p>
+                @endif
+                <p class="muted center">Pindai lagi kode ini setelah unit selesai dipakai.</p>
+            </div>
+        @endif
+
+    @elseif (! $this->customer)
+        {{-- LANGKAH 1 — nomor WhatsApp saja --}}
+        @if ($step === 'phone')
+            <div class="card">
+                <h2 class="card-title">Masuk</h2>
+                <p class="card-sub">Masukkan nomor WhatsApp untuk mulai main.</p>
+
+                <form wire:submit="continueWithPhone">
+                    <div class="field-affix">
+                        <span class="prefix">@svg('heroicon-o-device-phone-mobile')</span>
+                        <input type="tel" wire:model="phone" inputmode="numeric" autocomplete="tel"
+                               placeholder="081234567890" class="field" autofocus required>
+                    </div>
+
+                    @if ($error) <p class="alert">{{ $error }}</p> @endif
+
+                    <button type="submit" class="btn" wire:loading.attr="disabled" wire:target="continueWithPhone">
+                        <span wire:loading.remove wire:target="continueWithPhone">Lanjut</span>
+                        <span wire:loading wire:target="continueWithPhone"><span class="spin"></span> Memeriksa&hellip;</span>
+                    </button>
+                </form>
+            </div>
+
+        {{-- LANGKAH 2 — kode OTP dari WhatsApp --}}
+        @elseif ($step === 'otp')
+            <div class="card">
+                <h2 class="card-title">Masukkan Kode</h2>
+                <p class="card-sub">
+                    Kode dikirim ke WhatsApp <strong>{{ $this->phone }}</strong>.
+                    <button type="button" class="linkish" style="display:inline;width:auto;margin:0;padding:0" wire:click="editPhone"><b>Ganti nomor</b></button>
+                </p>
+
+                {{-- Enam kotak dengan pemisah di tengah. Auto-maju, backspace
+                     mundur, tempel kode 6 angka sekaligus, dan verifikasi otomatis
+                     saat kotak terakhir terisi — pelanggan tidak perlu menekan
+                     tombol apa pun kalau kodenya benar. --}}
+                <div class="otp" wire:key="otp-{{ $otpSentAt }}"
+                     x-data="{
+                        d: ['','','','','',''],
+                        sync() { $wire.set('code', this.d.join(''), false); if (this.d.join('').length === 6) $wire.verifyOtp(); },
+                        input(i, e) {
+                            let v = e.target.value.replace(/[^0-9]/g, '');
+                            if (v.length > 1) { this.spread(v); return; }
+                            this.d[i] = v; e.target.value = v;
+                            if (v && i < 5) this.$refs['d'+(i+1)].focus();
+                            this.sync();
+                        },
+                        key(i, e) {
+                            if (e.key === 'Backspace' && !this.d[i] && i > 0) { this.$refs['d'+(i-1)].focus(); }
+                        },
+                        spread(text) {
+                            const ds = text.replace(/[^0-9]/g, '').slice(0, 6).split('');
+                            for (let i = 0; i < 6; i++) { this.d[i] = ds[i] || ''; this.$refs['d'+i].value = this.d[i]; }
+                            this.$refs['d'+Math.min(ds.length, 5)].focus();
+                            this.sync();
+                        }
+                     }">
+                    @foreach (range(0, 5) as $i)
+                        @if ($i === 3)<span class="otp-dash">&ndash;</span>@endif
+                        <input type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code"
+                               x-ref="d{{ $i }}" @if($i === 0) autofocus @endif
+                               @input="input({{ $i }}, $event)" @keydown="key({{ $i }}, $event)" @paste.prevent="spread($event.clipboardData.getData('text'))">
+                    @endforeach
+                </div>
+
+                @if ($error) <p class="alert">{{ $error }}</p> @endif
+
+                <button type="button" class="btn" wire:click="verifyOtp" wire:loading.attr="disabled" wire:target="verifyOtp">
+                    <span wire:loading.remove wire:target="verifyOtp">Verifikasi</span>
+                    <span wire:loading wire:target="verifyOtp"><span class="spin"></span> Memeriksa&hellip;</span>
+                </button>
+
+                {{-- Hitung mundur nyata 60 detik sebelum boleh minta kode lagi. --}}
+                <div class="resend" wire:key="resend-{{ $otpSentAt }}"
+                     x-data="{ left: 60 }"
+                     x-init="
+                        const sent = new Date('{{ $otpSentAt }}');
+                        const tick = () => { left = Math.max(0, 60 - Math.floor((new Date() - sent) / 1000)); };
+                        tick(); const t = setInterval(() => { tick(); if (left === 0) clearInterval(t); }, 1000);
+                     ">
+                    <template x-if="left > 0">
+                        <span>Kirim ulang dalam <span x-text="'00:' + String(left).padStart(2, '0')"></span></span>
+                    </template>
+                    <template x-if="left === 0">
+                        <button type="button" wire:click="resendOtp">Kirim ulang kode</button>
+                    </template>
+                </div>
+
+                <button type="button" class="linkish" wire:click="usePin">Tidak dapat kode? <b>Masuk dengan PIN</b></button>
+            </div>
+
+        {{-- Jalur cadangan — PIN pendaftaran --}}
+        @elseif ($step === 'pin')
+            <div class="card">
+                <h2 class="card-title">Masuk dengan PIN</h2>
+                <p class="card-sub">
+                    Untuk nomor <strong>{{ $this->phone }}</strong>.
+                    <button type="button" class="linkish" style="display:inline;width:auto;margin:0;padding:0" wire:click="editPhone"><b>Ganti nomor</b></button>
+                </p>
+
+                <form wire:submit="signInWithPin">
+                    <input type="password" wire:model="pin" inputmode="numeric" maxlength="6" autocomplete="off"
+                           placeholder="PIN 6 angka" class="field" autofocus required>
+
+                    @if ($error) <p class="alert">{{ $error }}</p> @endif
+
+                    <button type="submit" class="btn" wire:loading.attr="disabled" wire:target="signInWithPin">
+                        <span wire:loading.remove wire:target="signInWithPin">Masuk</span>
+                        <span wire:loading wire:target="signInWithPin"><span class="spin"></span> Memeriksa&hellip;</span>
+                    </button>
+                </form>
+
+                @if ($otpSentAt)
+                    <button type="button" class="linkish" wire:click="$set('step', 'otp')">Kembali ke kode OTP</button>
+                @endif
+            </div>
+
+        {{-- Nomor belum terdaftar — daftar dulu --}}
+        @elseif ($step === 'register')
+            <div class="card">
+                <h2 class="card-title">Buat Akun</h2>
+                <p class="card-sub">
+                    Nomor <strong>{{ $this->phone }}</strong> belum terdaftar.
+                    <button type="button" class="linkish" style="display:inline;width:auto;margin:0;padding:0" wire:click="editPhone"><b>Ganti nomor</b></button>
+                </p>
+
+                <form wire:submit="register">
+                    <input type="text" wire:model="name" maxlength="60" placeholder="Nama" class="field" autofocus required>
+                    <input type="password" wire:model="pin" inputmode="numeric" maxlength="6" autocomplete="off"
+                           placeholder="Buat PIN 6 angka" class="field" required>
+
+                    @if ($error) <p class="alert">{{ $error }}</p> @endif
+
+                    <button type="submit" class="btn" wire:loading.attr="disabled" wire:target="register">
+                        <span wire:loading.remove wire:target="register">Daftar &amp; lanjut</span>
+                        <span wire:loading wire:target="register"><span class="spin"></span> Menyiapkan&hellip;</span>
+                    </button>
+                </form>
+                <p class="muted center" style="margin-top:.75rem;font-size:.8rem">PIN ini dipakai kalau kode WhatsApp tidak sampai.</p>
+            </div>
+        @endif
+
+    {{-- LUNAS — konfirmasi berhasil yang benar-benar terlihat, konsisten untuk
+         QRIS maupun transfer, ditutup sendiri oleh pelanggan. --}}
+    @elseif ($this->payment?->status === PaymentStatus::Paid)
+        <div class="card pay-card">
+            <div class="center"><span class="icon-badge icon-badge-ok">@svg('heroicon-o-check-circle')</span></div>
+            <h2 class="card-title">Pembayaran berhasil</h2>
+            <p class="card-sub">Saldo bertambah <strong>{{ Rupiah::format($this->payment->amount) }}</strong>.</p>
+            <button type="button" class="btn" wire:click="finishPayment">Selesai</button>
+        </div>
+
+    @elseif ($this->payment?->status === PaymentStatus::AwaitingVerification)
+        <div class="card pay-card" wire:poll.3s="refreshStatus">
+            <div class="center"><span class="icon-badge">@svg('heroicon-o-clock')</span></div>
+            <h2 class="card-title">Menunggu kasir</h2>
+            <p class="card-sub">Bukti sudah terkirim. Saldo bertambah begitu kasir memastikan uangnya masuk.</p>
+        </div>
+
+    @elseif ($this->payment?->status === PaymentStatus::Pending && $this->payment->method === PaymentMethod::Qris)
+        <div class="card pay-card" wire:poll.3s="refreshStatus">
+            <div class="center"><span class="icon-badge">@svg('heroicon-o-qr-code')</span></div>
+            <h2 class="card-title">Bayar dengan QRIS</h2>
+            <p class="pay-amount">{{ Rupiah::format($this->payment->amount) }}</p>
+            @if ($qrUrl)
+                <img src="{{ $qrUrl }}" alt="Kode QRIS" class="qr">
+            @endif
+            <p class="card-sub" style="margin:1rem 0 0">Pindai dengan aplikasi bank atau e-wallet. Layar ini berpindah sendiri setelah pembayaran masuk.</p>
+        </div>
+
+    @elseif ($this->payment?->status === PaymentStatus::Pending && $this->payment->method === PaymentMethod::Transfer)
+        <div class="card pay-card" wire:poll.3s="refreshStatus">
+            <div class="center"><span class="icon-badge">@svg('heroicon-o-building-library')</span></div>
+            <h2 class="card-title">Transfer ke rekening</h2>
+            <p class="pay-amount">{{ Rupiah::format($this->payment->amount) }}</p>
+
+            <div class="account">
+                <p class="account-bank">{{ $this->transferAccount['bank'] }}</p>
+                <p class="account-number">{{ $this->transferAccount['number'] }}</p>
+                <p class="account-holder"><span>A/N</span> {{ $this->transferAccount['holder'] }}</p>
+            </div>
+
+            <p class="card-sub">Transfer <strong>persis</strong> sebesar nominal di atas, lalu unggah bukti transfernya.</p>
+
+            <form wire:submit="uploadProof">
+                {{-- Pemilih file modern: input asli disembunyikan, tombolnya kartu
+                     berikon kamera yang menampilkan nama file setelah dipilih. --}}
+                <label class="upload {{ $proof ? 'has-file' : '' }}">
+                    <input type="file" wire:model="proof" accept="image/*">
+                    <span class="upload-ic">@svg('heroicon-o-document-arrow-up')</span>
+                    <span class="upload-text" wire:loading.remove wire:target="proof">
+                        @if ($proof)
+                            <b>Foto bukti terpilih</b>
+                            <span class="upload-name">{{ \Illuminate\Support\Str::limit($proof->getClientOriginalName(), 28) }}</span>
+                        @else
+                            <b>Pilih foto bukti transfer</b>
+                            <span class="upload-name">Ketuk untuk ambil / pilih dari galeri</span>
+                        @endif
+                    </span>
+                    <span class="upload-text" wire:loading wire:target="proof"><b>Mengunggah&hellip;</b></span>
+                </label>
+                @error('proof') <p class="error">{{ $message }}</p> @enderror
+
+                <button type="submit" class="btn btn-block-gap" wire:loading.attr="disabled" wire:target="uploadProof,proof" @disabled(! $proof)>
+                    <span wire:loading.remove wire:target="uploadProof">Kirim bukti transfer</span>
+                    <span wire:loading wire:target="uploadProof"><span class="spin"></span> Mengirim&hellip;</span>
+                </button>
+            </form>
+        </div>
+
+    @else
+        {{-- DASBOR — kartu saldo paling atas: saldonya satu-satunya angka yang
+             menentukan apakah pelanggan bisa langsung main atau harus isi dulu.
+             Dikemas seperti kartu pembayaran; nomor kartunya tersamar (hanya 4
+             karakter terakhir), persis kartu sungguhan. --}}
+        <div class="card balance-card">
+            <div class="vc-top">
+                <span class="vc-brand">Creative Trees</span>
+                <span class="vc-wifi">@svg('heroicon-o-wifi')</span>
+            </div>
+            <span class="vc-chip"></span>
+            <p class="vc-label">Saldo</p>
+            {{-- Ukuran font mengecil mengikuti panjang angka supaya saldo besar
+                 tetap satu baris di posisi yang sama (bukan turun & merusak
+                 kartu). min(rem, vw): rem membatasi di layar lebar, vw ikut
+                 mengecil di HP sempit. --}}
+            @php($balanceText = Rupiah::format($this->customer->balance))
+            @php($balanceSize = match (true) {
+                mb_strlen($balanceText) <= 12 => 'min(2.5rem, 9vw)',
+                mb_strlen($balanceText) <= 14 => 'min(2.15rem, 8vw)',
+                mb_strlen($balanceText) <= 16 => 'min(1.85rem, 7vw)',
+                mb_strlen($balanceText) <= 18 => 'min(1.6rem, 6vw)',
+                default => 'min(1.35rem, 5.2vw)',
+            })
+            <p class="vc-balance {{ $this->customer->balance < 0 ? 'neg' : '' }}" style="font-size: {{ $balanceSize }}">{{ $balanceText }}</p>
+            <p class="vc-number">{{ $this->customer->maskedCardNumber() }}</p>
+            <div class="vc-bottom">
+                <p class="vc-name">{{ $this->customer->name }}</p>
+                <div class="vc-meta">
+                    <span><span class="k">CVC</span><span class="v">{{ $this->customer->cardCvc() }}</span></span>
+                    <span><span class="k">Exp</span><span class="v">&#8734;</span></span>
+                </div>
+            </div>
+        </div>
+        @if ($notice) <p class="notice">{{ $notice }}</p> @endif
+
+        {{-- Saldo minus = akun TERKUNCI untuk main sampai dilunasi. Bukan flag
+             terpisah: saldo negatif itu sendiri yang mengunci — tile "Main"
+             dimatikan dan tab dipaksa ke "Isi saldo". --}}
+        @php($locked = $this->customer->balance < 0)
+        @php($activeTab = $locked && $tab === 'main' ? 'topup' : $tab)
+        @if ($locked)
+            <p class="alert">Saldo minus <b>−{{ Rupiah::format(abs($this->customer->balance)) }}</b>. Lunasi dulu untuk bisa main lagi.</p>
+        @endif
+
+        {{-- Menu cepat: tombol bulat ikon-saja, tekan satu → bagiannya muncul di
+             bawah. aria-label wajib karena tidak ada teks. --}}
+        <div class="quick">
+            @foreach ([['main', 'Main', 'heroicon-o-play'], ['topup', 'Isi saldo', 'heroicon-o-plus'], ['history', 'Riwayat', 'heroicon-o-clock']] as [$key, $labelText, $icon])
+                @php($disabled = $locked && $key === 'main')
+                <button type="button" class="quick-tile {{ $activeTab === $key ? 'is-active' : '' }} {{ $disabled ? 'quick-off' : '' }}"
+                        @if ($disabled) disabled @else wire:click="$set('tab', '{{ $key }}')" @endif
+                        aria-label="{{ $labelText }}" title="{{ $labelText }}">
+                    @svg($icon)
+                </button>
+            @endforeach
+        </div>
+
+        @if ($activeTab === 'main')
+        <div class="card">
+            <p class="label">Pilih cara main</p>
+
+            {{-- Open Play — mode BEBAS, dipisah dari paket berdurasi tetap sebagai
+                 satu kartu hero dengan ikon. Sorotannya hanya muncul saat dipilih
+                 (:has(input:checked)), tidak lagi selalu bernuansa cognac. --}}
+            <label class="play-open" wire:key="pc-open">
+                <input type="radio" wire:model="playChoice" value="open">
+                <span class="po-ic">@svg('heroicon-o-bolt')</span>
+                <span class="po-body">
+                    <span class="po-title">Open Play</span>
+                    <span class="po-sub">Main bebas, bayar per menit</span>
+                </span>
+                <span class="po-rate">{{ Rupiah::format($unit->unitType->hourly_rate) }} <span class="per">/ jam</span></span>
+            </label>
+
+            <div class="play-divider">atau pilih paket</div>
+
+            <div class="play-grid">
+                @foreach ($this->packages->forPage($packagePage, 4) as $package)
+                    @php($terjangkau = $this->customer->canAfford($package->price))
+                    <label class="play-pkg {{ $terjangkau ? '' : 'play-off' }}" wire:key="pkg-{{ $package->id }}">
+                        <input type="radio" wire:model="playChoice" value="{{ $package->id }}" @disabled(! $terjangkau)>
+                        <span class="pg-dur">{{ $package->name }}</span>
+                        <span class="pg-min">{{ $package->duration_minutes }} menit @unless ($terjangkau)&middot; saldo kurang @endunless</span>
+                        <span class="pg-price">{{ Rupiah::format($package->price) }}</span>
+                    </label>
+                @endforeach
+            </div>
+
+            {{-- Pager paket muncul hanya kalau paketnya lebih dari 4. --}}
+            @if ($this->packages->count() > 4)
+                <div class="pager">
+                    <button type="button" class="pager-btn" wire:click="packagePrev" @disabled($packagePage <= 1) aria-label="Sebelumnya">@svg('heroicon-o-chevron-left')</button>
+                    <span class="pager-info">Hal {{ $packagePage }} / {{ $this->packagePageCount() }}</span>
+                    <button type="button" class="pager-btn" wire:click="packageNext" @disabled($packagePage >= $this->packagePageCount()) aria-label="Berikutnya">@svg('heroicon-o-chevron-right')</button>
+                </div>
+            @endif
+            @if ($error) <p class="alert">{{ $error }}</p> @endif
+
+            <button type="button" class="btn" wire:click="askPlay" wire:loading.attr="disabled" wire:target="askPlay">Mulai main</button>
+        </div>
+        @elseif ($activeTab === 'topup')
+        <div class="card">
+            <p class="label">{{ $locked ? 'Lunasi saldo minus' : 'Isi saldo' }}</p>
+
+            {{-- Nominal DIKETIK manual lewat papan angka, bukan pilihan tetap.
+                 Sumber kebenarannya properti Livewire topUpAmount — BUKAN state
+                 Alpine terpisah — supaya angka yang sudah diketik tidak hilang
+                 saat komponen re-render (mis. setelah galat "minimal 10.000").
+                 $wire.set(..., false) menunda kiriman ke server sampai tombol
+                 ditekan, jadi tidak ada network per ketukan. --}}
+            <div x-data="{
+                    get show() { const v = $wire.topUpAmount; return 'Rp ' + (v ? Number(v).toLocaleString('id-ID') : '0'); },
+                    push(d) { const n = (String($wire.topUpAmount ?? '') + d).replace(/^0+/, ''); if (n && Number(n) <= {{ OpenTopUpAction::MAXIMUM }}) $wire.set('topUpAmount', Number(n), false); },
+                    del() { const n = String($wire.topUpAmount ?? '').slice(0, -1); $wire.set('topUpAmount', n ? Number(n) : null, false); }
+                 }">
+                <p class="pad-amount" x-text="show">Rp 0</p>
+                <p class="muted center" style="margin:-.5rem 0 1rem;font-size:.8rem">Minimal {{ Rupiah::format(OpenTopUpAction::MINIMUM) }} · Maks {{ Rupiah::format(OpenTopUpAction::MAXIMUM) }}</p>
+                <div class="pad">
+                    @foreach (['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'del'] as $k)
+                        @if ($k === 'del')
+                            <button type="button" class="pad-key" @click="del()" aria-label="Hapus angka">@svg('heroicon-o-backspace')</button>
+                        @else
+                            <button type="button" class="pad-key" @click="push('{{ $k }}')">{{ $k }}</button>
+                        @endif
+                    @endforeach
+                </div>
+            </div>
+            @error('topUpAmount') <p class="error">{{ $message }}</p> @enderror
+
+            {{-- Metode bayar: tombol BULAT + ikon, label di bawah. --}}
+            <div class="methods-round">
+                @foreach ($this->availableMethods as $available)
+                    <label class="method-r" wire:key="m-{{ $available->value }}">
+                        <input type="radio" wire:model="method" value="{{ $available->value }}">
+                        <span class="ic">@svg($available === PaymentMethod::Qris ? 'heroicon-o-qr-code' : 'heroicon-o-building-library')</span>
+                        {{ $available->getLabel() }}
+                    </label>
+                @endforeach
+            </div>
+            @error('method') <p class="error">{{ $message }}</p> @enderror
+            @if ($error) <p class="alert">{{ $error }}</p> @endif
+
+            <button type="button" class="btn btn-block-gap" wire:click="askTopUp" wire:loading.attr="disabled" wire:target="askTopUp">Lanjut</button>
+        </div>
+        @else
+        <div class="card">
+            <div class="section-title">
+                <h3>Transaksi</h3>
+                <span class="perpage">
+                    Tampilkan
+                    <input type="number" min="1" max="50" inputmode="numeric"
+                           wire:model.live.debounce.400ms="perPage" class="perpage-input" aria-label="Transaksi per halaman">
+                </span>
+            </div>
+
+            @forelse ($this->transactions as $tx)
+                @php($masuk = $tx->amount > 0)
+                @php($metode = $tx->payment?->method)
+                <div class="tx" wire:key="tx-{{ $tx->id }}">
+                    <span class="tx-icon {{ $masuk ? 'tx-in' : 'tx-out' }}">
+                        @svg($masuk ? 'heroicon-o-arrow-down-left' : 'heroicon-o-arrow-up-right')
+                    </span>
+                    <div class="tx-body">
+                        <p class="tx-title">
+                            {{ $tx->type->getLabel() }}
+                            {{-- Metode bayar pemasukan: dari mana uangnya masuk. --}}
+                            @if ($metode)
+                                <span class="tx-badge">{{ $metode->getLabel() }}</span>
+                            @endif
+                        </p>
+                        <p class="tx-sub">{{ $tx->description }} &middot; {{ $tx->created_at->translatedFormat('d M, H:i') }}</p>
+                    </div>
+                    <span class="tx-amt {{ $masuk ? 'in' : '' }}">{{ $masuk ? '+' : '−' }}{{ Rupiah::format(abs($tx->amount)) }}</span>
+                </div>
+            @empty
+                <p class="tx-empty">Belum ada transaksi.</p>
+            @endforelse
+
+            {{-- Pager digambar tangan: view pagination bawaan Livewire memakai
+                 kelas Tailwind yang tidak terkompilasi di proyek nol-build ini. --}}
+            @if ($this->transactions->hasPages())
+                <div class="pager">
+                    <button type="button" class="pager-btn" wire:click="previousPage" @disabled($this->transactions->onFirstPage()) aria-label="Sebelumnya">@svg('heroicon-o-chevron-left')</button>
+                    <span class="pager-info">Hal {{ $this->transactions->currentPage() }} / {{ $this->transactions->lastPage() }}</span>
+                    <button type="button" class="pager-btn" wire:click="nextPage" @disabled(! $this->transactions->hasMorePages()) aria-label="Berikutnya">@svg('heroicon-o-chevron-right')</button>
+                </div>
+            @endif
+        </div>
+        @endif
+
+        <button type="button" class="linkish" wire:click="signOut">Keluar</button>
+    @endif
+    </div>
+
+    @unless ($centered)
+        <p class="foot">Sesi baru berjalan setelah pembayaran diterima.</p>
+    @endunless
+
+    {{-- Konfirmasi setiap pembelian: uang tidak berpindah sampai pelanggan
+         menekan "Ya". Ditampilkan sebagai sheet menutupi seluruh layar supaya
+         tidak ada yang bisa disentuh di belakangnya secara tak sengaja. --}}
+    @if ($confirm === 'play')
+        @php($pkg = $this->packages->firstWhere('id', $packageId))
+        <div class="modal-backdrop">
+            <div class="modal">
+                <div class="center"><span class="icon-badge">@svg('heroicon-o-play')</span></div>
+                <h2 class="card-title">Yakin mulai main?</h2>
+                <p class="card-sub">Di unit <strong>{{ $unit->code }}</strong></p>
+                <div class="confirm-rows">
+                    <div><span>Paket</span><b>{{ $pkg?->name }}</b></div>
+                    <div><span>Durasi</span><b>{{ $pkg?->duration_minutes }} menit</b></div>
+                    <div><span>Harga</span><b>{{ Rupiah::format((int) $pkg?->price) }}</b></div>
+                    <div class="confirm-total"><span>Sisa saldo nanti</span><b>{{ Rupiah::format($this->customer->balance - (int) $pkg?->price) }}</b></div>
+                </div>
+                <button type="button" class="btn" wire:click="play" wire:loading.attr="disabled" wire:target="play">
+                    <span wire:loading.remove wire:target="play">Ya, mulai main</span>
+                    <span wire:loading wire:target="play"><span class="spin"></span> Menyalakan TV&hellip;</span>
+                </button>
+                <button type="button" class="btn btn-ghost btn-block-gap" wire:click="cancelConfirm">Batal</button>
+            </div>
+        </div>
+    @elseif ($confirm === 'open')
+        <div class="modal-backdrop">
+            <div class="modal">
+                <div class="center"><span class="icon-badge">@svg('heroicon-o-bolt')</span></div>
+                <h2 class="card-title">Mulai Open Play?</h2>
+                <p class="card-sub">Main bebas di <strong>{{ $unit->code }}</strong></p>
+                <div class="confirm-rows">
+                    <div><span>Tarif</span><b>{{ Rupiah::format($unit->unitType->hourly_rate) }} / jam</b></div>
+                    <div class="confirm-total"><span>Saldo sekarang</span><b>{{ Rupiah::format($this->customer->balance) }}</b></div>
+                </div>
+                <p class="muted center" style="font-size:.8rem;margin:.25rem 0 0">Saldo kepakai jalan. Kalau habis, sisanya jadi utang yang wajib dilunasi. Minimal main 1 menit.</p>
+                <button type="button" class="btn btn-block-gap" wire:click="startOpenPlay" wire:loading.attr="disabled" wire:target="startOpenPlay">
+                    <span wire:loading.remove wire:target="startOpenPlay">Ya, mulai main</span>
+                    <span wire:loading wire:target="startOpenPlay"><span class="spin"></span> Menyalakan TV&hellip;</span>
+                </button>
+                <button type="button" class="btn btn-ghost btn-block-gap" wire:click="cancelConfirm">Batal</button>
+            </div>
+        </div>
+    @elseif ($confirm === 'topup')
+        <div class="modal-backdrop">
+            <div class="modal">
+                <div class="center"><span class="icon-badge">@svg('heroicon-o-plus')</span></div>
+                <h2 class="card-title">Yakin isi saldo?</h2>
+                <div class="confirm-rows">
+                    <div><span>Nominal</span><b>{{ Rupiah::format((int) $topUpAmount) }}</b></div>
+                    <div class="confirm-total"><span>Metode</span><b>{{ $method ? PaymentMethod::from($method)->getLabel() : '' }}</b></div>
+                </div>
+                <button type="button" class="btn" wire:click="topUp" wire:loading.attr="disabled" wire:target="topUp">
+                    <span wire:loading.remove wire:target="topUp">Ya, lanjut bayar</span>
+                    <span wire:loading wire:target="topUp"><span class="spin"></span> Menyiapkan&hellip;</span>
+                </button>
+                <button type="button" class="btn btn-ghost btn-block-gap" wire:click="cancelConfirm">Batal</button>
+            </div>
+        </div>
+    @endif
+</div>

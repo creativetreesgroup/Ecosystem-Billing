@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Domain\Customers\CardNumber;
+use App\Domain\Wallet\WalletTransactionType;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,6 +26,36 @@ class Customer extends Authenticatable
     use HasFactory;
 
     protected $hidden = ['pin_hash'];
+
+    /**
+     * Nomor kartu dibuat sekali di sini, bukan diserahkan ke pemanggil: sebuah
+     * akun tanpa kartu adalah keadaan yang tidak boleh ada, jadi tidak boleh
+     * bergantung pada setiap tempat yang membuat Customer untuk mengingatnya.
+     * Loop-nya pengaman keunikan — ruang 32^16 membuat tabrakan praktis mustahil.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Customer $customer): void {
+            while (empty($customer->card_number)) {
+                $candidate = CardNumber::generate();
+
+                if (! static::query()->where('card_number', $candidate)->exists()) {
+                    $customer->card_number = $candidate;
+                }
+            }
+        });
+    }
+
+    /** "•••• •••• •••• NPQR" — yang boleh dilihat di layar pelanggan. */
+    public function maskedCardNumber(): string
+    {
+        return CardNumber::masked($this->card_number);
+    }
+
+    public function cardCvc(): string
+    {
+        return CardNumber::cvc($this->card_number);
+    }
 
     protected function casts(): array
     {
@@ -68,6 +100,19 @@ class Customer extends Authenticatable
     public function canAfford(int $amount): bool
     {
         return $this->balance >= $amount;
+    }
+
+    /**
+     * Boleh main dari kredit (saldo minus) hanya kalau pernah benar-benar
+     * mengisi saldo. Ini yang menutup celah "daftar akun baru → main sampai
+     * batas minus → tinggalkan akun": akun buang tidak pernah punya baris
+     * top-up, jadi tidak pernah bisa berutang.
+     */
+    public function isCreditEligible(): bool
+    {
+        return $this->walletTransactions()
+            ->where('type', WalletTransactionType::TopUp)
+            ->exists();
     }
 
     /**

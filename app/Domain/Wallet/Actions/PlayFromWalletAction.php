@@ -2,6 +2,7 @@
 
 namespace App\Domain\Wallet\Actions;
 
+use App\Domain\Billing\PaymentMethod;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Sessions\Events\SessionStarted;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
@@ -80,6 +81,11 @@ class PlayFromWalletAction
                 'base_amount' => $package->price,
                 'extra_amount' => 0,
                 'total_amount' => $package->price,
+                // Wajib diisi: tanpa ini job expiry menabrak "method cannot be
+                // null" saat mencatat pembayaran penyelesaian, dan unitnya macet
+                // dianggap terpakai selamanya. Wallet, bukan tunai — uangnya
+                // sudah masuk laci saat isi saldo.
+                'payment_method' => PaymentMethod::Wallet,
                 'paid_at' => $startedAt,
             ]);
 
@@ -92,6 +98,8 @@ class PlayFromWalletAction
         // baris, dan kegagalannya tidak boleh membatalkan saldo yang sudah
         // terpotong untuk sesi yang sah (prinsip arsitektur #1).
         $this->devices->powerOn($session->unit);
+        // Bersihkan QR → TV kembali ke game (satset, sinkron).
+        $this->devices->clearScreen($session->unit);
 
         $warning = (int) Setting::get(SettingKey::WarningBeforeMinutes);
         ExpireRentalSession::dispatch($session->id, $session->expiry_token)->delay($session->ends_at);

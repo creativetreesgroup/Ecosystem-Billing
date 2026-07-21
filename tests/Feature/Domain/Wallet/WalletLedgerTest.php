@@ -108,6 +108,34 @@ test('a correction without a reason is refused', function () {
     expect($this->customer->fresh()->balance)->toBe(0);
 });
 
+/**
+ * Owner boleh sengaja menjadikan saldo minus (membebankan utang/denda) lewat
+ * override — dan buku besar tetap cocok dengan saldo.
+ */
+test('an owner override can push a balance below zero', function () {
+    $owner = User::factory()->owner()->create();
+    $this->wallet->topUp($this->customer, 1_000_000);
+
+    $this->wallet->adjust($this->customer, -5_000_000, 'Bebankan utang', $owner, allowNegative: true);
+
+    expect($this->customer->fresh()->balance)->toBe(-4_000_000)
+        ->and($this->customer->fresh()->ledgerBalance())->toBe(-4_000_000);
+});
+
+/**
+ * Tanpa override, koreksi biasa tetap dijaga batas nol: pengurangan yang
+ * menembus nol ditolak, saldo tidak berubah.
+ */
+test('a correction refuses to go negative without the override', function () {
+    $owner = User::factory()->owner()->create();
+    $this->wallet->topUp($this->customer, 1_000_000);
+
+    expect(fn () => $this->wallet->adjust($this->customer, -5_000_000, 'Salah kurang', $owner))
+        ->toThrow(InsufficientBalanceException::class);
+
+    expect($this->customer->fresh()->balance)->toBe(1_000_000);
+});
+
 test('a pin is stored hashed and never in the open', function () {
     $customer = Customer::factory()->create(['pin_hash' => '246810']);
 

@@ -15,15 +15,20 @@ use GdImage;
  * Digambar utuh sebagai satu gambar, bukan halaman web, karena Google Cast
  * hanya bisa menampilkan gambar diam. Halaman web butuh receiver Cast terdaftar
  * Google beserta HTTPS publik, yang bentrok dengan panel LAN-only (§14).
+ * Konsekuensinya: tidak ada animasi, tidak ada CSS — semuanya bentuk terisi GD.
  *
- * Konsekuensinya: TIDAK ADA animasi. Gerak butuh video (ffmpeg) atau GIF
- * animasi yang dukungannya tidak konsisten antar perangkat Cast. Kedalaman
- * visualnya dikerjakan lewat gradasi, cahaya, dan bayangan — bukan gerak.
+ * Tata letaknya cerminan dasbor HP: latar TERANG (Brand::CANVAS, sama persis
+ * dengan latar halaman dasbor) dengan satu KARTU GELAP gradasi espresso→emerald
+ * di tengah — kartu yang sama seperti kartu saldo di dasbor. TV dan HP jadi
+ * terasa satu permukaan.
  *
- * Semuanya digambar pada 2× lalu diperkecil (supersampling). GD tidak punya
- * antialias untuk bentuk terisi, jadi lingkaran dan sudut membulat akan
- * bergerigi kalau digambar langsung pada ukuran akhir — dan gerigi pada
- * layar 55 inci terlihat jelas dari kursi pelanggan.
+ * Tanpa garis tepi: dulu kartu gelap berdiri di atas latar gelap (emerald di
+ * espresso, 1,42:1) sehingga butuh garis cognac agar tepinya terlihat. Di latar
+ * terang, kartu gelapnya kontras sendiri (espresso/emerald di CANVAS > 4,5:1) —
+ * garisnya tidak lagi diperlukan. Gradasi digambar kecil lalu diperbesar
+ * sehingga tidak berpita (lihat gradientCard).
+ *
+ * Setiap pasangan warnanya diuji di KioskScreenTest.
  */
 final class UnitKioskScreen
 {
@@ -31,8 +36,60 @@ final class UnitKioskScreen
 
     private const HEIGHT = 1080;
 
-    /** Digambar sebesar ini lalu diperkecil, demi tepi yang halus. */
+    /**
+     * Digambar sebesar ini lalu diperkecil. GD tidak punya antialias untuk
+     * bentuk terisi — imageantialias() hanya berlaku untuk garis — jadi
+     * supersampling satu-satunya cara mendapat tepi halus, dan gerigi pada layar
+     * 55 inci terlihat jelas dari kursi pelanggan.
+     */
     private const SCALE = 2;
+
+    /**
+     * Kotak aman judul: sisi 5%. Sebagian TV masih memotong tepi siaran
+     * (overscan), dan potongan yang memakan zona hening QR mematikan
+     * pemindaiannya sama sekali — bukan sekadar merusak tampilan.
+     */
+    private const SAFE_LEFT = 96;
+
+    private const SAFE_RIGHT = 1824;
+
+    private const SAFE_TOP = 54;
+
+    private const SAFE_BOTTOM = 1026;
+
+    private const CARD_LEFT = 520;
+
+    private const CARD_TOP = 50;
+
+    private const CARD_WIDTH = 880;
+
+    private const CARD_HEIGHT = 980;
+
+    /**
+     * Patokan lapangan untuk kode QR: jarak pindai maksimal ≈ 10× lebar kodenya.
+     *
+     * Pada TV 55 inci, lebar layarnya 1218 mm, jadi 1 px ≈ 0,634 mm dan 560 px
+     * ≈ 355 mm — terbaca sampai ±3,5 m. Kursi pemain biasanya 2-3 m dari layar,
+     * jadi masih bersisa, tapi bantalannya tipis: kartu selebar 880px tidak
+     * menyisakan lebih. Angka ini yang menjadi lantai di KioskScreenTest —
+     * mengecilkannya demi tata letak berarti memindahkan batas jarak pindai, dan
+     * itu keputusan yang harus disengaja, bukan efek samping.
+     */
+    private const QR_SIZE = 560;
+
+    private const QR_TOP = 300;
+
+    private const QR_LEFT = 680;
+
+    /**
+     * imagettftext() menerima POIN pada 96dpi, BUKAN piksel.
+     *
+     * Terukur di mesin ini: rasio tinggi kapital terhadap $size adalah 0,950 di
+     * semua ukuran yang dicoba. Jadi ukuran piksel yang dimaksud desainer harus
+     * dikalikan 0,75 sebelum diserahkan ke GD — memasukkan angka pikselnya
+     * mentah-mentah menghasilkan teks sepertiga kebesaran.
+     */
+    private const POINTS_PER_PIXEL = 0.75;
 
     private const FONT_BOLD = [
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
@@ -64,8 +121,8 @@ final class UnitKioskScreen
 
         // Kanvas 2× dilepas SEBELUM JPEG dibuat. Ia memakan ~33 MB, dan
         // menahannya sampai selesai membuat batas memori 128 MB terlampaui
-        // begitu hasilnya ikut disimpan ke cache — gagalnya berupa proses mati
-        // tanpa pesan, yang jauh lebih sulit dilacak daripada exception.
+        // begitu hasilnya ikut disimpan — gagalnya berupa proses mati tanpa
+        // pesan, yang jauh lebih sulit dilacak daripada exception.
         unset($big);
 
         ob_start();
@@ -79,63 +136,56 @@ final class UnitKioskScreen
 
     private static function draw(Unit $unit): GdImage
     {
-        $w = self::WIDTH * self::SCALE;
-        $h = self::HEIGHT * self::SCALE;
         $s = self::SCALE;
+        $image = imagecreatetruecolor(self::WIDTH * $s, self::HEIGHT * $s);
 
-        $image = imagecreatetruecolor($w, $h);
+        // Setiap warna lewat Brand — tidak ada satu pun hex yang diturunkan di
+        // sini. Versi sebelumnya menambal enam warna karangan di luar palet,
+        // dan warna karangan itulah yang membuat layarnya tidak lagi terlihat
+        // seperti merek yang sama dengan panelnya.
+        // Latar TERANG (CANVAS), sama persis dengan latar halaman dasbor HP —
+        // supaya TV dan HP terasa satu permukaan. Kartu gelapnya berdiri di
+        // atasnya seperti kartu saldo di dasbor.
+        $field = Brand::gd($image, Brand::CANVAS);
+        $ink = Brand::gd($image, Brand::BLUSH);
+        $soft = Brand::gd($image, Brand::CHAMPAGNE);
+        $accent = Brand::gd($image, Brand::COGNAC);
+        $onAccent = Brand::gd($image, Brand::ESPRESSO);
+        $panel = Brand::gd($image, Brand::BLUSH);
+        $module = Brand::gd($image, Brand::ESPRESSO);
 
-        // Palet dari pemilik produk: espresso #261311 sebagai latar, emerald
-        // #1c3934 sebagai kartu. Sisanya diturunkan dari keduanya — krem hangat
-        // untuk panel QR (kontras tertinggi terhadap espresso tanpa terasa
-        // dingin seperti putih murni), dan emas lembut sebagai satu-satunya
-        // aksen. Satu aksen saja: dua warna sorot pada layar yang dilihat
-        // sekilas justru membuat mata bingung harus ke mana dulu.
-        $card = imagecolorallocate($image, 28, 57, 52);      // emerald #1c3934
-        $line = imagecolorallocate($image, 44, 78, 71);
-        $white = imagecolorallocate($image, 244, 239, 231);
-        $muted = imagecolorallocate($image, 147, 168, 162);
-        $accent = imagecolorallocate($image, 216, 166, 87);
-        $panel = imagecolorallocate($image, 244, 238, 228);
-        $module = imagecolorallocate($image, 26, 13, 12);    // espresso pekat
+        imagefilledrectangle($image, 0, 0, self::WIDTH * $s, self::HEIGHT * $s, $field);
 
-        // Kartu utama, dengan bayangan halus supaya terangkat dari latarnya.
-        $cardW = 880 * $s;
-        $cardH = 1000 * $s;
-        $cardX = (int) (($w - $cardW) / 2);
-        $cardY = (int) (($h - $cardH) / 2);
+        $cardLeft = self::CARD_LEFT * $s;
+        $cardTop = self::CARD_TOP * $s;
+        $cardRight = ($cardLeft + self::CARD_WIDTH * $s);
+        $cardBottom = ($cardTop + self::CARD_HEIGHT * $s);
 
-        self::backdrop($image, $w, $h);
-        self::roundedRect($image, $cardX, $cardY, $cardX + $cardW, $cardY + $cardH, 44 * $s, $card);
-        self::roundedOutline($image, $cardX, $cardY, $cardX + $cardW, $cardY + $cardH, 44 * $s, $line);
+        // Kartu = gradasi espresso→emerald, PERSIS seperti kartu saldo di
+        // dasbor. Tanpa garis tepi: dulu perlu karena kartu gelap di atas latar
+        // gelap (1,42:1); di latar terang, kartu gelapnya kontras sendiri.
+        self::gradientCard($image, $cardLeft, $cardTop, $cardRight, $cardBottom, 44 * $s, $field);
 
         $bold = self::font(self::FONT_BOLD);
         $regular = self::font(self::FONT_REGULAR);
 
-        // Kode unit paling menonjol: pelanggan berdiri di depan beberapa TV dan
-        // harus yakin sedang memindai yang benar sebelum membayar.
+        // Teks rata tengah DI DALAM kartu, bukan di kanvas: kartunya kebetulan
+        // memang di tengah sekarang, tapi menengahkan ke kanvas berarti setiap
+        // pergeseran kartu diam-diam membuat isinya tidak lagi sejajar.
+        $left = $cardLeft;
+        $right = $cardRight;
+
+        // Urutan bacanya disengaja: unit mana → tipe apa → apa yang harus
+        // dilakukan → berapa.
         if ($bold) {
-            self::centreText($image, $w, $unit->code, $bold, 104 * $s, $cardY + 152 * $s, $white);
+            self::text($image, $left, $right, $unit->code, $bold, 96, 190 * $s, $ink, 0.02);
+            self::pill($image, $left, $right, mb_strtoupper($unit->unitType->name), $bold, 24, 250 * $s, $accent, $onAccent, 0.14);
         }
 
-        // Pil tipe unit, meniru bentuk label pada rujukan: satu kata pendek
-        // yang harus terbaca tanpa bersaing dengan kode unit.
-        if ($regular) {
-            self::pill($image, $w, mb_strtoupper($unit->unitType->name), $bold ?? $regular, 24 * $s, $cardY + 214 * $s, $accent, $card, 0.14);
-        }
-
-        // Panel QR: kode memenuhi panelnya sampai tepi. Tidak ada kotak putih
-        // di dalam kotak — zona hening QR justru DIBENTUK oleh warna panel itu
-        // sendiri, sehingga tetap bisa dipindai tanpa bingkai tambahan.
-        $panelSize = 460 * $s;
-        $panelX = (int) (($w - $panelSize) / 2);
-        $panelY = $cardY + 286 * $s;
-
-        self::roundedRect($image, $panelX, $panelY, $panelX + $panelSize, $panelY + $panelSize, 56 * $s, $panel);
-        self::drawQr($image, $unit, $panelX, $panelY, $panelSize, $module, $panel);
+        self::qrPanel($image, $unit, $panel, $module);
 
         if ($bold) {
-            self::centreText($image, $w, 'PINDAI UNTUK MULAI', $bold, 38 * $s, $panelY + $panelSize + 100 * $s, $white, 0.10);
+            self::text($image, $left, $right, 'PINDAI UNTUK MULAI', $bold, 36, 925 * $s, $ink, 0.10);
         }
 
         if ($regular) {
@@ -145,53 +195,61 @@ final class UnitKioskScreen
                 ->orderBy('price')
                 ->first();
 
-            $harga = $cheapest
+            self::text($image, $left, $right, $cheapest
                 ? 'Mulai '.Rupiah::format($cheapest->price).'  ·  '.$cheapest->duration_minutes.' menit'
-                : 'Hubungi kasir untuk mulai';
+                : 'Hubungi kasir untuk mulai', $regular, 24, 968 * $s, $soft);
 
-            self::centreText($image, $w, $harga, $regular, 26 * $s, $panelY + $panelSize + 158 * $s, $muted);
-            self::centreText($image, $w, 'CREATIVE TREES BILLING GAME', $regular, 15 * $s, $cardY + $cardH - 40 * $s, $line, 0.24);
+            self::text($image, $left, $right, 'CREATIVE TREES BILLING GAME', $regular, 14, 1004 * $s, $accent, 0.24);
         }
 
         return $image;
     }
 
     /**
-     * Kode QR dengan modul BULAT dan penanda sudut membulat.
-     *
-     * Digambar sendiri dari matriksnya, bukan lewat renderer bawaan, karena
-     * yang tersedia di sana hanya kotak tajam. Bentuk bulat lebih enak dipandang
-     * dan tetap terbaca: pemindai membaca posisi modul, bukan bentuknya, selama
-     * kontras dan zona heningnya terjaga.
+     * Panel QR: kode memenuhi panelnya, tanpa kotak di dalam kotak. Zona
+     * heningnya DIBENTUK oleh warna panel itu sendiri.
      */
-    private static function drawQr(GdImage $image, Unit $unit, int $x, int $y, int $panelSize, int $module, int $panel): void
+    private static function qrPanel(GdImage $image, Unit $unit, int $panel, int $module): void
     {
-        // Koreksi kesalahan tinggi (H): layar TV memantulkan cahaya ruangan dan
-        // dipindai dari jarak jauh dengan sudut miring — kode yang sebagian
-        // terbaca kabur tetap harus bisa dipulihkan.
+        $s = self::SCALE;
+        $x = self::QR_LEFT * $s;
+        $y = self::QR_TOP * $s;
+        $size = self::QR_SIZE * $s;
+
+        self::roundedRect($image, $x, $y, $x + $size, $y + $size, 56 * $s, $panel);
+
+        // Koreksi kesalahan tertinggi: layar TV memantulkan cahaya ruangan dan
+        // dipindai dari jauh dengan sudut miring.
         $matrix = Encoder::encode(UnitQrCode::urlFor($unit), ErrorCorrectionLevel::H(), Encoder::DEFAULT_BYTE_MODE_ECODING)
             ->getMatrix();
 
         $modules = $matrix->getWidth();
 
-        // Zona hening 2 modul: batas aman menurut spesifikasi QR adalah 4, tapi
-        // itu untuk kode cetak di atas latar sembarang. Di sini panelnya
-        // sendiri terang dan seragam sampai sudut membulatnya, jadi 2 sudah
-        // cukup — dan kodenya jadi memenuhi panel, bukan mengambang di
-        // tengahnya dengan bingkai putih lebar.
-        $quiet = 2;
-        $cell = (int) ($panelSize / ($modules + $quiet * 2));
-        $origin = (int) (($panelSize - $cell * $modules) / 2);
+        // Zona hening 3 modul. Spesifikasi QR menuntut 4, tapi itu untuk kode
+        // cetak di atas latar sembarang; panel yang terang dan seragam sampai
+        // sudut membulatnya menoleransi kurang. Dua tidak menyisakan margin
+        // begitu pengambilannya miring dan tepi panel dilunakkan JPEG serta
+        // pengecilan 2×.
+        $quiet = 3;
+        $cell = (int) ($size / ($modules + $quiet * 2));
+        $origin = (int) (($size - $cell * $modules) / 2);
 
-        // Modul digambar sebagai kotak yang sudutnya HANYA dibulatkan bila
-        // tidak ada tetangga di kedua sisi sudut itu. Hasilnya modul yang
-        // bersebelahan menyatu jadi bentuk mengalir, sementara modul menyendiri
-        // menjadi lingkaran penuh.
+        // Modul sebagai TITIK terpisah, bukan kotak yang menyatu — gaya yang
+        // dipilih pemilik produk.
         //
-        // Aman dipindai: pusat tiap modul tetap terisi penuh, dan pemindai
-        // membaca posisi modul — bukan bentuknya. Yang tidak boleh diganggu
-        // hanyalah kontras dan zona hening, dan keduanya utuh.
-        $radius = (int) ($cell / 2);
+        // Awalnya saya kira ini mahal: titik berdiameter 0,92 sel kehilangan
+        // 33,5% luas gelapnya dan tidak menyambung dengan tetangganya. Ternyata
+        // TIDAK. Diukur dengan dekoder sungguhan (lihat KioskScreenTest), batas
+        // pindainya jatuh di titik yang sama persis — sekitar 2,2 piksel per
+        // modul — baik titiknya 0,55 maupun 0,92 sel. Yang menentukan bukan
+        // tinta yang hilang, melainkan berapa piksel kamera yang jatuh di tiap
+        // modul.
+        //
+        // Artinya: kalau pemindaian meleset di lapangan, memperbesar titik ini
+        // TIDAK akan menolong. Yang harus diputar adalah ukuran panelnya
+        // (QR_SIZE) atau jarak duduknya. 0,92 dipilih murni karena celah antar
+        // titiknya masih terlihat pada layar 55 inci.
+        $dot = (int) round($cell * 0.92);
 
         for ($my = 0; $my < $modules; $my++) {
             for ($mx = 0; $mx < $modules; $mx++) {
@@ -199,72 +257,29 @@ final class UnitKioskScreen
                     continue;
                 }
 
-                $left = $x + $origin + $mx * $cell;
-                $top = $y + $origin + $my * $cell;
-
-                imagefilledrectangle($image, $left, $top, $left + $cell, $top + $cell, $module);
-
-                $atas = self::isDark($matrix, $mx, $my - 1, $modules);
-                $bawah = self::isDark($matrix, $mx, $my + 1, $modules);
-                $kiri = self::isDark($matrix, $mx - 1, $my, $modules);
-                $kanan = self::isDark($matrix, $mx + 1, $my, $modules);
-
-                foreach ([
-                    [! $atas && ! $kiri, $left, $top, 1, 1],
-                    [! $atas && ! $kanan, $left + $cell, $top, -1, 1],
-                    [! $bawah && ! $kiri, $left, $top + $cell, 1, -1],
-                    [! $bawah && ! $kanan, $left + $cell, $top + $cell, -1, -1],
-                ] as [$bulatkan, $cxCorner, $cyCorner, $dx, $dy]) {
-                    if (! $bulatkan) {
-                        continue;
-                    }
-
-                    // Potong sudutnya dengan warna panel, lalu kembalikan
-                    // lengkungannya dengan seperempat lingkaran.
-                    imagefilledrectangle(
-                        $image,
-                        $cxCorner, $cyCorner,
-                        $cxCorner + $radius * $dx, $cyCorner + $radius * $dy,
-                        $panel,
-                    );
-                    imagefilledellipse(
-                        $image,
-                        $cxCorner + $radius * $dx, $cyCorner + $radius * $dy,
-                        $radius * 2, $radius * 2,
-                        $module,
-                    );
-                }
+                imagefilledellipse(
+                    $image,
+                    (int) ($x + $origin + $mx * $cell + $cell / 2),
+                    (int) ($y + $origin + $my * $cell + $cell / 2),
+                    $dot, $dot,
+                    $module,
+                );
             }
         }
 
-        // Tiga penanda sudut digambar sebagai cincin membulat — bagian inilah
-        // yang pertama dicari pemindai, jadi bentuknya harus tegas.
+        // Penanda sudut sebagai CINCIN: lingkaran luar 7 modul, lubang 5 modul,
+        // inti 3 modul. Perbandingan 1:1:3:1:1 yang dicari pemindai tetap utuh
+        // di garis tengah mendatar maupun tegak — itu yang dibaca, bukan
+        // kotaknya. Di luar garis tengah perbandingannya memang berbeda dari
+        // penanda kotak, dan itu bagian dari margin yang menyempit di bawah.
         foreach ([[0, 0], [$modules - 7, 0], [0, $modules - 7]] as [$fx, $fy]) {
-            $left = $x + $origin + $fx * $cell;
-            $top = $y + $origin + $fy * $cell;
-            $side = $cell * 7;
+            $cx = (int) ($x + $origin + ($fx + 3.5) * $cell);
+            $cy = (int) ($y + $origin + ($fy + 3.5) * $cell);
 
-            self::roundedRect($image, $left, $top, $left + $side, $top + $side, (int) ($side * 0.28), $module);
-            self::roundedRect($image, $left + $cell, $top + $cell, $left + $side - $cell, $top + $side - $cell, (int) ($side * 0.2), $panel);
-            self::roundedRect($image, $left + $cell * 2, $top + $cell * 2, $left + $side - $cell * 2, $top + $side - $cell * 2, (int) ($side * 0.14), $module);
+            imagefilledellipse($image, $cx, $cy, $cell * 7, $cell * 7, $module);
+            imagefilledellipse($image, $cx, $cy, $cell * 5, $cell * 5, $panel);
+            imagefilledellipse($image, $cx, $cy, $cell * 3, $cell * 3, $module);
         }
-    }
-
-    private static function isDark(mixed $matrix, int $x, int $y, int $modules): bool
-    {
-        if ($x < 0 || $y < 0 || $x >= $modules || $y >= $modules) {
-            return false;
-        }
-
-        // Penanda sudut digambar terpisah, jadi ia tidak boleh dianggap
-        // tetangga — kalau tidak, modul di sebelahnya ikut menyatu ke sana dan
-        // bentuk penandanya rusak. Justru bentuk itu yang pertama dicari
-        // pemindai.
-        if (self::isFinder($x, $y, $modules)) {
-            return false;
-        }
-
-        return $matrix->get($x, $y) === 1;
     }
 
     private static function isFinder(int $x, int $y, int $modules): bool
@@ -272,73 +287,6 @@ final class UnitKioskScreen
         return ($x < 7 && $y < 7)
             || ($x >= $modules - 7 && $y < 7)
             || ($x < 7 && $y >= $modules - 7);
-    }
-
-    /**
-     * Latar espresso dengan cahaya sangat halus di belakang kartu.
-     *
-     * Digambar pada 1/8 ukuran lalu diperbesar: gradasi dan cahaya adalah
-     * peralihan warna halus, jadi hasilnya identik di mata sementara waktunya
-     * turun dari sebelas detik ke bawah satu detik. Penghalusan saat
-     * memperbesar sekaligus menghapus sisa gerigi lingkarannya.
-     *
-     * TANPA bayangan kartu. Sempat ada, dan di layar TV justru terlihat seperti
-     * kotoran di sekeliling kartu, bukan kedalaman — pemilik produk memintanya
-     * dihapus setelah melihatnya langsung. Pemisahan kartu dari latar kini
-     * dikerjakan kontras warna (emerald di atas espresso), yang jauh lebih
-     * bersih dari jarak beberapa meter.
-     */
-    private static function backdrop(GdImage $image, int $w, int $h): void
-    {
-        $div = 8;
-        $sw = (int) ($w / $div);
-        $sh = (int) ($h / $div);
-        $small = imagecreatetruecolor($sw, $sh);
-
-        for ($y = 0; $y < $sh; $y++) {
-            $t = $y / $sh;
-            $colour = imagecolorallocate($small, (int) (38 - 6 * $t), (int) (19 - 3 * $t), (int) (17 - 2 * $t));
-            imagefilledrectangle($small, 0, $y, $sw, $y, $colour);
-        }
-
-        // Radius melebihi kanvas supaya tepi lingkarannya tidak pernah terlihat
-        // sebagai garis di layar.
-        $cx = (int) ($sw / 2);
-        $cy = (int) ($sh / 2);
-        $radius = (int) ($sw * 0.95);
-
-        for ($r = $radius; $r > 0; $r--) {
-            $t = 1 - ($r / $radius);
-            $ease = $t * $t * $t * $t;
-            $colour = imagecolorallocate($small, (int) (36 + 14 * $ease), (int) (19 + 10 * $ease), (int) (17 + 8 * $ease));
-            imagefilledellipse($small, $cx, $cy, $r * 2, $r * 2, $colour);
-        }
-
-        imagecopyresampled($image, $small, 0, 0, 0, 0, $w, $h, $sw, $sh);
-
-        unset($small);
-    }
-
-    private static function pill(GdImage $image, int $canvasWidth, string $text, string $font, int $size, int $y, int $fill, int $ink, float $tracking = 0): void
-    {
-        $letters = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        $gap = $size * $tracking;
-
-        $textWidth = -$gap;
-
-        foreach ($letters as $letter) {
-            $box = imagettfbbox($size, 0, $font, $letter);
-            $textWidth += ($box[2] - $box[0]) + $gap;
-        }
-
-        $padX = (int) ($size * 1.4);
-        $padY = (int) ($size * 0.62);
-
-        $x1 = (int) (($canvasWidth - $textWidth) / 2) - $padX;
-        $x2 = (int) (($canvasWidth + $textWidth) / 2) + $padX;
-
-        self::roundedRect($image, $x1, $y - $size - $padY, $x2, $y + $padY, (int) (($size + $padY * 2) / 2), $fill);
-        self::centreText($image, $canvasWidth, $text, $font, $size, $y, $ink, $tracking);
     }
 
     private static function font(array $candidates): ?string
@@ -353,38 +301,135 @@ final class UnitKioskScreen
     }
 
     /**
-     * Teks rata tengah, dengan jarak antar huruf opsional.
+     * Teks rata tengah DI DALAM sebuah kolom, dengan jarak antar huruf opsional.
      *
-     * Jarak huruf digambar sendiri per karakter karena GD tidak punya
-     * letter-spacing. Itu yang membedakan label kecil huruf kapital terlihat
-     * dirancang atau sekadar diketik — dan pada layar besar, huruf kapital
-     * rapat justru lebih sulit dibaca dari jauh.
+     * Lebarnya diukur dari SELURUH string sekaligus, bukan menjumlahkan lebar
+     * tiap huruf. Penjumlahan per-huruf membuang kerning dan side bearing:
+     * terukur di sini, 'PINDAI UNTUK MULAI' meleset ~2% — cukup untuk membuat
+     * teks berjarak terlihat tidak benar-benar di tengah kolomnya. Jaraknya baru
+     * ditambahkan setelah pengukuran.
+     *
+     * Jarak hurufnya digambar sendiri per karakter karena GD tidak punya
+     * letter-spacing, dan pada layar besar huruf kapital rapat lebih sulit
+     * dibaca dari jauh.
      */
-    private static function centreText(GdImage $image, int $canvasWidth, string $text, string $font, int $size, int $y, int $colour, float $tracking = 0): void
+    private static function text(GdImage $image, int $x1, int $x2, string $text, string $font, int $px, int $baseline, int $colour, float $tracking = 0): void
     {
+        $size = self::gdSize($px);
+        $x = $x1 + (($x2 - $x1) - self::widthOf($text, $font, $size, $tracking)) / 2;
+
         if ($tracking <= 0) {
-            $box = imagettfbbox($size, 0, $font, $text);
-            imagettftext($image, $size, 0, (int) (($canvasWidth - ($box[2] - $box[0])) / 2), $y, $colour, $font, $text);
+            imagettftext($image, $size, 0, (int) $x, $baseline, $colour, $font, $text);
 
             return;
         }
 
         $letters = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $gap = $size * $tracking;
+        $prefix = '';
 
-        $width = -$gap;
+        foreach ($letters as $index => $letter) {
+            $offset = 0;
 
-        foreach ($letters as $letter) {
-            $box = imagettfbbox($size, 0, $font, $letter);
-            $width += ($box[2] - $box[0]) + $gap;
+            // Posisi tiap huruf diukur dari SELURUH awalan sebelumnya, bukan
+            // dari akumulasi lebar per huruf — supaya kerning di dalam kata
+            // tetap terpakai dan jaraknya benar-benar merata.
+            if ($index > 0) {
+                $box = imagettfbbox($size, 0, $font, $prefix);
+                $offset = ($box[2] - $box[0]) + $gap * $index;
+            }
+
+            imagettftext($image, $size, 0, (int) ($x + $offset), $baseline, $colour, $font, $letter);
+            $prefix .= $letter;
+        }
+    }
+
+    private static function pill(GdImage $image, int $x1, int $x2, string $text, string $font, int $px, int $baseline, int $fill, int $ink, float $tracking = 0): void
+    {
+        $size = self::gdSize($px);
+        $width = self::widthOf($text, $font, $size, $tracking);
+
+        $padX = (int) ($size * 0.9);
+        $padY = (int) ($size * 0.6);
+        $centre = $x1 + ($x2 - $x1) / 2;
+
+        self::roundedRect(
+            $image,
+            (int) ($centre - $width / 2) - $padX,
+            $baseline - $size - $padY,
+            (int) ($centre + $width / 2) + $padX,
+            $baseline + $padY,
+            (int) (($size + $padY * 2) / 2),
+            $fill,
+        );
+
+        self::text($image, $x1, $x2, $text, $font, $px, $baseline, $ink, $tracking);
+    }
+
+    private static function gdSize(int $px): int
+    {
+        return (int) round($px * self::POINTS_PER_PIXEL * self::SCALE);
+    }
+
+    private static function widthOf(string $text, string $font, int $size, float $tracking): float
+    {
+        $box = imagettfbbox($size, 0, $font, $text);
+        $letters = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return ($box[2] - $box[0]) + ($size * $tracking) * max(0, count($letters) - 1);
+    }
+
+    /**
+     * Kartu gradasi espresso→emerald dengan cahaya cognac lembut — meniru kartu
+     * saldo di dasbor HP supaya keduanya identik.
+     *
+     * Gradasinya digambar kecil lalu diperbesar: peralihan warna halus identik
+     * di mata, tapi jauh lebih cepat daripada per-piksel ukuran penuh. Sudutnya
+     * dibulatkan dengan warna yang DIAMBIL dari gradasi di titik itu
+     * (imagecolorat), jadi lengkungannya menyatu, bukan tempelan warna solid.
+     */
+    private static function gradientCard(GdImage $image, int $x1, int $y1, int $x2, int $y2, int $radius, int $bg): void
+    {
+        $w = $x2 - $x1;
+        $h = $y2 - $y1;
+
+        $sw = 96;
+        $sh = max(1, (int) round($sw * $h / $w));
+        $small = imagecreatetruecolor($sw, $sh);
+
+        for ($yy = 0; $yy < $sh; $yy++) {
+            for ($xx = 0; $xx < $sw; $xx++) {
+                // 0 di kiri-atas (espresso) → 1 di kanan-bawah (emerald).
+                $diag = (($xx / $sw) + ($yy / $sh)) / 2;
+                $base = Brand::mix(Brand::ESPRESSO, Brand::EMERALD, $diag);
+
+                // Cahaya cognac dari pojok kanan-atas, seperti kartu saldo.
+                $gx = 1 - ($xx / $sw);
+                $gy = $yy / $sh;
+                $glow = max(0.0, 1 - sqrt($gx * $gx + $gy * $gy) / 0.6);
+
+                imagesetpixel($small, $xx, $yy, Brand::gd($small, Brand::mix($base, Brand::COGNAC, $glow * 0.18)));
+            }
         }
 
-        $x = ($canvasWidth - $width) / 2;
+        imagecopyresampled($image, $small, $x1, $y1, 0, 0, $w, $h, $sw, $sh);
+        unset($small);
 
-        foreach ($letters as $letter) {
-            imagettftext($image, $size, 0, (int) $x, $y, $colour, $font, $letter);
-            $box = imagettfbbox($size, 0, $font, $letter);
-            $x += ($box[2] - $box[0]) + $gap;
+        $midX = ($x1 + $x2) / 2;
+        $midY = ($y1 + $y2) / 2;
+
+        foreach ([[$x1 + $radius, $y1 + $radius], [$x2 - $radius, $y1 + $radius], [$x1 + $radius, $y2 - $radius], [$x2 - $radius, $y2 - $radius]] as [$cx, $cy]) {
+            $local = imagecolorat($image, $cx, $cy);
+
+            imagefilledrectangle(
+                $image,
+                $cx < $midX ? $x1 : $cx,
+                $cy < $midY ? $y1 : $cy,
+                $cx < $midX ? $cx : $x2,
+                $cy < $midY ? $cy : $y2,
+                $bg,
+            );
+            imagefilledellipse($image, $cx, $cy, $radius * 2, $radius * 2, $local);
         }
     }
 
@@ -398,13 +443,5 @@ final class UnitKioskScreen
         foreach ([[$x1 + $radius, $y1 + $radius], [$x2 - $radius, $y1 + $radius], [$x1 + $radius, $y2 - $radius], [$x2 - $radius, $y2 - $radius]] as [$cx, $cy]) {
             imagefilledellipse($image, $cx, $cy, $radius * 2, $radius * 2, $colour);
         }
-    }
-
-    private static function roundedOutline(GdImage $image, int $x1, int $y1, int $x2, int $y2, int $radius, int $colour): void
-    {
-        imageline($image, $x1 + $radius, $y1, $x2 - $radius, $y1, $colour);
-        imageline($image, $x1 + $radius, $y2, $x2 - $radius, $y2, $colour);
-        imageline($image, $x1, $y1 + $radius, $x1, $y2 - $radius, $colour);
-        imageline($image, $x2, $y1 + $radius, $x2, $y2 - $radius, $colour);
     }
 }
