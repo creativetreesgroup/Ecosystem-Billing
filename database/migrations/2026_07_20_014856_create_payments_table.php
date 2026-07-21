@@ -27,6 +27,11 @@ return new class extends Migration
             $table->enum('status', ['pending', 'awaiting_verification', 'paid', 'rejected', 'expired']);
             $table->unsignedInteger('amount');
 
+            // Voucher isi saldo (V2): kode disimpan saat checkout, bonusnya
+            // dikreditkan saat pembayaran benar-benar LUNAS (bukan saat pending) —
+            // supaya bonus tak pernah keluar tanpa uang masuk.
+            $table->string('voucher_code')->nullable();
+
             // Rujukan dari luar: order_id Midtrans untuk QRIS, atau catatan bank
             // untuk transfer. Unique supaya satu transaksi gateway tidak pernah
             // tercatat dua kali sebagai dua pemasukan.

@@ -170,6 +170,30 @@ new class extends Component
         }
     }
 
+    /**
+     * Pratinjau voucher isi saldo: bonus = potongan yang dihitung atas nominal
+     * top-up (bayar penuh, saldo bertambah lebih).
+     *
+     * @return array{ok: bool, bonus?: int, label?: string, message?: string}|null
+     */
+    #[Computed]
+    public function topUpVoucherResult(): ?array
+    {
+        $code = trim($this->voucherCode);
+
+        if ($code === '' || ! $this->topUpAmount) {
+            return null;
+        }
+
+        try {
+            $result = app(DiscountEngine::class)->preview($code, DiscountTarget::TopUp, (int) $this->topUpAmount, $this->customer);
+
+            return ['ok' => true, 'bonus' => $result->discount, 'label' => $result->label];
+        } catch (DiscountNotApplicableException $e) {
+            return ['ok' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     /** Jumlah halaman grid paket, 4 per halaman. */
     public function packagePageCount(): int
     {
@@ -580,7 +604,14 @@ new class extends Component
                 $this->customer,
                 (int) $this->topUpAmount,
                 PaymentMethod::from($this->method),
+                trim($this->voucherCode) ?: null,
             );
+        } catch (DiscountNotApplicableException $e) {
+            // Voucher tak berlaku — tetap di modal supaya pelanggan bisa hapus
+            // kodenya & lanjut tanpa bonus.
+            $this->error = $e->getMessage();
+
+            return;
         } catch (Throwable $exception) {
             // Pesan mentah tidak pernah ditampilkan: isinya bisa memuat detail
             // gateway atau jalur berkas. Yang berguna bagi pelanggan hanyalah
@@ -593,6 +624,7 @@ new class extends Component
         }
 
         $this->confirm = null;
+        $this->voucherCode = '';
         $this->paymentId = $payment->id;
         $this->qrUrl = $qrUrl;
     }
@@ -1240,15 +1272,32 @@ new class extends Component
             </div>
         </div>
     @elseif ($confirm === 'topup')
+        @php($tvr = $this->topUpVoucherResult)
+        @php($tvrOk = $tvr && ($tvr['ok'] ?? false))
         <div class="modal-backdrop">
             <div class="modal">
                 <div class="center"><span class="icon-badge">@svg('heroicon-o-plus')</span></div>
                 <h2 class="card-title">Yakin isi saldo?</h2>
                 <div class="confirm-rows">
                     <div><span>Nominal</span><b>{{ Rupiah::format((int) $topUpAmount) }}</b></div>
-                    <div class="confirm-total"><span>Metode</span><b>{{ $method ? PaymentMethod::from($method)->getLabel() : '' }}</b></div>
+                    <div><span>Metode</span><b>{{ $method ? PaymentMethod::from($method)->getLabel() : '' }}</b></div>
+                    @if ($tvrOk)
+                        <div><span>Bonus voucher</span><b style="color:var(--ok)">+ {{ Rupiah::format($tvr['bonus']) }}</b></div>
+                        <div class="confirm-total"><span>Saldo bertambah</span><b>{{ Rupiah::format((int) $topUpAmount + $tvr['bonus']) }}</b></div>
+                    @endif
                 </div>
-                <button type="button" class="btn" wire:click="topUp" wire:loading.attr="disabled" wire:target="topUp">
+
+                {{-- Voucher isi saldo: bonus saldo (bayar penuh, saldo bertambah
+                     lebih). Bonusnya dikreditkan saat pembayaran lunas. --}}
+                <input type="text" wire:model.blur="voucherCode" placeholder="Punya kode voucher? (opsional)"
+                       class="field" style="text-transform:uppercase" autocomplete="off" maxlength="30">
+                @if ($tvr && ! $tvrOk)
+                    <p class="error">{{ $tvr['message'] }}</p>
+                @elseif ($tvrOk)
+                    <p class="notice" style="margin-top:.5rem">Voucher "{{ $tvr['label'] }}" dipakai.</p>
+                @endif
+
+                <button type="button" class="btn btn-block-gap" wire:click="topUp" wire:loading.attr="disabled" wire:target="topUp">
                     <span wire:loading.remove wire:target="topUp">Ya, lanjut bayar</span>
                     <span wire:loading wire:target="topUp"><span class="spin"></span> Menyiapkan&hellip;</span>
                 </button>

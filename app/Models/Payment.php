@@ -22,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'rental_session_id', 'customer_id', 'method', 'status', 'amount', 'reference',
-    'proof_path', 'verified_by', 'verified_at', 'rejection_reason',
+    'proof_path', 'verified_by', 'verified_at', 'rejection_reason', 'voucher_code',
 ])]
 class Payment extends Model
 {

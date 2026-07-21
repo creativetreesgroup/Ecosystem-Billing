@@ -5,6 +5,8 @@ namespace App\Domain\Wallet\Actions;
 use App\Domain\Billing\MidtransGateway;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
+use App\Domain\Discounts\DiscountEngine;
+use App\Domain\Discounts\DiscountTarget;
 use App\Models\Customer;
 use App\Models\Payment;
 use InvalidArgumentException;
@@ -29,12 +31,15 @@ class OpenTopUpAction
 
     public const MAXIMUM = 2_000_000;
 
-    public function __construct(private readonly MidtransGateway $gateway) {}
+    public function __construct(
+        private readonly MidtransGateway $gateway,
+        private readonly DiscountEngine $discounts,
+    ) {}
 
     /**
      * @return array{payment: Payment, qr_url: ?string}
      */
-    public function handle(Customer $customer, int $amount, PaymentMethod $method): array
+    public function handle(Customer $customer, int $amount, PaymentMethod $method, ?string $voucherCode = null): array
     {
         if ($amount < self::MINIMUM || $amount > self::MAXIMUM) {
             throw new InvalidArgumentException('Nominal isi saldo di luar batas yang diizinkan.');
@@ -48,6 +53,13 @@ class OpenTopUpAction
         // berpindah tanpa manusia yang menerimanya.
         if ($method === PaymentMethod::Cash) {
             throw new InvalidArgumentException('Isi saldo tunai dilayani kasir.');
+        }
+
+        // Voucher divalidasi SEKARANG (kode salah ditolak sebelum QR dibuat),
+        // tapi bonusnya BARU dikreditkan saat pembayaran lunas (lihat
+        // ApplySettledPaymentAction) — bonus tak pernah keluar tanpa uang masuk.
+        if ($voucherCode) {
+            $this->discounts->preview($voucherCode, DiscountTarget::TopUp, $amount, $customer);
         }
 
         // Tagihan isi saldo yang belum dibayar dibatalkan lebih dulu. Membiarkan
@@ -64,6 +76,7 @@ class OpenTopUpAction
             'method' => $method,
             'status' => PaymentStatus::Pending,
             'amount' => $amount,
+            'voucher_code' => $voucherCode,
         ]);
 
         if ($method !== PaymentMethod::Qris) {

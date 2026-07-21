@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Customers\Actions;
 
 use App\Domain\Billing\Rupiah;
+use App\Domain\Discounts\Exceptions\DiscountNotApplicableException;
 use App\Domain\Wallet\Actions\SettleCashTopUpAction;
 use App\Models\Customer;
 use Filament\Actions\Action;
@@ -52,17 +53,30 @@ class CashTopUpAction
                     ->numeric()
                     ->minValue(1000)
                     ->required(),
+                // Voucher opsional → bonus saldo (kode salah membatalkan aksi
+                // dengan pesan, tak ada saldo terkredit setengah jalan).
+                TextInput::make('voucher_code')
+                    ->hiddenLabel()
+                    ->placeholder('Kode voucher (opsional)')
+                    ->extraInputAttributes(['style' => 'text-transform:uppercase']),
             ])
             ->action(function (array $data, Customer $record): void {
-                app(SettleCashTopUpAction::class)->handle(
-                    $record,
-                    (int) $data['amount'],
-                    Auth::user(),
-                );
+                try {
+                    $transaction = app(SettleCashTopUpAction::class)->handle(
+                        $record,
+                        (int) $data['amount'],
+                        Auth::user(),
+                        $data['voucher_code'] ?: null,
+                    );
+                } catch (DiscountNotApplicableException $e) {
+                    Notification::make()->title('Voucher tidak dipakai')->body($e->getMessage())->warning()->send();
+
+                    return;
+                }
 
                 Notification::make()
                     ->title('Saldo bertambah')
-                    ->body(Rupiah::format((int) $data['amount']).' masuk ke saldo '.$record->name.'.')
+                    ->body('Saldo '.$record->name.' kini '.Rupiah::format($transaction->balance_after).'.')
                     ->success()
                     ->send();
             });
