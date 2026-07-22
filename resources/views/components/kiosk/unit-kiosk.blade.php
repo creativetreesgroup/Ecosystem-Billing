@@ -1,8 +1,10 @@
 <?php
 
+use App\Domain\Billing\Actions\SettleQrisPaymentAction;
 use App\Domain\Billing\Actions\StartKioskOpenPlayAction;
 use App\Domain\Billing\Actions\StopKioskOpenPlayAction;
 use App\Domain\Billing\Events\TransferProofSubmitted;
+use App\Domain\Billing\MidtransGateway;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Domain\Billing\Rupiah;
@@ -27,6 +29,7 @@ use App\Models\Package;
 use App\Models\Payment;
 use App\Models\Setting;
 use App\Models\Unit;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
@@ -328,7 +331,12 @@ new class extends Component
         try {
             app(OtpService::class)->request($this->phone);
         } catch (TooManyPinAttemptsException $exception) {
-            $this->error = $exception->getMessage();
+            // OTP habis kuotanya. Nomor ini pasti milik member (hanya member yang
+            // memicu OTP), jadi arahkan ke PIN sebagai jalan masuk — bukan
+            // membiarkannya buntu di langkah nomor sampai jendela reset ~15 menit.
+            $this->error = rtrim($exception->getMessage(), '.').'. Masuk pakai PIN saja.';
+            $this->code = '';
+            $this->step = 'pin';
 
             return;
         } catch (ValidationException $exception) {
@@ -448,6 +456,10 @@ new class extends Component
     {
         $this->error = null;
 
+        if (! $this->customer) {
+            return;
+        }
+
         if ($this->playChoice === '') {
             $this->error = 'Pilih paket atau Open Play dulu.';
 
@@ -476,6 +488,10 @@ new class extends Component
     public function startOpenPlay(): void
     {
         $this->error = null;
+
+        if (! $this->customer) {
+            return;
+        }
 
         try {
             app(StartKioskOpenPlayAction::class)->handle($this->customer, $this->unit, trim($this->voucherCode) ?: null);
@@ -529,6 +545,12 @@ new class extends Component
             return;
         }
 
+        // Segarkan user di guard: StopKioskOpenPlayAction menagih lewat instance
+        // Customer yang dikunci TERPISAH, jadi user yang dipegang guard (yang
+        // dikembalikan $this->customer) masih memegang saldo LAMA. Tanpa refresh
+        // ini, cek "saldo minus" di bawah tak pernah true saat baru masuk utang,
+        // dan kartu saldo sempat menampilkan angka positif basi satu render.
+        Auth::guard('customer')->user()?->refresh();
         unset($this->activeSession, $this->customer);
 
         // Kalau berhenti meninggalkan saldo minus, langsung arahkan ke pelunasan
@@ -552,6 +574,11 @@ new class extends Component
     public function play(): void
     {
         $this->error = null;
+
+        if (! $this->customer) {
+            return;
+        }
+
         $this->validate(
             ['packageId' => 'required|integer'],
             messages: ['packageId.required' => 'Pilih paket dulu sebelum mulai main.'],
@@ -582,9 +609,10 @@ new class extends Component
             $this->error = $e->getMessage();
 
             return;
-        } catch (InvalidArgumentException) {
-            // Paket/unit/akun tak lagi valid — mis. paket dinonaktifkan, atau
-            // playChoice di-tamper ke paket tipe unit lain. Dilempar SEBELUM
+        } catch (InvalidArgumentException|ModelNotFoundException) {
+            // Paket/unit/akun tak lagi valid — dinonaktifkan, DIHAPUS (Package
+            // tanpa SoftDeletes, jadi findOrFail bisa melempar ModelNotFound),
+            // atau playChoice di-tamper ke paket tipe unit lain. Dilempar SEBELUM
             // saldo dipotong, jadi aman; jangan biarkan jadi 500 ke pelanggan.
             $this->confirm = null;
             $this->error = 'Paket ini sedang tidak tersedia. Coba pilih lagi.';
@@ -691,6 +719,33 @@ new class extends Component
     public function cancelPayment(): void
     {
         $payment = $this->payment;
+
+        // QRIS bisa TERLANJUR dibayar dalam ~10 dtk sebelum poll berikutnya
+        // menandainya Lunas. Menghanguskannya begitu saja = pelanggan kehilangan
+        // uang tanpa pemulihan: poll & reconcile hanya memproses Pending/Paid,
+        // bukan Expired. Jadi tanya gateway dulu sebelum menghanguskan QRIS.
+        if ($payment && $payment->status === PaymentStatus::Pending && $payment->method === PaymentMethod::Qris) {
+            $status = app(MidtransGateway::class)->statusOf($payment);
+
+            if ($status === PaymentStatus::Paid) {
+                // Sudah dibayar → selesaikan (kredit saldo), JANGAN hanguskan.
+                // Layar sukses muncul sendiri dari status Paid.
+                app(SettleQrisPaymentAction::class)->handle($payment);
+                unset($this->payment, $this->customer, $this->activeSession);
+
+                return;
+            }
+
+            if ($status === null) {
+                // Gateway tak terjangkau: bisa jadi sudah dibayar. JANGAN
+                // hanguskan; biarkan Pending — poll & reconcile menuntaskannya.
+                $this->error = 'Belum bisa dibatalkan — pembayaran masih dicek. Tunggu sebentar lalu coba lagi.';
+
+                return;
+            }
+
+            // Gateway memastikan belum/tidak dibayar → aman dihanguskan (di bawah).
+        }
 
         if ($payment && $payment->status === PaymentStatus::Pending) {
             $payment->update(['status' => PaymentStatus::Expired]);

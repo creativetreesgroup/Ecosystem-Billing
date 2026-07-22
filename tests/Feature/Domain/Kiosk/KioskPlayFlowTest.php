@@ -56,6 +56,26 @@ test('choosing a package and pressing play in one go starts the session', functi
         ->and($this->customer->fresh()->balance)->toBe(40_000);
 });
 
+/**
+ * Paket bisa DIHAPUS admin antara "konfirmasi" dan "Ya, mulai main". Package tak
+ * punya SoftDeletes, jadi findOrFail-nya di play() dulu melempar
+ * ModelNotFoundException yang tak tertangkap → layar 500 buntu. Kini ditangkap
+ * jadi pesan ramah, tanpa 500 dan tanpa saldo terpotong.
+ */
+test('a package deleted before play shows a friendly error, never a 500 or a charge', function () {
+    $id = $this->package->id;
+    $this->package->delete();
+
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $id)
+        ->call('play')
+        ->assertSet('error', 'Paket ini sedang tidak tersedia. Coba pilih lagi.');
+
+    expect($this->customer->fresh()->balance)->toBe(50_000)
+        ->and($this->unit->fresh()->activeSession)->toBeNull();
+});
+
 test('a valid voucher discounts the package at the kiosk', function () {
     Discount::factory()->percentage(20)->create(['code' => 'HEMAT20']);
 

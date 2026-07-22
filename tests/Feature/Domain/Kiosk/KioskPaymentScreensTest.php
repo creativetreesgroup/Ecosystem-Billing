@@ -2,11 +2,14 @@
 
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
+use App\Domain\Devices\IntegrationKey;
 use App\Domain\Settings\SettingKey;
 use App\Models\Customer;
+use App\Models\Integration;
 use App\Models\Payment;
 use App\Models\Setting;
 use App\Models\Unit;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
 /**
@@ -21,6 +24,16 @@ beforeEach(function () {
     Setting::put(SettingKey::TransferBankName, 'MANDIRI');
     Setting::put(SettingKey::TransferAccountNumber, '72873793932');
     Setting::put(SettingKey::TransferAccountHolder, 'M HALFIRZZHATULLAH');
+
+    // Midtrans terkonfigurasi supaya cancelPayment bisa menanyakan status QRIS
+    // ke gateway (lihat perbaikan orphan-payment di bawah).
+    Integration::query()->where('key', IntegrationKey::Midtrans)->delete();
+    Integration::factory()->create([
+        'key' => IntegrationKey::Midtrans,
+        'base_url' => 'https://api.sandbox.midtrans.com',
+        'token' => 'SB-Mid-server-uji',
+        'is_active' => true,
+    ]);
 });
 
 test('the transfer screen shows the account, A/N, and a modern file picker', function () {
@@ -97,16 +110,23 @@ test('a customer cannot view another customers payment by tampering paymentId', 
 
 /**
  * Layar pembayaran menggantung harus punya jalan keluar: membatalkan tagihan
- * QRIS/transfer yang belum dibayar menandainya Expired (tak ada QR hidup yang
- * bisa terlanjur dibayar) dan kembali ke tab isi saldo.
+ * QRIS yang gateway PASTIKAN belum dibayar menandainya Expired dan kembali ke
+ * tab isi saldo.
  */
-test('cancelling a pending payment expires it and leaves the payment screen', function () {
+test('cancelling a pending payment the gateway confirms unpaid expires it', function () {
     $payment = Payment::create([
         'customer_id' => $this->customer->id,
         'method' => PaymentMethod::Qris,
         'status' => PaymentStatus::Pending,
         'amount' => 50_000,
+        'reference' => 'ORDER-EXP-1',
     ]);
+
+    // Gateway memastikan masih menggantung (belum dibayar) → aman dihanguskan.
+    Http::fake(['api.sandbox.midtrans.com/v2/*/status' => Http::response([
+        'transaction_status' => 'pending',
+        'gross_amount' => '50000.00',
+    ])]);
 
     Livewire::actingAs($this->customer, 'customer')
         ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
@@ -116,4 +136,63 @@ test('cancelling a pending payment expires it and leaves the payment screen', fu
         ->assertDontSee('Bayar dengan QRIS');
 
     expect($payment->fresh()->status)->toBe(PaymentStatus::Expired);
+});
+
+/**
+ * KRITIS (uang): pelanggan bisa menekan Batalkan dalam ~10 dtk setelah membayar,
+ * sebelum poll menandai QRIS-nya Lunas. Batalkan TIDAK boleh menghanguskan yang
+ * sudah dibayar — kalau tidak, uangnya masuk ke merchant tapi saldo tak pernah
+ * bertambah, tanpa pemulihan otomatis. Gateway ditanya dulu; kalau sudah dibayar,
+ * saldo dikreditkan, bukan dihanguskan.
+ */
+test('cancelling a QRIS the gateway already settled credits the wallet, never expires it', function () {
+    $payment = Payment::create([
+        'customer_id' => $this->customer->id,
+        'method' => PaymentMethod::Qris,
+        'status' => PaymentStatus::Pending,
+        'amount' => 50_000,
+        'reference' => 'ORDER-PAID-1',
+    ]);
+
+    // Gateway: ternyata SUDAH lunas (settlement).
+    Http::fake(['api.sandbox.midtrans.com/v2/*/status' => Http::response([
+        'transaction_status' => 'settlement',
+        'gross_amount' => '50000.00',
+    ])]);
+
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('paymentId', $payment->id)
+        ->call('cancelPayment');
+
+    expect($payment->fresh()->status)->toBe(PaymentStatus::Paid)
+        ->and($this->customer->fresh()->balance)->toBe(50_000)
+        ->and($this->customer->walletTransactions()->where('payment_id', $payment->id)->count())->toBe(1);
+});
+
+/**
+ * Kalau gateway tak terjangkau saat Batalkan, kita TIDAK tahu apakah sudah
+ * dibayar — jadi jangan hanguskan (biarkan Pending; poll & reconcile
+ * menuntaskannya). Menghanguskan di sini berisiko menghilangkan uang.
+ */
+test('cancelling a QRIS is refused when the gateway is unreachable, payment stays pending', function () {
+    $payment = Payment::create([
+        'customer_id' => $this->customer->id,
+        'method' => PaymentMethod::Qris,
+        'status' => PaymentStatus::Pending,
+        'amount' => 50_000,
+        'reference' => 'ORDER-DOWN-1',
+    ]);
+
+    // Gateway down → statusOf null.
+    Http::fake(['api.sandbox.midtrans.com/*' => Http::response('', 500)]);
+
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('paymentId', $payment->id)
+        // Tetap di layar QRIS (tidak dihanguskan) — uang aman.
+        ->call('cancelPayment')
+        ->assertSee('Bayar dengan QRIS');
+
+    expect($payment->fresh()->status)->toBe(PaymentStatus::Pending);
 });
