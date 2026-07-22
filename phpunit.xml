@@ -21,6 +21,11 @@
         </include>
     </source>
     <php>
+        <!-- Suite penuh (400+ test, banyak render Filament/Livewire) menembus
+             memory_limit CLI bawaan 128M dan MATI di tengah jalan tanpa pesan
+             jelas - hanya dump HTML. Dinaikkan di sini supaya `php artisan test`
+             jalan apa adanya, tanpa harus ingat flag -d memory_limit. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
