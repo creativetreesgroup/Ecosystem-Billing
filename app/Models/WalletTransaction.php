@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'customer_id', 'type', 'amount', 'balance_after',
-    'payment_id', 'rental_session_id', 'performed_by', 'description',
+    'payment_id', 'rental_session_id', 'menu_order_id', 'performed_by', 'description',
 ])]
 class WalletTransaction extends Model
 {
@@ -40,5 +40,10 @@ class WalletTransaction extends Model
     public function rentalSession(): BelongsTo
     {
         return $this->belongsTo(RentalSession::class);
+    }
+
+    public function menuOrder(): BelongsTo
+    {
+        return $this->belongsTo(MenuOrder::class);
     }
 }

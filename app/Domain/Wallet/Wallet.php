@@ -5,6 +5,7 @@ namespace App\Domain\Wallet;
 use App\Domain\Wallet\Exceptions\CreditCeilingReachedException;
 use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
 use App\Models\Customer;
+use App\Models\MenuOrder;
 use App\Models\Payment;
 use App\Models\RentalSession;
 use App\Models\User;
@@ -87,6 +88,37 @@ class Wallet
             'rental_session_id' => $session?->id,
             'performed_by' => $performedBy?->id,
             'description' => 'Pengembalian saldo',
+        ]);
+    }
+
+    /**
+     * Membayar pesanan jajanan dari saldo. Floor 0 DENGAN SENGAJA: jajan tidak
+     * boleh berutang — hanya Open Play yang punya plafon kredit, dan pengecualian
+     * itu tidak boleh menular ke pembelian lain.
+     */
+    public function spendOnOrder(Customer $customer, int $amount, MenuOrder $order): WalletTransaction
+    {
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Nominal pesanan harus lebih dari nol.');
+        }
+
+        return $this->record($customer, WalletTransactionType::Spend, -$amount, [
+            'menu_order_id' => $order->id,
+            'description' => 'Pesanan di '.($order->unit?->code ?? 'kios'),
+        ]);
+    }
+
+    /** Mengembalikan uang pesanan yang dibatalkan sebelum sempat diantar. */
+    public function refundOrder(Customer $customer, int $amount, MenuOrder $order, ?User $performedBy = null): WalletTransaction
+    {
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Nominal pengembalian harus lebih dari nol.');
+        }
+
+        return $this->record($customer, WalletTransactionType::Refund, $amount, [
+            'menu_order_id' => $order->id,
+            'performed_by' => $performedBy?->id,
+            'description' => 'Pembatalan pesanan di '.($order->unit?->code ?? 'kios'),
         ]);
     }
 

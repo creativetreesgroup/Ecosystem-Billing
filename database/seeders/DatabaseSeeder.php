@@ -156,5 +156,7 @@ class DatabaseSeeder extends Seeder
                 'paid_at' => $startedAt->copy()->addHours($hours),
             ]);
         }
+
+        $this->call(MenuSeeder::class);
     }
 }

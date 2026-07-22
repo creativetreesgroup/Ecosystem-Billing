@@ -25,6 +25,11 @@ use App\Domain\Wallet\Actions\OpenTopUpAction;
 use App\Domain\Wallet\Actions\PlayFromWalletAction;
 use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
 use App\Domain\Wallet\TopUpFee;
+use App\Domain\Menu\Actions\PlaceMenuOrderAction;
+use App\Domain\Menu\MenuOrderStatus;
+use App\Models\MenuCategory;
+use App\Models\MenuItem;
+use App\Models\MenuOrder;
 use App\Models\Customer;
 use App\Models\Package;
 use App\Models\Payment;
@@ -83,6 +88,9 @@ new class extends Component
     public ?string $method = null;
 
     public ?int $topUpAmount = null;
+
+    /** Keranjang jajanan: [menu_item_id => jumlah]. Belum jadi pesanan sampai dibayar. */
+    public array $cart = [];
 
     public ?int $paymentId = null;
 
@@ -455,6 +463,149 @@ new class extends Component
     }
 
     // ─── Bermain & isi saldo (Fase 1: paket + top-up seperti sebelumnya) ──────
+
+    // ─── Pesan makanan & minuman ────────────────────────────────────────────
+
+    /** Menu yang boleh dipesan: kategori aktif yang masih punya item aktif. */
+    #[Computed]
+    public function menu()
+    {
+        return MenuCategory::activeWithItems();
+    }
+
+    /**
+     * Isi keranjang yang MASIH valid, dengan harga dari database — bukan dari
+     * state di HP pelanggan. Item yang keburu dinonaktifkan hilang sendiri dari
+     * daftar ini, jadi totalnya tidak pernah menagih barang yang sudah habis.
+     *
+     * @return array<int, array{item: MenuItem, quantity: int, subtotal: int}>
+     */
+    #[Computed]
+    public function cartLines(): array
+    {
+        $wanted = array_filter($this->cart, fn ($quantity): bool => (int) $quantity > 0);
+
+        if ($wanted === []) {
+            return [];
+        }
+
+        return MenuItem::query()
+            ->whereIn('id', array_keys($wanted))
+            ->where('is_active', true)
+            ->get()
+            ->map(fn (MenuItem $item): array => [
+                'item' => $item,
+                'quantity' => (int) $this->cart[$item->id],
+                'subtotal' => $item->price * (int) $this->cart[$item->id],
+            ])
+            ->all();
+    }
+
+    #[Computed]
+    public function cartTotal(): int
+    {
+        return (int) array_sum(array_column($this->cartLines, 'subtotal'));
+    }
+
+    /** Pesanan yang masih dikerjakan staf — supaya pelanggan tahu statusnya. */
+    #[Computed]
+    public function openOrders()
+    {
+        if (! $this->customer) {
+            return collect();
+        }
+
+        return MenuOrder::query()
+            ->where('customer_id', $this->customer->id)
+            ->whereIn('status', [MenuOrderStatus::Placed, MenuOrderStatus::Preparing])
+            ->with('items')
+            ->latest()
+            ->get();
+    }
+
+    private function forgetCart(): void
+    {
+        unset($this->cartLines, $this->cartTotal);
+    }
+
+    public function addToCart(int $itemId): void
+    {
+        $this->error = null;
+
+        $current = (int) ($this->cart[$itemId] ?? 0);
+
+        if ($current >= PlaceMenuOrderAction::MAX_QUANTITY_PER_ITEM) {
+            return;
+        }
+
+        $this->cart[$itemId] = $current + 1;
+        $this->forgetCart();
+    }
+
+    public function removeFromCart(int $itemId): void
+    {
+        $current = (int) ($this->cart[$itemId] ?? 0);
+
+        if ($current <= 1) {
+            unset($this->cart[$itemId]);
+        } else {
+            $this->cart[$itemId] = $current - 1;
+        }
+
+        $this->forgetCart();
+    }
+
+    public function askOrder(): void
+    {
+        $this->error = null;
+
+        if (! $this->customer) {
+            return;
+        }
+
+        if ($this->cartTotal <= 0) {
+            $this->error = 'Keranjang masih kosong.';
+
+            return;
+        }
+
+        $this->confirm = 'order';
+    }
+
+    /**
+     * Menagih & mencatat pesanan. Validasi diulang di action (jalur uang tidak
+     * boleh percaya pemanggilnya), jadi di sini cukup menerjemahkan kegagalannya
+     * jadi kalimat yang berguna — bukan 500.
+     */
+    public function placeOrder(): void
+    {
+        $this->error = null;
+
+        if (! $this->customer) {
+            return;
+        }
+
+        try {
+            app(PlaceMenuOrderAction::class)->handle($this->customer, $this->unit, $this->cart);
+        } catch (InsufficientBalanceException) {
+            $this->confirm = null;
+            $this->error = 'Saldo belum cukup untuk pesanan ini. Isi saldo dulu.';
+
+            return;
+        } catch (InvalidArgumentException $exception) {
+            $this->confirm = null;
+            $this->error = $exception->getMessage();
+            $this->forgetCart();
+
+            return;
+        }
+
+        $this->confirm = null;
+        $this->cart = [];
+        $this->notice = 'Pesanan diterima! Sedang disiapkan.';
+        $this->forgetCart();
+        unset($this->customer, $this->openOrders);
+    }
 
     /**
      * Setiap pembelian lewat satu langkah konfirmasi — "yakin?" dengan rincian
@@ -1139,8 +1290,8 @@ new class extends Component
         {{-- Menu cepat: tombol bulat ikon-saja, tekan satu → bagiannya muncul di
              bawah. aria-label wajib karena tidak ada teks. --}}
         <div class="quick">
-            @foreach ([['main', 'Main', 'heroicon-o-play'], ['topup', 'Isi saldo', 'heroicon-o-plus'], ['history', 'Riwayat', 'heroicon-o-clock']] as [$key, $labelText, $icon])
-                @php($disabled = $locked && $key === 'main')
+            @foreach ([['main', 'Main', 'heroicon-o-play'], ['order', 'Pesan', 'heroicon-o-shopping-bag'], ['topup', 'Isi saldo', 'heroicon-o-plus'], ['history', 'Riwayat', 'heroicon-o-clock']] as [$key, $labelText, $icon])
+                @php($disabled = $locked && in_array($key, ['main', 'order'], true))
                 <button type="button" class="quick-tile {{ $activeTab === $key ? 'is-active' : '' }} {{ $disabled ? 'quick-off' : '' }}"
                         @if ($disabled) disabled @else wire:click="$set('tab', '{{ $key }}')" @endif
                         aria-label="{{ $labelText }}" title="{{ $labelText }}">
@@ -1191,6 +1342,52 @@ new class extends Component
             @if ($error) <p class="alert">{{ $error }}</p> @endif
 
             <button type="button" class="btn" wire:click="askPlay" wire:loading.attr="disabled" wire:target="askPlay">Mulai main</button>
+        </div>
+        @elseif ($activeTab === 'order')
+        <div class="card">
+            <p class="label">Pesan makanan & minuman</p>
+
+            @forelse ($this->menu as $category)
+                <p class="play-divider" wire:key="cat-{{ $category->id }}">{{ $category->name }}</p>
+                <div class="confirm-rows">
+                    @foreach ($category->items as $item)
+                        @php($qty = (int) ($cart[$item->id] ?? 0))
+                        <div wire:key="mi-{{ $item->id }}">
+                            <span>{{ $item->name }} &middot; {{ Rupiah::format($item->price) }}</span>
+                            <b>
+                                @if ($qty > 0)
+                                    <button type="button" class="pager-btn" wire:click="removeFromCart({{ $item->id }})" aria-label="Kurangi {{ $item->name }}">&minus;</button>
+                                    {{ $qty }}
+                                @endif
+                                <button type="button" class="pager-btn" wire:click="addToCart({{ $item->id }})" aria-label="Tambah {{ $item->name }}">+</button>
+                            </b>
+                        </div>
+                    @endforeach
+                </div>
+            @empty
+                <p class="card-sub">Menu belum tersedia. Hubungi kasir.</p>
+            @endforelse
+
+            @if ($error) <p class="alert">{{ $error }}</p> @endif
+
+            @if ($this->cartTotal > 0)
+                <div class="confirm-rows" style="margin-top:1rem">
+                    <div class="confirm-total"><span>Total pesanan</span><b>{{ Rupiah::format($this->cartTotal) }}</b></div>
+                </div>
+                <button type="button" class="btn btn-block-gap" wire:click="askOrder" wire:loading.attr="disabled" wire:target="askOrder">Pesan sekarang</button>
+            @endif
+
+            @if ($this->openOrders->isNotEmpty())
+                <p class="play-divider">pesanan berjalan</p>
+                <div class="confirm-rows">
+                    @foreach ($this->openOrders as $order)
+                        <div wire:key="oo-{{ $order->id }}">
+                            <span>{{ $order->summary() }}</span>
+                            <b>{{ $order->status->getLabel() }}</b>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
         </div>
         @elseif ($activeTab === 'topup')
         <div class="card">
@@ -1357,6 +1554,29 @@ new class extends Component
                 <button type="button" class="btn btn-block-gap" wire:click="startOpenPlay" wire:loading.attr="disabled" wire:target="startOpenPlay">
                     <span wire:loading.remove wire:target="startOpenPlay">Ya, mulai main</span>
                     <span wire:loading wire:target="startOpenPlay"><span class="spin"></span> Menyalakan TV&hellip;</span>
+                </button>
+                <button type="button" class="btn btn-ghost btn-block-gap" wire:click="cancelConfirm">Batal</button>
+            </div>
+        </div>
+    @elseif ($confirm === 'order')
+        <div class="modal-backdrop">
+            <div class="modal">
+                <div class="center"><span class="icon-badge">@svg('heroicon-o-shopping-bag')</span></div>
+                <h2 class="card-title">Yakin pesan?</h2>
+                <p class="card-sub">Diantar ke <b>{{ $unit->code }}</b></p>
+                <div class="confirm-rows">
+                    @foreach ($this->cartLines as $line)
+                        <div wire:key="cl-{{ $line['item']->id }}">
+                            <span>{{ $line['item']->name }} x{{ $line['quantity'] }}</span>
+                            <b>{{ Rupiah::format($line['subtotal']) }}</b>
+                        </div>
+                    @endforeach
+                    <div class="confirm-total"><span>Total</span><b>{{ Rupiah::format($this->cartTotal) }}</b></div>
+                    <div><span>Sisa saldo nanti</span><b>{{ Rupiah::format($this->customer->balance - $this->cartTotal) }}</b></div>
+                </div>
+                <button type="button" class="btn btn-block-gap" wire:click="placeOrder" wire:loading.attr="disabled" wire:target="placeOrder">
+                    <span wire:loading.remove wire:target="placeOrder">Ya, pesan</span>
+                    <span wire:loading wire:target="placeOrder"><span class="spin"></span> Memproses&hellip;</span>
                 </button>
                 <button type="button" class="btn btn-ghost btn-block-gap" wire:click="cancelConfirm">Batal</button>
             </div>
