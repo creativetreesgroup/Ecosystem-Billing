@@ -1178,7 +1178,7 @@ new class extends Component
         <div class="card pay-card">
             <div class="center"><span class="icon-badge icon-badge-ok">@svg('heroicon-o-check-circle')</span></div>
             <h2 class="card-title">Pembayaran berhasil</h2>
-            <p class="card-sub">Saldo bertambah <strong>{{ Rupiah::format($this->payment->amount) }}</strong>.</p>
+            <p class="card-sub">Saldo bertambah <strong>{{ Rupiah::format($this->payment->creditedAmount()) }}</strong>.</p>
             <button type="button" class="btn" wire:click="finishPayment">Selesai</button>
         </div>
 
@@ -1194,6 +1194,9 @@ new class extends Component
             <div class="center"><span class="icon-badge">@svg('heroicon-o-qr-code')</span></div>
             <h2 class="card-title">Bayar dengan QRIS</h2>
             <p class="pay-amount">{{ Rupiah::format($this->payment->amount) }}</p>
+            @if ($this->payment->fee > 0)
+                <p class="pay-fee">Termasuk biaya admin {{ Rupiah::format($this->payment->fee) }}</p>
+            @endif
             @if ($qrUrl)
                 <img src="{{ $qrUrl }}" alt="Kode QRIS" class="qr">
             @endif
@@ -1206,6 +1209,9 @@ new class extends Component
             <div class="center"><span class="icon-badge">@svg('heroicon-o-building-library')</span></div>
             <h2 class="card-title">Transfer ke rekening</h2>
             <p class="pay-amount">{{ Rupiah::format($this->payment->amount) }}</p>
+            @if ($this->payment->fee > 0)
+                <p class="pay-fee">Termasuk biaya admin {{ Rupiah::format($this->payment->fee) }}</p>
+            @endif
 
             <div class="account">
                 <p class="account-bank">{{ $this->transferAccount['bank'] }}</p>

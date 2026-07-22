@@ -380,6 +380,7 @@
         /* Waktu pindah ke kolom kanan di bawah nominal. Sebelumnya ia didempet
            di belakang keterangan pada satu baris, dan justru WAKTUNYA yang
            kena elipsis — padahal itu yang dicari mata saat menelusuri riwayat. */
+        .pay-fee { text-align: center; font-size: .78rem; color: var(--muted); margin: .3rem 0 0; }
         .tx-right { display: flex; flex-direction: column; align-items: flex-end; gap: .1rem; flex-shrink: 0; }
         .tx-time { font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
         .tx-empty { color: var(--muted); font-size: .875rem; text-align: center; padding: .5rem 0; }

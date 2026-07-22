@@ -196,3 +196,44 @@ test('cancelling a QRIS is refused when the gateway is unreachable, payment stay
 
     expect($payment->fresh()->status)->toBe(PaymentStatus::Pending);
 });
+
+/**
+ * REGRESI (uang): dengan biaya admin, `amount` adalah TOTAL yang dibayar —
+ * bukan yang masuk ke saldo. Layar sukses sempat melaporkan total kotor, jadi
+ * pelanggan diberi tahu saldonya bertambah lebih banyak daripada kenyataannya.
+ */
+test('the success screen reports what actually landed in the balance, not the gross paid', function () {
+    $payment = Payment::create([
+        'customer_id' => $this->customer->id,
+        'method' => PaymentMethod::Qris,
+        'status' => PaymentStatus::Paid,
+        'amount' => 52_500,   // 50.000 isi saldo + 2.500 biaya admin
+        'fee' => 2_500,
+        'verified_at' => now(),
+    ]);
+
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('paymentId', $payment->id)
+        ->assertSee('Pembayaran berhasil')
+        ->assertSee('Rp 50.000')        // yang benar-benar masuk
+        ->assertDontSee('Rp 52.500');   // bukan total kotor
+});
+
+/** Nominal bayar yang lebih besar dari pilihan harus dijelaskan, bukan dibiarkan asing. */
+test('a pending payment with a fee explains the admin charge', function () {
+    $payment = Payment::create([
+        'customer_id' => $this->customer->id,
+        'method' => PaymentMethod::Qris,
+        'status' => PaymentStatus::Pending,
+        'amount' => 52_500,
+        'fee' => 2_500,
+        'reference' => 'ORDER-FEE-1',
+    ]);
+
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('paymentId', $payment->id)
+        ->assertSee('Rp 52.500')
+        ->assertSee('Termasuk biaya admin');
+});
