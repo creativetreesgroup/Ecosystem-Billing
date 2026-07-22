@@ -31,6 +31,10 @@
             --primary-ink: #ffffff;
             --primary-press: #3b211d;
             --ok: #1c3934;            /* emerald — keberhasilan / uang masuk */
+            /* --ok terlalu gelap untuk angka kecil di atas putih: pada 0.95rem ia
+               nyaris tak terbedakan dari --ink, jadi 'uang masuk' tidak terbaca
+               sekilas. Versi ini tetap emerald tapi jelas hijau (6.4:1 di putih). */
+            --ok-strong: #0f6b4f;
             --ok-tint: #e7efeb;
 
             /* Merah galat SENGAJA di luar palet: peringatan uang tidak boleh
@@ -372,7 +376,12 @@
         }
         .tx-sub { color: var(--muted); font-size: .78rem; margin: .1rem 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tx-amt { font-weight: 800; font-size: .95rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
-        .tx-amt.in { color: var(--ok); }
+        .tx-amt.in { color: var(--ok-strong); }
+        /* Waktu pindah ke kolom kanan di bawah nominal. Sebelumnya ia didempet
+           di belakang keterangan pada satu baris, dan justru WAKTUNYA yang
+           kena elipsis — padahal itu yang dicari mata saat menelusuri riwayat. */
+        .tx-right { display: flex; flex-direction: column; align-items: flex-end; gap: .1rem; flex-shrink: 0; }
+        .tx-time { font-size: .72rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
         .tx-empty { color: var(--muted); font-size: .875rem; text-align: center; padding: .5rem 0; }
 
         /* Papan angka nominal isi saldo — angka besar + tombol 3×4. */

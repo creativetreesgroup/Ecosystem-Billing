@@ -1480,9 +1480,12 @@ new class extends Component
                                 <span class="tx-badge">{{ $metode->getLabel() }}</span>
                             @endif
                         </p>
-                        <p class="tx-sub">{{ $tx->description }} &middot; {{ $tx->created_at->translatedFormat('d M, H:i') }}</p>
+                        <p class="tx-sub">{{ $tx->description }}</p>
                     </div>
-                    <span class="tx-amt {{ $masuk ? 'in' : '' }}">{{ $masuk ? '+' : '−' }}{{ Rupiah::format(abs($tx->amount)) }}</span>
+                    <div class="tx-right">
+                        <span class="tx-amt {{ $masuk ? 'in' : '' }}">{{ $masuk ? '+' : '−' }}{{ Rupiah::format(abs($tx->amount)) }}</span>
+                        <span class="tx-time">{{ $tx->created_at->translatedFormat('d M, H:i') }}</span>
+                    </div>
                 </div>
             @empty
                 <p class="tx-empty">Belum ada transaksi.</p>
