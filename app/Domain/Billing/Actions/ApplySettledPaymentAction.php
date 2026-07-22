@@ -71,12 +71,18 @@ class ApplySettledPaymentAction
                 return;
             }
 
+            // Yang dikreditkan = total bayar dikurangi biaya admin (= nominal yang
+            // dipilih pelanggan). Biaya admin bukan saldo pelanggan; ia menempel di
+            // pembayaran dan tidak pernah masuk dompet. Bonus voucher dihitung dari
+            // nominal yang MASUK, bukan dari total termasuk biaya.
+            $creditAmount = $payment->creditedAmount();
+
             // Voucher (disimpan saat checkout) atau promo otomatis bila tak ada.
             try {
                 $bonus = $this->discounts->apply(
                     $payment->voucher_code,
                     DiscountTarget::TopUp,
-                    $payment->amount,
+                    $creditAmount,
                     $customer,
                     ['payment_id' => $payment->id],
                 )?->amount ?? 0;
@@ -87,7 +93,7 @@ class ApplySettledPaymentAction
                 ]);
             }
 
-            $this->wallet->topUp($customer, $payment->amount + $bonus, $payment);
+            $this->wallet->topUp($customer, $creditAmount + $bonus, $payment);
             $credited = true;
         });
 
@@ -96,7 +102,8 @@ class ApplySettledPaymentAction
         // penyelesaian ulang yang no-op. Best-effort — kegagalannya tak boleh
         // membatalkan saldo yang sudah masuk.
         if ($credited) {
-            WalletToppedUp::dispatch($payment->customer_id, $payment->amount, $bonus);
+            // Nominal yang MASUK ke saldo (tanpa biaya admin), bukan total bayar.
+            WalletToppedUp::dispatch($payment->customer_id, $payment->creditedAmount(), $bonus);
         }
     }
 }

@@ -24,6 +24,7 @@ use App\Domain\Settings\SettingKey;
 use App\Domain\Wallet\Actions\OpenTopUpAction;
 use App\Domain\Wallet\Actions\PlayFromWalletAction;
 use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
+use App\Domain\Wallet\TopUpFee;
 use App\Models\Customer;
 use App\Models\Package;
 use App\Models\Payment;
@@ -281,6 +282,17 @@ new class extends Component
         return Setting::transferAccountIsComplete()
             ? [PaymentMethod::Qris, PaymentMethod::Transfer]
             : [PaymentMethod::Qris];
+    }
+
+    /**
+     * Biaya admin yang menempel pada isi saldo online (QRIS/transfer sama). Nol
+     * bila owner mematikannya. Dipakai layar konfirmasi untuk menampilkan total
+     * bayar; nilai sebenarnya tetap ditetapkan server di OpenTopUpAction.
+     */
+    #[Computed]
+    public function topUpFee(): int
+    {
+        return TopUpFee::for(PaymentMethod::tryFrom((string) $this->method) ?? PaymentMethod::Qris);
     }
 
     // ─── Masuk ──────────────────────────────────────────────────────────────
@@ -1356,9 +1368,14 @@ new class extends Component
             <div class="modal">
                 <div class="center"><span class="icon-badge">@svg('heroicon-o-plus')</span></div>
                 <h2 class="card-title">Yakin isi saldo?</h2>
+                @php($fee = $this->topUpFee)
                 <div class="confirm-rows">
-                    <div><span>Nominal</span><b>{{ Rupiah::format((int) $topUpAmount) }}</b></div>
+                    <div><span>Isi saldo</span><b>{{ Rupiah::format((int) $topUpAmount) }}</b></div>
                     <div><span>Metode</span><b>{{ $method ? PaymentMethod::from($method)->getLabel() : '' }}</b></div>
+                    @if ($fee > 0)
+                        <div><span>Biaya admin</span><b>+ {{ Rupiah::format($fee) }}</b></div>
+                        <div class="confirm-total"><span>Total bayar</span><b>{{ Rupiah::format((int) $topUpAmount + $fee) }}</b></div>
+                    @endif
                     @if ($tvrOk)
                         <div><span>Bonus voucher</span><b style="color:var(--ok)">+ {{ Rupiah::format($tvr['bonus']) }}</b></div>
                         <div class="confirm-total"><span>Saldo bertambah</span><b>{{ Rupiah::format((int) $topUpAmount + $tvr['bonus']) }}</b></div>

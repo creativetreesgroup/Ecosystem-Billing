@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * transfer bisa palsu, salah nominal, atau milik transaksi lain.
  */
 #[Fillable([
-    'rental_session_id', 'customer_id', 'method', 'status', 'amount', 'reference',
+    'rental_session_id', 'customer_id', 'method', 'status', 'amount', 'fee', 'reference',
     'proof_path', 'verified_by', 'verified_at', 'rejection_reason', 'voucher_code',
 ])]
 class Payment extends Model
@@ -35,8 +35,15 @@ class Payment extends Model
             'method' => PaymentMethod::class,
             'status' => PaymentStatus::class,
             'amount' => 'integer',
+            'fee' => 'integer',
             'verified_at' => 'datetime',
         ];
+    }
+
+    /** Saldo yang benar-benar masuk ke pelanggan: total bayar dikurangi biaya admin. */
+    public function creditedAmount(): int
+    {
+        return $this->amount - $this->fee;
     }
 
     /**

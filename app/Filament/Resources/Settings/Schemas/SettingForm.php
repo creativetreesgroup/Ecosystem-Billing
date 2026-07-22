@@ -36,13 +36,20 @@ class SettingForm
                         ->label('Nilai')
                         ->required()
                         ->suffix(fn (?Setting $record): ?string => $record?->key?->type()->suffix())
-                        // minValue(1), bukan 0: pembulatan billing 0 menit dulu
-                        // membuat setiap penutupan sesi open play melempar
-                        // DivisionByZeroError sehingga sesinya tidak bisa
-                        // diselesaikan sama sekali.
-                        ->numeric(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Minutes)
-                        ->minValue(fn (?Setting $record): ?int => $record?->key?->type() === SettingType::Minutes ? 1 : null)
-                        ->maxValue(fn (?Setting $record): ?int => $record?->key?->type() === SettingType::Minutes ? 1440 : null)
+                        // Menit & rupiah = numerik. minValue menit 1 (0 menit
+                        // dulu membuat pembagian pembulatan billing melempar
+                        // DivisionByZeroError); rupiah boleh 0 (= biaya dimatikan).
+                        ->numeric(fn (?Setting $record): bool => (bool) $record?->key?->type()->isNumeric())
+                        ->minValue(fn (?Setting $record): ?int => match ($record?->key?->type()) {
+                            SettingType::Minutes => 1,
+                            SettingType::Rupiah => 0,
+                            default => null,
+                        })
+                        ->maxValue(fn (?Setting $record): ?int => match ($record?->key?->type()) {
+                            SettingType::Minutes => 1440,
+                            SettingType::Rupiah => 100_000,
+                            default => null,
+                        })
                         ->maxLength(fn (?Setting $record): ?int => $record?->key?->type() === SettingType::Text ? 191 : null),
                 ]),
         ]);

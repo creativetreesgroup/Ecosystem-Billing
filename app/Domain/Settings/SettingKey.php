@@ -22,6 +22,7 @@ enum SettingKey: string implements HasIcon, HasLabel
     case TransferBankName = 'transfer_bank_name';
     case TransferAccountNumber = 'transfer_account_number';
     case TransferAccountHolder = 'transfer_account_holder';
+    case TopUpAdminFee = 'topup_admin_fee';
 
     public function getLabel(): string
     {
@@ -31,6 +32,7 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::TransferBankName => 'Nama bank',
             self::TransferAccountNumber => 'Nomor rekening',
             self::TransferAccountHolder => 'Atas nama',
+            self::TopUpAdminFee => 'Biaya admin isi saldo',
         };
     }
 
@@ -38,6 +40,7 @@ enum SettingKey: string implements HasIcon, HasLabel
     {
         return match ($this) {
             self::BillingIncrementMinutes, self::WarningBeforeMinutes => SettingType::Minutes,
+            self::TopUpAdminFee => SettingType::Rupiah,
             default => SettingType::Text,
         };
     }
@@ -47,6 +50,7 @@ enum SettingKey: string implements HasIcon, HasLabel
         return match ($this) {
             self::BillingIncrementMinutes => Heroicon::OutlinedCalculator,
             self::WarningBeforeMinutes => Heroicon::OutlinedBellAlert,
+            self::TopUpAdminFee => Heroicon::OutlinedBanknotes,
             default => Heroicon::OutlinedBuildingLibrary,
         };
     }
@@ -63,6 +67,7 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::TransferBankName => 'Ditampilkan ke pelanggan saat memilih pembayaran transfer.',
             self::TransferAccountNumber => 'Nomor yang dituju pelanggan. Salah satu digit berarti uangnya masuk ke rekening orang lain.',
             self::TransferAccountHolder => 'Nama pemilik rekening, supaya pelanggan yakin tidak salah tujuan.',
+            self::TopUpAdminFee => 'Biaya tetap yang DITAMBAHKAN ke isi saldo QRIS & transfer (tunai bebas). Pelanggan membayar nominal + biaya ini; saldo yang masuk tetap sebesar nominal pilihannya. Isi 0 untuk menonaktifkan.',
         };
     }
 
@@ -71,6 +76,7 @@ enum SettingKey: string implements HasIcon, HasLabel
         return match ($this) {
             self::BillingIncrementMinutes => 1,
             self::WarningBeforeMinutes => 5,
+            self::TopUpAdminFee => 2_500,
             default => '',
         };
     }

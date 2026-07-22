@@ -7,6 +7,7 @@ use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Domain\Discounts\DiscountEngine;
 use App\Domain\Discounts\DiscountTarget;
+use App\Domain\Wallet\TopUpFee;
 use App\Models\Customer;
 use App\Models\Payment;
 use InvalidArgumentException;
@@ -37,10 +38,15 @@ class OpenTopUpAction
     ) {}
 
     /**
+     * @param  int  $amount  Nominal saldo yang DIPILIH pelanggan (yang akan masuk
+     *                       ke saldonya). Biaya admin ditambahkan di atasnya untuk
+     *                       menentukan total yang harus dibayar.
      * @return array{payment: Payment, qr_url: ?string}
      */
     public function handle(Customer $customer, int $amount, PaymentMethod $method, ?string $voucherCode = null): array
     {
+        // Batas divalidasi pada NOMINAL PILIHAN, bukan total+biaya: yang dibatasi
+        // adalah berapa saldo yang diisi, biaya admin sekadar menempel di atasnya.
         if ($amount < self::MINIMUM || $amount > self::MAXIMUM) {
             throw new InvalidArgumentException('Nominal isi saldo di luar batas yang diizinkan.');
         }
@@ -71,11 +77,17 @@ class OpenTopUpAction
             ->where('status', PaymentStatus::Pending)
             ->update(['status' => PaymentStatus::Expired]);
 
+        // Biaya admin (QRIS/transfer; 0 untuk tunai — tapi tunai tak sampai sini)
+        // ditambahkan ke atas. `amount` = TOTAL yang dibayar (dipakai gateway &
+        // penjaga kecocokan nominal); saldo yang masuk = amount - fee = $amount.
+        $fee = TopUpFee::for($method);
+
         $payment = Payment::create([
             'customer_id' => $customer->id,
             'method' => $method,
             'status' => PaymentStatus::Pending,
-            'amount' => $amount,
+            'amount' => $amount + $fee,
+            'fee' => $fee,
             'voucher_code' => $voucherCode,
         ]);
 

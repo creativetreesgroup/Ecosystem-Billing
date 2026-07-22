@@ -10,6 +10,7 @@ use App\Domain\Sessions\Actions\StartSessionAction;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
+use App\Domain\Settings\SettingKey;
 use App\Domain\Wallet\Actions\OpenTopUpAction;
 use App\Domain\Wallet\Actions\PlayFromWalletAction;
 use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
@@ -17,6 +18,7 @@ use App\Domain\Wallet\WalletTransactionType;
 use App\Models\Customer;
 use App\Models\Integration;
 use App\Models\Package;
+use App\Models\Setting;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
@@ -29,6 +31,10 @@ beforeEach(function () {
         'token' => 'SB-Mid-server-uji',
         'is_active' => true,
     ]);
+
+    // Biaya admin dimatikan di sini: berkas ini menguji pengkreditan inti, bukan
+    // biayanya (biaya diuji khusus di TopUpFeeTest).
+    Setting::put(SettingKey::TopUpAdminFee, 0);
 
     User::factory()->owner()->create();
     $this->customer = Customer::factory()->create();
