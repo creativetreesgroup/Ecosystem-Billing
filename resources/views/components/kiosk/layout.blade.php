@@ -412,6 +412,100 @@
         [wire\:loading] { display: none; }
         .spin { display: inline-block; width: 1rem; height: 1rem; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Pesan makanan & minuman ─────────────────────────────────────
+           Barang yang masuk keranjang memakai sorotan YANG SAMA dengan paket
+           terpilih (accent-tint + garis cognac), supaya "terpilih" berarti satu
+           hal yang sama di seluruh kios — bukan bahasa visual baru. */
+        .menu-sec { margin-top: 1.25rem; }
+        .menu-sec-head { display: flex; align-items: center; gap: .625rem; margin-bottom: .625rem; }
+        .menu-sec-name { font-size: .7rem; letter-spacing: .16em; text-transform: uppercase; font-weight: 700; color: var(--muted); white-space: nowrap; }
+        .menu-sec-rule { flex: 1; height: 1px; background: var(--border); }
+        .menu-sec-count { font-size: .7rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+        .menu-item {
+            display: flex; align-items: center; gap: .875rem;
+            padding: .75rem .875rem; border-radius: var(--radius-sm);
+            border: 1.5px solid var(--border); background: #fff;
+            transition: border-color .15s, background .15s;
+        }
+        .menu-item + .menu-item { margin-top: .5rem; }
+        .menu-item.is-picked { border-color: var(--accent); background: var(--accent-tint); }
+        .menu-item-body { flex: 1; min-width: 0; }
+        .menu-item-name { font-weight: 700; font-size: .98rem; line-height: 1.25; }
+        .menu-item-price { font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: .1rem; }
+        .menu-item.is-picked .menu-item-price { color: var(--accent-ink); font-weight: 600; }
+
+        /* Stepper: hanya "+" saat kosong, melebar jadi −/jumlah/+ saat dipakai.
+           Menekan kebisingan visual di daftar panjang; pelebarannya sendiri yang
+           jadi umpan balik. 2.75rem: dipakai berdiri sambil memegang HP. */
+        .stepper { display: flex; align-items: center; gap: .25rem; flex-shrink: 0; }
+        .step-btn {
+            width: 2.75rem; height: 2.75rem; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            background: #fff; border: 1.5px solid var(--border-strong);
+            color: var(--ink); font-size: 1.35rem; font-weight: 700; line-height: 1;
+            font-family: inherit; cursor: pointer;
+            transition: background .15s, border-color .15s, transform .05s;
+        }
+        .step-btn:active { transform: translateY(1px); background: var(--accent-tint); }
+        .step-add { border-color: var(--accent); color: var(--accent-ink); }
+        .menu-item.is-picked .step-add { background: #fff; }
+        .step-qty { min-width: 1.75rem; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; font-size: 1.05rem; }
+
+        /* Baki pesanan — SATU-SATUNYA elemen gelap di daftar ini, sengaja:
+           totalnya harus terlihat terus tanpa menggulir balik ke atas. Bahannya
+           sama dengan kartu saldo, jadi terasa satu keluarga. */
+        .tray {
+            position: sticky; bottom: .75rem; z-index: 5;
+            display: flex; align-items: center; gap: .875rem;
+            margin-top: 1.25rem; padding: .875rem 1rem;
+            background: var(--primary); color: var(--primary-ink);
+            border-radius: var(--radius-sm);
+            box-shadow: 0 10px 30px -10px rgba(38, 19, 17, .55);
+            animation: tray-in .18s ease;
+        }
+        @keyframes tray-in { from { transform: translateY(8px); opacity: 0; } }
+        .tray-body { flex: 1; min-width: 0; }
+        .tray-count { font-size: .75rem; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tray-total { font-weight: 800; font-size: 1.15rem; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+        .tray-btn {
+            flex-shrink: 0; min-height: 2.75rem; padding: 0 1.1rem;
+            background: #fff; color: var(--primary); border: 0; border-radius: 999px;
+            font-family: inherit; font-size: .95rem; font-weight: 800; cursor: pointer; white-space: nowrap;
+            transition: opacity .15s, transform .05s;
+        }
+        .tray-btn:active { transform: translateY(1px); opacity: .9; }
+        .tray-btn:disabled { opacity: .6; cursor: default; }
+
+        /* Pesanan yang sedang dikerjakan: titik status memakai warna "berhasil"
+           yang di kios ini sudah berarti "beres / uang aman". */
+        .order-live { display: flex; align-items: center; gap: .75rem; padding: .75rem .875rem; border-radius: var(--radius-sm); background: var(--ok-tint); }
+        .order-live + .order-live { margin-top: .5rem; }
+        .order-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+        .order-live-body { flex: 1; min-width: 0; }
+        .order-live-items { font-size: .9rem; font-weight: 600; color: var(--ink); }
+        .order-live-state { font-size: .75rem; color: var(--ok); font-weight: 700; }
+        .order-live-total { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+        .menu-empty { text-align: center; color: var(--muted); font-size: .9rem; padding: 1.75rem 0; line-height: 1.6; }
+
+        /* ── Lantai aksesibilitas ────────────────────────────────────────
+           Sebelumnya HANYA input yang punya cincin fokus — tombol sama sekali
+           tak terlihat saat dinavigasi keyboard. */
+        .btn:focus-visible, .btn-ghost:focus-visible, .quick-tile:focus-visible,
+        .pager-btn:focus-visible, .step-btn:focus-visible, .tray-btn:focus-visible,
+        .linkish:focus-visible, .play-open:has(input:focus-visible), .play-pkg:has(input:focus-visible) {
+            outline: 3px solid var(--accent); outline-offset: 2px;
+        }
+
+        /* Hormati pengguna yang mematikan animasi di sistemnya. */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important; animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important; scroll-behavior: auto !important;
+            }
+        }
     </style>
     @filamentScripts
     {{-- Dorongan realtime "pembayaran lunas" ke HP pelanggan. Progressive

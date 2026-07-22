@@ -1345,47 +1345,68 @@ new class extends Component
         </div>
         @elseif ($activeTab === 'order')
         <div class="card">
-            <p class="label">Pesan makanan & minuman</p>
+            <p class="label">Pesan makanan &amp; minuman</p>
 
             @forelse ($this->menu as $category)
-                <p class="play-divider" wire:key="cat-{{ $category->id }}">{{ $category->name }}</p>
-                <div class="confirm-rows">
+                <div class="menu-sec" wire:key="cat-{{ $category->id }}">
+                    <div class="menu-sec-head">
+                        <span class="menu-sec-name">{{ $category->name }}</span>
+                        <span class="menu-sec-rule"></span>
+                        <span class="menu-sec-count">{{ $category->items->count() }} pilihan</span>
+                    </div>
+
                     @foreach ($category->items as $item)
                         @php($qty = (int) ($cart[$item->id] ?? 0))
-                        <div wire:key="mi-{{ $item->id }}">
-                            <span>{{ $item->name }} &middot; {{ Rupiah::format($item->price) }}</span>
-                            <b>
+                        <div class="menu-item {{ $qty > 0 ? 'is-picked' : '' }}" wire:key="mi-{{ $item->id }}">
+                            <div class="menu-item-body">
+                                <div class="menu-item-name">{{ $item->name }}</div>
+                                <div class="menu-item-price">{{ Rupiah::format($item->price) }}</div>
+                            </div>
+                            <div class="stepper">
                                 @if ($qty > 0)
-                                    <button type="button" class="pager-btn" wire:click="removeFromCart({{ $item->id }})" aria-label="Kurangi {{ $item->name }}">&minus;</button>
-                                    {{ $qty }}
+                                    <button type="button" class="step-btn" wire:click="removeFromCart({{ $item->id }})" aria-label="Kurangi {{ $item->name }}">&minus;</button>
+                                    <span class="step-qty" aria-live="polite" aria-label="{{ $qty }} {{ $item->name }}">{{ $qty }}</span>
                                 @endif
-                                <button type="button" class="pager-btn" wire:click="addToCart({{ $item->id }})" aria-label="Tambah {{ $item->name }}">+</button>
-                            </b>
+                                <button type="button" class="step-btn step-add" wire:click="addToCart({{ $item->id }})" aria-label="Tambah {{ $item->name }}">+</button>
+                            </div>
                         </div>
                     @endforeach
                 </div>
             @empty
-                <p class="card-sub">Menu belum tersedia. Hubungi kasir.</p>
+                <p class="menu-empty">Belum ada menu di sini.<br>Minta kasir menambahkannya.</p>
             @endforelse
 
             @if ($error) <p class="alert">{{ $error }}</p> @endif
 
-            @if ($this->cartTotal > 0)
-                <div class="confirm-rows" style="margin-top:1rem">
-                    <div class="confirm-total"><span>Total pesanan</span><b>{{ Rupiah::format($this->cartTotal) }}</b></div>
-                </div>
-                <button type="button" class="btn btn-block-gap" wire:click="askOrder" wire:loading.attr="disabled" wire:target="askOrder">Pesan sekarang</button>
-            @endif
-
             @if ($this->openOrders->isNotEmpty())
-                <p class="play-divider">pesanan berjalan</p>
-                <div class="confirm-rows">
+                <div class="menu-sec">
+                    <div class="menu-sec-head">
+                        <span class="menu-sec-name">Sedang berjalan</span>
+                        <span class="menu-sec-rule"></span>
+                    </div>
                     @foreach ($this->openOrders as $order)
-                        <div wire:key="oo-{{ $order->id }}">
-                            <span>{{ $order->summary() }}</span>
-                            <b>{{ $order->status->getLabel() }}</b>
+                        <div class="order-live" wire:key="oo-{{ $order->id }}">
+                            <span class="order-dot"></span>
+                            <div class="order-live-body">
+                                <div class="order-live-items">{{ $order->summary() }}</div>
+                                <div class="order-live-state">{{ $order->status->getLabel() }}</div>
+                            </div>
+                            <span class="order-live-total">{{ Rupiah::format($order->total_amount) }}</span>
                         </div>
                     @endforeach
+                </div>
+            @endif
+
+            {{-- Baki diletakkan TERAKHIR supaya sticky-nya melayang di atas
+                 seluruh isi kartu saat digulir, bukan berhenti di tengah. --}}
+            @if ($this->cartTotal > 0)
+                @php($cartCount = array_sum(array_column($this->cartLines, 'quantity')))
+                <div class="tray">
+                    <div class="tray-body">
+                        <div class="tray-count">{{ $cartCount }} item di keranjang</div>
+                        <div class="tray-total">{{ Rupiah::format($this->cartTotal) }}</div>
+                    </div>
+                    <button type="button" class="tray-btn" wire:click="askOrder" wire:loading.attr="disabled" wire:target="askOrder">Pesan sekarang</button>
                 </div>
             @endif
         </div>
