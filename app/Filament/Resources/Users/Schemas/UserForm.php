@@ -83,8 +83,7 @@ class UserForm
                                     ->disabled(fn (?User $record): bool => self::isSelf($record))
                                     ->helperText(fn (?User $record): string => self::isSelf($record)
                                         ? 'Peran akun sendiri tidak bisa diubah dari sini.'
-                                        : 'Boleh lebih dari satu. Admin departemen memegang seluruh izin departemennya; staf memegang pekerjaan hariannya.')
-                                    ->columnSpanFull(),
+                                        : 'Boleh lebih dari satu.'),
                                 Select::make('outlet_id')
                                     ->label('Outlet')
                                     ->prefixIcon(Heroicon::OutlinedBuildingStorefront)
