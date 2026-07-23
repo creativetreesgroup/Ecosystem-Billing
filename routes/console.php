@@ -23,6 +23,17 @@ Schedule::command('units:poll-state')->everyThirtySeconds()->withoutOverlapping(
 // withoutOverlapping() mencegah penumpukan bila satu poll melambat.
 Schedule::command('payments:poll-qris')->everyTenSeconds()->withoutOverlapping();
 
+// Jaring pengaman "sudah bayar, makanannya tidak pernah datang": pesanan yang
+// tak pernah disentuh staf dibatalkan dan saldonya dikembalikan. Batas waktunya
+// disetel di Pengaturan (default 60 menit), jadi cukup diperiksa tiap menit —
+// yang menentukan cepat-lambatnya adalah batas itu, bukan frekuensi ini.
+Schedule::command('menu:refund-stale-orders')->everyMinute()->withoutOverlapping();
+
+// Rekonsiliasi harian: saldo vs buku besar. Tidak membetulkan apa pun, hanya
+// berteriak — exit code bukan-nol supaya monitoring menangkapnya. Dijalankan
+// saat outlet sepi karena memindai seluruh pelanggan.
+Schedule::command('wallet:audit')->dailyAt('04:00')->withoutOverlapping();
+
 // Jaring pengaman: pembayaran yang lunas tapi efeknya (kredit saldo / mulai
 // sesi) gagal jalan setelah commit — poll tak akan mencobanya lagi karena
 // statusnya bukan Pending. Tiap 5 menit sudah rapat; kejadiannya langka dan

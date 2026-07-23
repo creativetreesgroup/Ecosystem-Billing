@@ -23,6 +23,7 @@ enum SettingKey: string implements HasIcon, HasLabel
     case TransferAccountNumber = 'transfer_account_number';
     case TransferAccountHolder = 'transfer_account_holder';
     case TopUpAdminFee = 'topup_admin_fee';
+    case StaleOrderRefundMinutes = 'stale_order_refund_minutes';
 
     public function getLabel(): string
     {
@@ -33,13 +34,14 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::TransferAccountNumber => 'Nomor rekening',
             self::TransferAccountHolder => 'Atas nama',
             self::TopUpAdminFee => 'Biaya admin isi saldo',
+            self::StaleOrderRefundMinutes => 'Batas pesanan terbengkalai',
         };
     }
 
     public function type(): SettingType
     {
         return match ($this) {
-            self::BillingIncrementMinutes, self::WarningBeforeMinutes => SettingType::Minutes,
+            self::BillingIncrementMinutes, self::WarningBeforeMinutes, self::StaleOrderRefundMinutes => SettingType::Minutes,
             self::TopUpAdminFee => SettingType::Rupiah,
             default => SettingType::Text,
         };
@@ -51,6 +53,7 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::BillingIncrementMinutes => Heroicon::OutlinedCalculator,
             self::WarningBeforeMinutes => Heroicon::OutlinedBellAlert,
             self::TopUpAdminFee => Heroicon::OutlinedBanknotes,
+            self::StaleOrderRefundMinutes => Heroicon::OutlinedArrowUturnLeft,
             default => Heroicon::OutlinedBuildingLibrary,
         };
     }
@@ -67,6 +70,7 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::TransferBankName => 'Ditampilkan ke pelanggan saat memilih pembayaran transfer.',
             self::TransferAccountNumber => 'Nomor yang dituju pelanggan. Salah satu digit berarti uangnya masuk ke rekening orang lain.',
             self::TransferAccountHolder => 'Nama pemilik rekening, supaya pelanggan yakin tidak salah tujuan.',
+            self::StaleOrderRefundMinutes => 'Pesanan makanan yang tidak pernah disentuh staf selama sekian menit dibatalkan otomatis dan saldonya dikembalikan ke pelanggan. Isi 0 untuk menonaktifkan — pesanan terbengkalai lalu harus dibatalkan manual.',
             self::TopUpAdminFee => 'Biaya tetap yang DITAMBAHKAN ke isi saldo QRIS & transfer (tunai bebas). Pelanggan membayar nominal + biaya ini; saldo yang masuk tetap sebesar nominal pilihannya. Isi 0 untuk menonaktifkan.',
         };
     }
@@ -77,6 +81,7 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::BillingIncrementMinutes => 1,
             self::WarningBeforeMinutes => 5,
             self::TopUpAdminFee => 2_500,
+            self::StaleOrderRefundMinutes => 60,
             default => '',
         };
     }
