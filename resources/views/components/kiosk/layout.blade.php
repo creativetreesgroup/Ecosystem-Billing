@@ -239,6 +239,10 @@
         .otp .otp-dash { color: var(--border-strong); font-weight: 800; }
         @media (max-width: 360px) { .otp input { width: 2.5rem; height: 3rem; font-size: 1.25rem; } .otp { gap: .35rem; } }
 
+        /* Kotak kode tidak punya placeholder, jadi label inilah satu-satunya
+           yang memberi tahu enam kotak itu untuk apa. */
+        .field-label { text-align: center; font-size: .85rem; color: var(--muted); margin: .75rem 0 -.25rem; }
+
         .resend { text-align: center; font-size: .875rem; color: var(--muted); margin-top: .25rem; }
         .resend button { background: none; border: 0; color: var(--accent-ink); font-weight: 700; cursor: pointer; font-family: inherit; font-size: .875rem; padding: 0; }
         .resend button:disabled { color: var(--muted); font-weight: 400; cursor: default; }

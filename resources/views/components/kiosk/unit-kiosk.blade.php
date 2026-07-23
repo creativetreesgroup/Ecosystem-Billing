@@ -418,10 +418,15 @@ new class extends Component
             $customer = app(AuthenticateCustomerAction::class)->handle($this->phone, $this->pin);
         } catch (TooManyPinAttemptsException $exception) {
             $this->error = $exception->getMessage();
+            $this->pin = '';
 
             return;
         } catch (ValidationException $exception) {
             $this->error = collect($exception->errors())->flatten()->first();
+            // Dikosongkan supaya enam kotaknya ikut bersih: angka yang baru
+            // saja ditolak tidak boleh menunggu di layar dalam bentuk titik-titik
+            // yang tak bisa dibaca ulang pelanggan.
+            $this->pin = '';
 
             return;
         }
@@ -437,6 +442,7 @@ new class extends Component
             $customer = app(RegisterCustomerAction::class)->handle($this->name, $this->phone, $this->pin);
         } catch (ValidationException $exception) {
             $this->error = collect($exception->errors())->flatten()->first();
+            $this->pin = '';
 
             return;
         }
@@ -1088,38 +1094,10 @@ new class extends Component
                     <button type="button" class="linkish" style="display:inline;width:auto;margin:0;padding:0" wire:click="editPhone"><b>Ganti nomor</b></button>
                 </p>
 
-                {{-- Enam kotak dengan pemisah di tengah. Auto-maju, backspace
-                     mundur, tempel kode 6 angka sekaligus, dan verifikasi otomatis
-                     saat kotak terakhir terisi — pelanggan tidak perlu menekan
-                     tombol apa pun kalau kodenya benar. --}}
-                <div class="otp" wire:key="otp-{{ $otpSentAt }}"
-                     x-data="{
-                        d: ['','','','','',''],
-                        sync() { $wire.set('code', this.d.join(''), false); if (this.d.join('').length === 6) $wire.verifyOtp(); },
-                        input(i, e) {
-                            let v = e.target.value.replace(/[^0-9]/g, '');
-                            if (v.length > 1) { this.spread(v); return; }
-                            this.d[i] = v; e.target.value = v;
-                            if (v && i < 5) this.$refs['d'+(i+1)].focus();
-                            this.sync();
-                        },
-                        key(i, e) {
-                            if (e.key === 'Backspace' && !this.d[i] && i > 0) { this.$refs['d'+(i-1)].focus(); }
-                        },
-                        spread(text) {
-                            const ds = text.replace(/[^0-9]/g, '').slice(0, 6).split('');
-                            for (let i = 0; i < 6; i++) { this.d[i] = ds[i] || ''; this.$refs['d'+i].value = this.d[i]; }
-                            this.$refs['d'+Math.min(ds.length, 5)].focus();
-                            this.sync();
-                        }
-                     }">
-                    @foreach (range(0, 5) as $i)
-                        @if ($i === 3)<span class="otp-dash">&ndash;</span>@endif
-                        <input type="text" inputmode="numeric" maxlength="1" autocomplete="one-time-code"
-                               x-ref="d{{ $i }}" @if($i === 0) autofocus @endif
-                               @input="input({{ $i }}, $event)" @keydown="key({{ $i }}, $event)" @paste.prevent="spread($event.clipboardData.getData('text'))">
-                    @endforeach
-                </div>
+                {{-- Verifikasi otomatis saat kotak terakhir terisi — pelanggan
+                     tidak perlu menekan tombol apa pun kalau kodenya benar. --}}
+                <x-kiosk.code-input model="code" submit="verifyOtp" autofocus
+                                    wire-key="otp-{{ $otpSentAt }}" />
 
                 @if ($error) <p class="alert">{{ $error }}</p> @endif
 
@@ -1157,8 +1135,7 @@ new class extends Component
                 </p>
 
                 <form wire:submit="signInWithPin">
-                    <input type="password" wire:model="pin" inputmode="numeric" maxlength="6" autocomplete="off"
-                           placeholder="PIN 6 angka" class="field" autofocus required>
+                    <x-kiosk.code-input model="pin" submit="signInWithPin" masked autofocus />
 
                     @if ($error) <p class="alert">{{ $error }}</p> @endif
 
@@ -1184,8 +1161,11 @@ new class extends Component
 
                 <form wire:submit="register">
                     <input type="text" wire:model="name" maxlength="60" placeholder="Nama" class="field" autofocus required>
-                    <input type="password" wire:model="pin" inputmode="numeric" maxlength="6" autocomplete="off"
-                           placeholder="Buat PIN 6 angka" class="field" required>
+
+                    {{-- Tidak auto-kirim: namanya bisa masih kosong, dan
+                         mengirim di angka ke-6 akan menolak pendaftarannya. --}}
+                    <p class="field-label">Buat PIN 6 angka</p>
+                    <x-kiosk.code-input model="pin" masked />
 
                     @if ($error) <p class="alert">{{ $error }}</p> @endif
 
