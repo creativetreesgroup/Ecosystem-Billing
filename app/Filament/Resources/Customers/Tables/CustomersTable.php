@@ -7,6 +7,7 @@ use App\Filament\Resources\Customers\Actions\AdjustBalanceAction;
 use App\Filament\Resources\Customers\Actions\CashTopUpAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TernaryFilter;
@@ -20,10 +21,12 @@ class CustomersTable
             ->defaultSort('name')
             ->columns([
                 TextColumn::make('name')
+                    ->icon(Heroicon::OutlinedUser)
                     ->label('Nama')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('phone')
+                    ->icon(Heroicon::OutlinedDevicePhoneMobile)
                     ->label('Nomor WA')
                     ->searchable()
                     ->copyable(),
@@ -31,6 +34,7 @@ class CustomersTable
                 // disalin utuh di sini karena ini panel internal, bukan layar
                 // pelanggan.
                 TextColumn::make('card_number')
+                    ->icon(Heroicon::OutlinedCreditCard)
                     ->label('Nomor kartu')
                     ->visibleFrom('lg')
                     ->searchable()
@@ -38,6 +42,7 @@ class CustomersTable
                     ->fontFamily('mono')
                     ->color('gray'),
                 TextColumn::make('balance')
+                    ->icon(Heroicon::OutlinedBanknotes)
                     ->label('Saldo')
                     ->sortable()
                     ->formatStateUsing(fn (int $state): string => Rupiah::format($state))
@@ -45,6 +50,7 @@ class CustomersTable
                     ->color(fn (int $state): string => $state < 0 ? 'danger' : 'success')
                     ->weight('bold'),
                 TextColumn::make('wallet_transactions_count')
+                    ->icon(Heroicon::OutlinedListBullet)
                     ->label('Transaksi')
                     ->visibleFrom('lg')
                     ->badge()
@@ -53,11 +59,13 @@ class CustomersTable
                     ->label('Aktif')
                     ->boolean(),
                 TextColumn::make('last_seen_at')
+                    ->icon(Heroicon::OutlinedClock)
                     ->label('Terakhir main')
                     ->visibleFrom('md')
                     ->since()
                     ->placeholder('Belum pernah'),
                 TextColumn::make('created_at')
+                    ->icon(Heroicon::OutlinedCalendar)
                     ->label('Terdaftar')
                     ->visibleFrom('xl')
                     ->date('d M Y'),

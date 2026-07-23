@@ -80,7 +80,19 @@ class AdminPanelProvider extends PanelProvider
             // versi berapa yang dipakai mesin itu — dan menebaknya dari daftar
             // commit bukan pekerjaan kasir.
             ->renderHook(
-                PanelsRenderHook::TOPBAR_START,
+                // LOGO_AFTER, bukan TOPBAR_START: yang dicari mata adalah nama
+                // sistemnya, dan versinya keterangan yang mengikuti nama itu —
+                // di sebelah kirinya, ia terbaca lebih dulu daripada namanya.
+                PanelsRenderHook::TOPBAR_LOGO_AFTER,
+                fn (): string => view('filament.version-badge', [
+                    'version' => self::currentVersion(),
+                ])->render(),
+            )
+            // Brand-nya pindah ke sidebar saat sidebar dibuka; tanpa ini
+            // versinya hilang persis pada tata letak yang paling sering dipakai
+            // di layar lebar.
+            ->renderHook(
+                PanelsRenderHook::SIDEBAR_LOGO_AFTER,
                 fn (): string => view('filament.version-badge', [
                     'version' => self::currentVersion(),
                 ])->render(),

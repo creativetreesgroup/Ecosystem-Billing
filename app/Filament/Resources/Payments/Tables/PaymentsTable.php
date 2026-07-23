@@ -40,14 +40,17 @@ class PaymentsTable
             ])
             ->columns([
                 TextColumn::make('rentalSession.unit.code')
+                    ->icon(Heroicon::OutlinedTv)
                     ->label('Unit')
                     ->weight(FontWeight::Bold)
                     ->searchable(),
                 TextColumn::make('rentalSession.customer_name')
+                    ->icon(Heroicon::OutlinedUser)
                     ->label('Pelanggan')
                     ->placeholder('Tanpa nama')
                     ->searchable(),
                 TextColumn::make('amount')
+                    ->icon(Heroicon::OutlinedBanknotes)
                     ->label('Nominal')
                     ->formatStateUsing(fn (int $state): string => Rupiah::format($state))
                     ->weight(FontWeight::Bold)
@@ -59,10 +62,12 @@ class PaymentsTable
                     ->label('Status')
                     ->badge(),
                 TextColumn::make('created_at')
+                    ->icon(Heroicon::OutlinedCalendar)
                     ->label('Diterima')
                     ->visibleFrom('lg')
                     ->since(),
                 TextColumn::make('verifiedBy.name')
+                    ->icon(Heroicon::OutlinedCheckBadge)
                     ->label('Diperiksa oleh')
                     ->visibleFrom('xl')
                     ->placeholder('-'),
