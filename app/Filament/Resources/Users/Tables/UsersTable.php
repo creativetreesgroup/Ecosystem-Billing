@@ -11,6 +11,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\Str;
 
 class UsersTable
 {
@@ -54,6 +55,7 @@ class UsersTable
                     ->label('Peran')
                     ->badge()
                     ->icon(Heroicon::OutlinedShieldCheck)
+                    ->formatStateUsing(fn ($state): string => Str::of((string) $state)->replace(['_', '-'], ' ')->title()->toString())
                     ->color(fn ($state): string => self::groupColours()[$state] ?? 'danger')
                     ->separator(','),
                 IconColumn::make('is_active')

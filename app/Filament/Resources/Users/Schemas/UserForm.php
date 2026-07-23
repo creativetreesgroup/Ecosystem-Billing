@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Users\Schemas;
 
 use App\Models\Outlet;
+use App\Models\Role;
 use App\Models\User;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -76,6 +77,7 @@ class UserForm
                                 Select::make('roles')
                                     ->label('Peran')
                                     ->relationship('roles', 'name')
+                                    ->getOptionLabelFromRecordUsing(fn (Role $record): string => $record->label())
                                     ->multiple()
                                     ->preload()
                                     ->searchable()

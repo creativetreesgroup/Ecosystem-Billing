@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Domain\Users\PermissionGroup;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role as SpatieRole;
 
@@ -23,6 +24,20 @@ class Role extends SpatieRole
             'group' => PermissionGroup::class,
             'is_group_admin' => 'boolean',
         ];
+    }
+
+    /**
+     * Nama peran sebagaimana dibaca manusia: "admin_keuangan" → "Admin Keuangan".
+     *
+     * Nama tersimpannya sengaja bergaris bawah — itu identitas stabil yang
+     * dipakai kode (`hasRole('admin_keuangan')`) dan tidak boleh ikut berubah
+     * saat labelnya dirapikan. Yang tidak boleh adalah identitas itu bocor ke
+     * layar: pemilik outlet memilih "Admin Keuangan", bukan sebuah kunci
+     * database.
+     */
+    public function label(): string
+    {
+        return Str::of($this->name)->replace(['_', '-'], ' ')->title()->toString();
     }
 
     /**

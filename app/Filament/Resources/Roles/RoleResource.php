@@ -45,6 +45,11 @@ class RoleResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
+    public static function getNavigationLabel(): string
+    {
+        return 'Peran & Izin';
+    }
+
     /** Peran & izin adalah kendali sistem — satu rak dengan Pengguna & Pengaturan. */
     protected static string|\UnitEnum|null $navigationGroup = NavigationGroup::Sistem;
 
