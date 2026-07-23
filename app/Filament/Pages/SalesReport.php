@@ -4,10 +4,10 @@ namespace App\Filament\Pages;
 
 use App\Domain\Billing\Rupiah;
 use App\Domain\Billing\SalesSummary;
+use App\Domain\Users\UserRole;
 use App\Filament\Widgets\SalesPaymentMixChart;
 use App\Filament\Widgets\SalesRevenueChart;
 use App\Filament\Widgets\SalesStatsWidget;
-use App\Models\UserRole;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;

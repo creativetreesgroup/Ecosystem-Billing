@@ -2,8 +2,8 @@
 
 namespace App\Policies;
 
+use App\Domain\Users\UserRole;
 use App\Models\User;
-use App\Models\UserRole;
 
 class UserPolicy
 {

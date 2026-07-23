@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
+use App\Domain\Users\UserRole;
 use App\Models\Outlet;
 use App\Models\User;
-use App\Models\UserRole;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;

@@ -15,7 +15,7 @@ use Illuminate\Foundation\Queue\Queueable;
  * dan job ini no-op — cara termurah "membatalkan" delayed job yang sudah
  * di-dispatch tanpa perlu ID job untuk di-cancel (lihat README.md).
  */
-class ExpireRentalSession implements ShouldQueue
+class ExpireRentalSessionJob implements ShouldQueue
 {
     use Queueable;
 

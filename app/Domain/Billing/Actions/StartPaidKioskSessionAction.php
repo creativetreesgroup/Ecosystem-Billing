@@ -4,8 +4,8 @@ namespace App\Domain\Billing\Actions;
 
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Sessions\Events\SessionStarted;
-use App\Domain\Sessions\Jobs\ExpireRentalSession;
-use App\Domain\Sessions\Jobs\WarnSessionEnding;
+use App\Domain\Sessions\Jobs\ExpireRentalSessionJob;
+use App\Domain\Sessions\Jobs\WarnSessionEndingJob;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Settings\SettingKey;
 use App\Models\Payment;
@@ -116,8 +116,8 @@ class StartPaidKioskSessionAction
         if ($started->ends_at) {
             $warning = (int) Setting::get(SettingKey::WarningBeforeMinutes);
 
-            ExpireRentalSession::dispatch($started->id, $started->expiry_token)->delay($started->ends_at);
-            WarnSessionEnding::dispatch($started->id, $started->expiry_token)
+            ExpireRentalSessionJob::dispatch($started->id, $started->expiry_token)->delay($started->ends_at);
+            WarnSessionEndingJob::dispatch($started->id, $started->expiry_token)
                 ->delay($started->ends_at->copy()->subMinutes($warning));
         }
 

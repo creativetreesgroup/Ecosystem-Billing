@@ -4,6 +4,8 @@ namespace App\Console\Commands\Testing;
 
 use App\Domain\Billing\Actions\StopKioskOpenPlayAction;
 use App\Models\RentalSession;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -13,12 +15,10 @@ use Throwable;
  * yang SAMA benar-benar berebut row lock baris pelanggan di database — bukan
  * disimulasikan dalam satu proses PHP.
  */
-class AttemptStopOpenPlayCommand extends Command
+#[Signature('testing:attempt-stop-openplay {session_id}')]
+#[Description('Test harness only: attempt to stop a kiosk Open Play session, for concurrency testing.')]
+class AttemptStopOpenPlay extends Command
 {
-    protected $signature = 'testing:attempt-stop-openplay {session_id}';
-
-    protected $description = 'Test harness only: attempt to stop a kiosk Open Play session, for concurrency testing.';
-
     public function handle(StopKioskOpenPlayAction $action): int
     {
         if (app()->isProduction()) {

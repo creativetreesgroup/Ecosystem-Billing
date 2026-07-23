@@ -7,7 +7,7 @@ use App\Domain\Sessions\Actions\ExtendSessionAction;
 use App\Domain\Sessions\Actions\StartSessionAction;
 use App\Domain\Sessions\Events\SessionExtended;
 use App\Domain\Sessions\Exceptions\IllegalSessionTransitionException;
-use App\Domain\Sessions\Jobs\ExpireRentalSession;
+use App\Domain\Sessions\Jobs\ExpireRentalSessionJob;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Domain\Wallet\Actions\PlayFromWalletAction;
@@ -115,7 +115,7 @@ test('extending dispatches a fresh expiry job with the new token', function () {
 
     $extended = app(ExtendSessionAction::class)->handle($session, addedMinutes: 15, amount: 2000, user: $kasir);
 
-    Bus::assertDispatched(ExpireRentalSession::class, fn ($job) => $job->expiryToken === $extended->expiry_token);
+    Bus::assertDispatched(ExpireRentalSessionJob::class, fn ($job) => $job->expiryToken === $extended->expiry_token);
 });
 
 test('rejects extending an open-play session', function () {

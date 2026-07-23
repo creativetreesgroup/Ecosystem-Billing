@@ -6,6 +6,8 @@ use App\Domain\Sessions\Actions\StartSessionAction;
 use App\Domain\Sessions\SessionType;
 use App\Models\Unit;
 use App\Models\User;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -15,12 +17,10 @@ use Throwable;
  * yang sama benar-benar berebut row lock database yang sesungguhnya,
  * bukan disimulasikan dalam satu proses PHP yang pada dasarnya single-thread.
  */
-class AttemptStartSessionCommand extends Command
+#[Signature('testing:attempt-start-session {unit_id} {user_id}')]
+#[Description('Test harness only: attempt to start an open-play session, for concurrency testing.')]
+class AttemptStartSession extends Command
 {
-    protected $signature = 'testing:attempt-start-session {unit_id} {user_id}';
-
-    protected $description = 'Test harness only: attempt to start an open-play session, for concurrency testing.';
-
     public function handle(StartSessionAction $action): int
     {
         if (app()->isProduction()) {

@@ -2,9 +2,9 @@
 
 namespace App\Policies;
 
+use App\Domain\Users\UserRole;
 use App\Models\Integration;
 use App\Models\User;
-use App\Models\UserRole;
 
 /**
  * Kredensial integrasi = kendali penuh atas semua TV outlet. Kasir tidak

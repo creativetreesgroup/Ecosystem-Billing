@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Domain\Devices\DeviceManager;
 use App\Models\Unit;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 /**
@@ -11,12 +13,10 @@ use Illuminate\Console\Command;
  * dan menandai mana yang belum dipasangkan ke unit mana pun. Dipakai saat
  * memasang unit baru — lihat README.md "Prosedur menambah unit baru".
  */
+#[Signature('units:discover')]
+#[Description('Cari TV di jaringan lewat Home Assistant dan tampilkan mana yang belum terpasang ke unit.')]
 class DiscoverUnits extends Command
 {
-    protected $signature = 'units:discover';
-
-    protected $description = 'Cari TV di jaringan lewat Home Assistant dan tampilkan mana yang belum terpasang ke unit.';
-
     public function handle(DeviceManager $devices): int
     {
         $discovered = $devices->homeAssistant()->discoverMediaPlayers();

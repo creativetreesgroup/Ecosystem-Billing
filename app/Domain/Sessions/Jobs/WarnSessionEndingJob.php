@@ -10,7 +10,7 @@ use App\Models\RentalSession;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
-class WarnSessionEnding implements ShouldQueue
+class WarnSessionEndingJob implements ShouldQueue
 {
     use Queueable;
 

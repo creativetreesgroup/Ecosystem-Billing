@@ -8,8 +8,8 @@ use App\Domain\Discounts\DiscountEngine;
 use App\Domain\Discounts\DiscountTarget;
 use App\Domain\Sessions\Events\SessionStarted;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
-use App\Domain\Sessions\Jobs\ExpireRentalSession;
-use App\Domain\Sessions\Jobs\WarnSessionEnding;
+use App\Domain\Sessions\Jobs\ExpireRentalSessionJob;
+use App\Domain\Sessions\Jobs\WarnSessionEndingJob;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Domain\Settings\SettingKey;
@@ -140,8 +140,8 @@ class PlayFromWalletAction
         $this->devices->clearScreen($session->unit);
 
         $warning = (int) Setting::get(SettingKey::WarningBeforeMinutes);
-        ExpireRentalSession::dispatch($session->id, $session->expiry_token)->delay($session->ends_at);
-        WarnSessionEnding::dispatch($session->id, $session->expiry_token)
+        ExpireRentalSessionJob::dispatch($session->id, $session->expiry_token)->delay($session->ends_at);
+        WarnSessionEndingJob::dispatch($session->id, $session->expiry_token)
             ->delay($session->ends_at->copy()->subMinutes($warning));
 
         SessionStarted::dispatch($session->id, $session->unit_id);

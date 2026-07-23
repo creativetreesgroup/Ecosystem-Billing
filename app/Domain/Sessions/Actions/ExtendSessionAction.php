@@ -5,8 +5,8 @@ namespace App\Domain\Sessions\Actions;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Sessions\Events\SessionExtended;
 use App\Domain\Sessions\Exceptions\IllegalSessionTransitionException;
-use App\Domain\Sessions\Jobs\ExpireRentalSession;
-use App\Domain\Sessions\Jobs\WarnSessionEnding;
+use App\Domain\Sessions\Jobs\ExpireRentalSessionJob;
+use App\Domain\Sessions\Jobs\WarnSessionEndingJob;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Domain\Settings\SettingKey;
@@ -68,8 +68,8 @@ class ExtendSessionAction
 
             $warningMinutes = (int) Setting::get(SettingKey::WarningBeforeMinutes);
 
-            ExpireRentalSession::dispatch($locked->id, $newToken)->delay($newEndsAt);
-            WarnSessionEnding::dispatch($locked->id, $newToken)->delay($newEndsAt->copy()->subMinutes($warningMinutes));
+            ExpireRentalSessionJob::dispatch($locked->id, $newToken)->delay($newEndsAt);
+            WarnSessionEndingJob::dispatch($locked->id, $newToken)->delay($newEndsAt->copy()->subMinutes($warningMinutes));
 
             return $locked->fresh();
         });

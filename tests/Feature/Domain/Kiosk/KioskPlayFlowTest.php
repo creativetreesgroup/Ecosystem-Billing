@@ -6,7 +6,7 @@ use App\Domain\Billing\PaymentStatus;
 use App\Domain\Billing\SalesSummary;
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Sessions\Actions\CompleteSessionAction;
-use App\Domain\Sessions\Jobs\ExpireRentalSession;
+use App\Domain\Sessions\Jobs\ExpireRentalSessionJob;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Domain\Wallet\Actions\PlayFromWalletAction;
@@ -135,7 +135,7 @@ test('a wallet session actually completes when its time runs out', function () {
         ->handle($this->customer, $this->unit, $this->package);
 
     // Persis yang dilakukan penjadwal saat ends_at tiba.
-    app(ExpireRentalSession::class, [
+    app(ExpireRentalSessionJob::class, [
         'sessionId' => $session->id,
         'expiryToken' => $session->expiry_token,
     ])->handle(app(CompleteSessionAction::class));
@@ -158,7 +158,7 @@ test('a played wallet session is revenue, filed under Saldo', function () {
     $session = app(PlayFromWalletAction::class)
         ->handle($this->customer, $this->unit, $this->package);
 
-    app(ExpireRentalSession::class, [
+    app(ExpireRentalSessionJob::class, [
         'sessionId' => $session->id,
         'expiryToken' => $session->expiry_token,
     ])->handle(app(CompleteSessionAction::class));

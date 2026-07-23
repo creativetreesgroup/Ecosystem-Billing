@@ -2,9 +2,9 @@
 
 namespace App\Policies;
 
+use App\Domain\Users\UserRole;
 use App\Models\RentalSession;
 use App\Models\User;
-use App\Models\UserRole;
 
 class RentalSessionPolicy
 {

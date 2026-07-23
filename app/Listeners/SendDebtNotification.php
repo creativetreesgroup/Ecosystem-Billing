@@ -3,9 +3,9 @@
 namespace App\Listeners;
 
 use App\Domain\Billing\Rupiah;
+use App\Domain\Users\UserRole;
 use App\Domain\Wallet\Events\CustomerWentIntoDebt;
 use App\Models\Customer;
-use App\Models\UserRole;
 use App\Notifications\BellNotifier;
 use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Builder;

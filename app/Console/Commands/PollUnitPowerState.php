@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\DeviceManager;
 use App\Models\Unit;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -17,12 +19,10 @@ use Throwable;
  * → broadcast (+ device_alert kalau jadi unreachable)" konsisten dengan
  * bridge:mqtt-listen, bukan duplikat logikanya di sini.
  */
+#[Signature('units:poll-state')]
+#[Description('Polling state TV lewat Home Assistant untuk unit ber-driver home_assistant.')]
 class PollUnitPowerState extends Command
 {
-    protected $signature = 'units:poll-state';
-
-    protected $description = 'Polling state TV lewat Home Assistant untuk unit ber-driver home_assistant.';
-
     public function handle(DeviceManager $devices): int
     {
         $units = Unit::query()

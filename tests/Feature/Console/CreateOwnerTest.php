@@ -2,7 +2,7 @@
 
 use App\Models\Outlet;
 use App\Models\User;
-use App\Models\UserRole;
+use App\Domain\Users\UserRole;
 
 /**
  * make:filament-user tidak bisa membuat user di sistem ini (role NOT NULL tanpa

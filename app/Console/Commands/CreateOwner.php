@@ -4,7 +4,9 @@ namespace App\Console\Commands;
 
 use App\Models\Outlet;
 use App\Models\User;
-use App\Models\UserRole;
+use App\Domain\Users\UserRole;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 use function Laravel\Prompts\password;
@@ -21,12 +23,10 @@ use function Laravel\Prompts\text;
  * baru tak akan pernah punya user untuk login. Perintah ini mengisi role +
  * outlet dengan benar, jadi hasilnya deterministik di setiap instalasi.
  */
-class CreateOwnerCommand extends Command
+#[Signature('app:create-owner {--name=} {--email=} {--password=} {--outlet=}')]
+#[Description('Buat akun owner pertama + outlet default (langkah instalasi produksi).')]
+class CreateOwner extends Command
 {
-    protected $signature = 'app:create-owner {--name=} {--email=} {--password=} {--outlet=}';
-
-    protected $description = 'Buat akun owner pertama + outlet default (langkah instalasi produksi).';
-
     public function handle(): int
     {
         $outlet = Outlet::query()->orderBy('id')->first()

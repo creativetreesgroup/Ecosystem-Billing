@@ -2,9 +2,9 @@
 
 namespace App\Policies;
 
+use App\Domain\Users\UserRole;
 use App\Models\Discount;
 use App\Models\User;
-use App\Models\UserRole;
 
 /**
  * Diskon menyentuh harga — hanya owner yang boleh membuat/mengubahnya. Tidak
