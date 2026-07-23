@@ -68,6 +68,7 @@ class RentalSessionsTable
                     ->label('Status')
                     ->badge(),
                 TextColumn::make('total_amount')
+                    ->icon(Heroicon::OutlinedBanknotes)
                     ->label('Total')
                     ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->placeholder('-')
@@ -75,6 +76,7 @@ class RentalSessionsTable
                 // Potongan yang diberikan (kode voucher / promo). Hanya tampil
                 // bila ada, supaya baris tanpa diskon tetap ringkas.
                 TextColumn::make('discount_amount')
+                    ->icon(Heroicon::OutlinedScissors)
                     ->label('Diskon')
                     ->visibleFrom('lg')
                     ->color('success')

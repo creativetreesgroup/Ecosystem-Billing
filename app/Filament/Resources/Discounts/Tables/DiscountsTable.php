@@ -7,6 +7,7 @@ use App\Domain\Discounts\DiscountSource;
 use App\Domain\Discounts\DiscountType;
 use App\Models\Discount;
 use Filament\Actions\EditAction;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -21,24 +22,28 @@ class DiscountsTable
             ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('code')
+                    ->icon(Heroicon::OutlinedHashtag)
                     ->label('Kode')
                     ->fontFamily('mono')
                     ->searchable()
                     ->placeholder('— (promo)')
                     ->copyable(),
                 TextColumn::make('name')
+                    ->icon(Heroicon::OutlinedTag)
                     ->label('Nama')
                     ->searchable(),
                 TextColumn::make('source')
                     ->label('Sumber')
                     ->badge(),
                 TextColumn::make('value')
+                    ->icon(Heroicon::OutlinedReceiptPercent)
                     ->label('Potongan')
                     ->formatStateUsing(fn (Discount $record): string => $record->type === DiscountType::Percentage
                         ? $record->value.'%'
                         : Rupiah::format($record->value)),
                 // Pemakaian: dihitung dari baris redemption — sumber kebenaran kuota.
                 TextColumn::make('redemptions_count')
+                    ->icon(Heroicon::OutlinedTicket)
                     ->label('Terpakai')
                     ->counts('redemptions')
                     ->badge()
@@ -46,6 +51,7 @@ class DiscountsTable
                         ? "{$state} / {$record->max_uses}"
                         : (string) $state),
                 TextColumn::make('ends_at')
+                    ->icon(Heroicon::OutlinedCalendarDays)
                     ->label('Berakhir')
                     ->dateTime('d M Y H:i', timezone: config('app.display_timezone'))
                     ->placeholder('Tanpa batas')

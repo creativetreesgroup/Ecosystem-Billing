@@ -25,6 +25,7 @@ class DeviceAlertsTable
             ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('unit.code')
+                    ->icon(Heroicon::OutlinedTv)
                     ->label('Unit')
                     ->searchable(),
                 TextColumn::make('type')
@@ -32,16 +33,19 @@ class DeviceAlertsTable
                     ->label('Tipe')
                     ->badge(),
                 TextColumn::make('message')
+                    ->icon(Heroicon::OutlinedChatBubbleLeft)
                     ->label('Pesan')
                     ->wrap(),
                 TextColumn::make('status')
                     ->label('Status')
                     ->badge(),
                 TextColumn::make('acknowledgedBy.name')
+                    ->icon(Heroicon::OutlinedCheckBadge)
                     ->visibleFrom('lg')
                     ->label('Ditangani oleh')
                     ->placeholder('-'),
                 TextColumn::make('created_at')
+                    ->icon(Heroicon::OutlinedCalendar)
                     ->visibleFrom('md')
                     ->label('Waktu')
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))

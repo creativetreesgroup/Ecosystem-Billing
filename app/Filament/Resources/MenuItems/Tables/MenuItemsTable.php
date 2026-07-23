@@ -6,6 +6,7 @@ use App\Domain\Billing\Rupiah;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -19,13 +20,16 @@ class MenuItemsTable
             ->defaultSort('sort_order')
             ->columns([
                 TextColumn::make('category.name')
+                    ->icon(Heroicon::OutlinedFolder)
                     ->label('Kategori')
                     ->badge()
                     ->searchable(),
                 TextColumn::make('name')
+                    ->icon(Heroicon::OutlinedTag)
                     ->label('Item')
                     ->searchable(),
                 TextColumn::make('price')
+                    ->icon(Heroicon::OutlinedBanknotes)
                     ->label('Harga')
                     ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->sortable(),

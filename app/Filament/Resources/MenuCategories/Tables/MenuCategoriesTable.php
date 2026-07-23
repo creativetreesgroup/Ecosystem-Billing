@@ -5,6 +5,7 @@ namespace App\Filament\Resources\MenuCategories\Tables;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -17,12 +18,15 @@ class MenuCategoriesTable
             ->defaultSort('sort_order')
             ->columns([
                 TextColumn::make('name')
+                    ->icon(Heroicon::OutlinedTag)
                     ->label('Kategori')
                     ->searchable(),
                 TextColumn::make('items_count')
+                    ->icon(Heroicon::OutlinedListBullet)
                     ->label('Jumlah item')
                     ->counts('items'),
                 TextColumn::make('sort_order')
+                    ->icon(Heroicon::OutlinedBars3BottomLeft)
                     ->visibleFrom('md')
                     ->label('Urutan')
                     ->sortable(),

@@ -28,23 +28,28 @@ class MenuOrdersTable
             ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('created_at')
+                    ->icon(Heroicon::OutlinedCalendar)
                     ->label('Masuk')
                     ->since()
                     ->sortable(),
                 TextColumn::make('unit.code')
+                    ->icon(Heroicon::OutlinedTv)
                     ->label('Unit')
                     ->badge()
                     ->color('gray')
                     ->searchable(),
                 TextColumn::make('customer.name')
+                    ->icon(Heroicon::OutlinedUser)
                     ->visibleFrom('md')
                     ->label('Pelanggan')
                     ->searchable(),
                 TextColumn::make('summary')
+                    ->icon(Heroicon::OutlinedListBullet)
                     ->label('Pesanan')
                     ->state(fn (MenuOrder $record): string => $record->summary())
                     ->wrap(),
                 TextColumn::make('total_amount')
+                    ->icon(Heroicon::OutlinedBanknotes)
                     ->label('Total')
                     ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->sortable(),

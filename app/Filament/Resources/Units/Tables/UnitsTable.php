@@ -34,9 +34,11 @@ class UnitsTable
             ->defaultSort('code')
             ->columns([
                 TextColumn::make('code')
+                    ->icon(Heroicon::OutlinedHashtag)
                     ->label('Kode')
                     ->searchable(),
                 TextColumn::make('unitType.name')
+                    ->icon(Heroicon::OutlinedSquares2x2)
                     ->label('Tipe')
                     ->searchable(),
                 TextColumn::make('control_driver')
@@ -47,6 +49,7 @@ class UnitsTable
                     ->label('Status TV')
                     ->badge(),
                 TextColumn::make('last_seen_at')
+                    ->icon(Heroicon::OutlinedSignal)
                     ->visibleFrom('lg')
                     ->label('Terakhir terlihat')
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
