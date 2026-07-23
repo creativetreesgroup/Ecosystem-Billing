@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Domain\Discounts\DiscountSource;
 use App\Domain\Discounts\DiscountTarget;
 use App\Domain\Discounts\DiscountType;
+use App\Domain\Discounts\VoucherCode;
 use Database\Factories\DiscountFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -19,6 +20,24 @@ use Illuminate\Support\Str;
 ])]
 class Discount extends Model
 {
+    /**
+     * Voucher SELALU punya kode, apa pun jalur pembuatannya.
+     *
+     * Form panel sudah membuatkannya, tapi form bukan satu-satunya pintu:
+     * seeder, tinker, dan impor data juga menulis ke tabel ini. Voucher tanpa
+     * kode tidak menimbulkan galat apa pun — ia hanya diam-diam mustahil
+     * dipakai, dan itu baru ketahuan saat pelanggan berdiri di depan kios
+     * memegang selembar voucher yang tidak berlaku.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $discount): void {
+            if ($discount->source === DiscountSource::Voucher && blank($discount->code)) {
+                $discount->code = VoucherCode::generate();
+            }
+        });
+    }
+
     /** @use HasFactory<DiscountFactory> */
     use HasFactory;
 

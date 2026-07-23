@@ -34,3 +34,24 @@ test('it never hands out a code that already exists', function () {
     expect($codes)->not->toContain($taken)
         ->and($codes->unique())->toHaveCount(50);
 });
+
+/**
+ * REGRESI: form panel bukan satu-satunya pintu ke tabel ini — seeder, tinker,
+ * dan impor juga menulis ke sini. Voucher tanpa kode tidak melempar galat apa
+ * pun; ia hanya diam-diam mustahil dipakai, dan itu baru ketahuan saat
+ * pelanggan berdiri di kios memegang voucher yang tidak berlaku.
+ */
+test('a voucher saved without a code gets one anyway', function () {
+    $voucher = Discount::factory()->create(['source' => 'voucher', 'code' => null]);
+
+    expect($voucher->fresh()->code)->not->toBeNull()
+        ->and($voucher->fresh()->code)->toMatch('/^[A-Z0-9]{4}-[A-Z0-9]{4}$/');
+});
+
+/** Promo otomatis TIDAK boleh diberi kode: kode kedua untuk promo yang sama
+ *  berarti kuotanya bisa terpakai lewat dua jalur. */
+test('an automatic promo is left without a code', function () {
+    $promo = Discount::factory()->create(['source' => 'promo', 'code' => null]);
+
+    expect($promo->fresh()->code)->toBeNull();
+});

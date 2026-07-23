@@ -1565,7 +1565,7 @@ new class extends Component
                 {{-- Voucher: diketik lalu lepas fokus (blur) untuk pratinjau —
                      tanpa network per ketukan. Kode dipotong ulang di server saat
                      menebus (kuota di bawah kunci). --}}
-                <input type="text" wire:model.blur="voucherCode" placeholder="Punya kode voucher? (opsional)"
+                <input type="text" wire:model.blur="voucherCode" placeholder="Kode voucher, mis. 9X3X-6TPC"
                        class="field" style="text-transform:uppercase" autocomplete="off" maxlength="30">
                 @if ($vr && ! $vrOk)
                     <p class="error">{{ $vr['message'] }}</p>
@@ -1595,7 +1595,7 @@ new class extends Component
                 {{-- Voucher Open Play: potongannya ke tagihan saat berhenti, jadi
                      di sini hanya divalidasi kodenya. --}}
                 @php($ovr = $this->openVoucherResult)
-                <input type="text" wire:model.blur="voucherCode" placeholder="Punya kode voucher? (opsional)"
+                <input type="text" wire:model.blur="voucherCode" placeholder="Kode voucher, mis. 9X3X-6TPC"
                        class="field" style="text-transform:uppercase;margin-top:.75rem" autocomplete="off" maxlength="30">
                 @if ($ovr && ! ($ovr['ok'] ?? false))
                     <p class="error">{{ $ovr['message'] }}</p>
@@ -1656,7 +1656,7 @@ new class extends Component
 
                 {{-- Voucher isi saldo: bonus saldo (bayar penuh, saldo bertambah
                      lebih). Bonusnya dikreditkan saat pembayaran lunas. --}}
-                <input type="text" wire:model.blur="voucherCode" placeholder="Punya kode voucher? (opsional)"
+                <input type="text" wire:model.blur="voucherCode" placeholder="Kode voucher, mis. 9X3X-6TPC"
                        class="field" style="text-transform:uppercase" autocomplete="off" maxlength="30">
                 @if ($tvr && ! $tvrOk)
                     <p class="error">{{ $tvr['message'] }}</p>

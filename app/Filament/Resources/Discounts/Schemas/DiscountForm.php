@@ -32,6 +32,17 @@ class DiscountForm
                             ->options(DiscountSource::class)
                             ->default(DiscountSource::Voucher->value)
                             ->live()
+                            // default() hanya berlaku saat MEMBUAT. Mengubah
+                            // promo lama menjadi voucher meninggalkan kodenya
+                            // kosong, dan voucher tanpa kode adalah voucher
+                            // yang tak bisa dipakai siapa pun di kios.
+                            ->afterStateUpdated(function (mixed $state, Get $get, Set $set): void {
+                                $source = $state instanceof DiscountSource ? $state->value : $state;
+
+                                if ($source === DiscountSource::Voucher->value && blank($get('code'))) {
+                                    $set('code', VoucherCode::generate());
+                                }
+                            })
                             ->required(),
                         // Kode hanya untuk voucher; disimpan huruf besar (mutator
                         // di model). Unik supaya satu kode tak menunjuk dua diskon.
