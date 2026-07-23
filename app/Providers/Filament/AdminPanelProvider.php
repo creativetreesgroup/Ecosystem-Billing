@@ -2,8 +2,10 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\NavigationGroup;
 use App\Filament\Pages\Dashboard;
 use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
+use Filament\Changelog\ChangelogPlugin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -45,6 +47,14 @@ class AdminPanelProvider extends PanelProvider
             // Peran & izin dikelola dari database, bukan enum di kode: menambah
             // peran baru tidak lagi berarti deploy ulang.
             ->plugin(FilamentShieldPlugin::make())
+            // Membaca CHANGELOG.md proyek secara langsung (config source =
+            // 'file'), jadi yang dibaca staf di panel selalu sama dengan yang
+            // benar-benar dirilis — bukan salinan yang lupa diperbarui.
+            ->plugin(
+                ChangelogPlugin::make()
+                    ->navigationLabel('Changelog')
+                    ->navigationGroup(NavigationGroup::Sistem)
+            )
             // Lonceng notifikasi tersimpan (tabel notifications). Push realtime
             // lewat Reverb (config/filament.php → broadcasting.echo sudah disetel);
             // polling 30 detik hanya cadangan bila WebSocket putus.

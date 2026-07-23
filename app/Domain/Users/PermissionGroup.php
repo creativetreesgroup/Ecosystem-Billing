@@ -87,6 +87,9 @@ enum PermissionGroup: string implements HasColor, HasLabel
             ],
             self::Sistem => [
                 'User', 'Role', 'Setting',
+                // Changelog & lini masa aktivitas: keduanya membaca riwayat
+                // seluruh sistem, jadi seranjang dengan Pengguna & Peran.
+                'ChangelogEntry', 'ChangelogPage', 'ActivityTimeline',
             ],
         };
     }
