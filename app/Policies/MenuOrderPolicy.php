@@ -14,18 +14,18 @@ class MenuOrderPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->is_active;
+        return $user->checkPermissionTo('ViewAny:MenuOrder');
     }
 
     public function view(User $user, MenuOrder $menuOrder): bool
     {
-        return $user->is_active;
+        return $user->checkPermissionTo('View:MenuOrder');
     }
 
     /** Memajukan status & membatalkan (refund) — keduanya lewat izin update. */
     public function update(User $user, MenuOrder $menuOrder): bool
     {
-        return $user->is_active;
+        return $user->checkPermissionTo('Update:MenuOrder');
     }
 
     public function create(User $user): bool

@@ -43,6 +43,22 @@ use Livewire\Attributes\On;
 
 class UnitGridWidget extends TableWidget
 {
+    /**
+     * Dasbor boleh dibuka siapa pun yang boleh masuk panel — tapi ISI-nya tidak.
+     *
+     * Widget ini bukan ringkasan: ia grid kasir yang bisa MEMULAI, MEMBERHENTIKAN
+     * dan MENAGIH sesi. Tanpa gerbang ini, staf Keuangan yang benar-benar ditolak
+     * dari /admin/rental-sessions tetap mendarat di dasbor dan bisa menutup sesi
+     * lalu membukukan pembayaran tunai untuk shift yang tak pernah ia jalani.
+     *
+     * Izinnya sudah dibuat Shield dan sudah diberikan ke departemen Operasional;
+     * yang hilang selama ini hanya pembacaannya di sini.
+     */
+    public static function canView(): bool
+    {
+        return auth()->user()?->checkPermissionTo('View:UnitGridWidget') ?? false;
+    }
+
     protected int|string|array $columnSpan = 'full';
 
     protected static ?string $heading = 'Unit';
@@ -208,6 +224,7 @@ class UnitGridWidget extends TableWidget
     protected function startSessionAction(): Action
     {
         return Action::make('start')
+            ->authorize(fn (): bool => auth()->user()?->checkPermissionTo('Create:RentalSession') ?? false)
             ->button()
             ->size(Size::Small)
             ->label('Mulai')
@@ -298,6 +315,7 @@ class UnitGridWidget extends TableWidget
     protected function extendSessionAction(): Action
     {
         return Action::make('extend')
+            ->authorize(fn (): bool => auth()->user()?->checkPermissionTo('Update:RentalSession') ?? false)
             ->button()
             ->size(Size::Small)
             ->label('Perpanjang')
@@ -368,6 +386,7 @@ class UnitGridWidget extends TableWidget
     protected function stopSessionAction(): Action
     {
         return Action::make('stop')
+            ->authorize(fn (): bool => auth()->user()?->checkPermissionTo('Update:RentalSession') ?? false)
             ->button()
             ->size(Size::Small)
             ->label('Stop & Bayar')
@@ -541,6 +560,7 @@ class UnitGridWidget extends TableWidget
         // sebelahnya. Daya adalah aksi bantu, jadi ia yang diringkas — label
         // tetap terbaca lewat tooltip.
         return Action::make('togglePower')
+            ->authorize(fn (): bool => auth()->user()?->checkPermissionTo('Update:Unit') ?? false)
             ->iconButton()
             ->size(Size::Small)
             // Ikon & warnanya mengikuti KEADAAN TV, bukan aksinya, dan diambil
