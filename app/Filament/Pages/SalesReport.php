@@ -4,7 +4,6 @@ namespace App\Filament\Pages;
 
 use App\Domain\Billing\Rupiah;
 use App\Domain\Billing\SalesSummary;
-use App\Domain\Users\UserRole;
 use App\Filament\Widgets\SalesPaymentMixChart;
 use App\Filament\Widgets\SalesRevenueChart;
 use App\Filament\Widgets\SalesStatsWidget;
@@ -57,7 +56,7 @@ class SalesReport extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role === UserRole::Owner;
+        return Auth::user()?->checkPermissionTo('View:SalesReport') ?? false;
     }
 
     public function mount(): void

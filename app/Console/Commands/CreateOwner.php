@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Domain\Users\UserRole;
 use App\Models\Outlet;
 use App\Models\User;
-use App\Domain\Users\UserRole;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -66,6 +66,12 @@ class CreateOwner extends Command
             'role' => UserRole::Owner,
             'is_active' => true,
         ]);
+
+        // Otorisasi dibaca dari Shield, bukan dari kolom role. Tanpa baris ini
+        // instalasi baru menghasilkan owner yang bisa masuk panel tapi tidak
+        // melihat apa pun — pemblokir instalasi yang hanya ketahuan saat orang
+        // pertama mencoba memakainya.
+        $owner->assignRole(config('filament-shield.super_admin.name', 'super_admin'));
 
         $this->info("Owner '{$owner->name}' <{$owner->email}> dibuat di outlet '{$outlet->name}'. Login di /admin.");
 

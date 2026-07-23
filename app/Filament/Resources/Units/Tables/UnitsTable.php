@@ -5,7 +5,6 @@ namespace App\Filament\Resources\Units\Tables;
 use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
-use App\Domain\Users\UserRole;
 use App\Filament\Resources\Units\UnitResource;
 use App\Models\Unit;
 use Filament\Actions\BulkAction;
@@ -29,7 +28,7 @@ class UnitsTable
         // owner-only). Aksi bulk kustom TIDAK tergerbang policy otomatis, jadi
         // tanpa gerbang ini kasir — yang tetap bisa membuka daftar unit — bisa
         // menonaktifkan semua unit sekaligus dan mematikan operasional outlet.
-        $ownerOnly = fn (): bool => auth()->user()?->role === UserRole::Owner;
+        $ownerOnly = fn (): bool => auth()->user()?->checkPermissionTo('Update:Unit') ?? false;
 
         return $table
             ->defaultSort('code')

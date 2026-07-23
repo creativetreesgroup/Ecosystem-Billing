@@ -3,7 +3,6 @@
 namespace App\Listeners;
 
 use App\Domain\Billing\Rupiah;
-use App\Domain\Users\UserRole;
 use App\Domain\Wallet\Events\CustomerWentIntoDebt;
 use App\Models\Customer;
 use App\Notifications\BellNotifier;
@@ -31,7 +30,10 @@ class SendDebtNotification
                 ->body($customer->name.' — '.Rupiah::format($customer->balance))
                 ->icon('heroicon-o-exclamation-circle')
                 ->danger(),
-            scope: fn (Builder $query): Builder => $query->where('role', UserRole::Owner),
+            // Siapa yang perlu tahu pelanggan berutang: yang mengurus uang.
+            // Sebelumnya dipaku ke kolom role, sehingga peran Keuangan yang
+            // dibuat lewat panel tidak pernah menerima pemberitahuan ini.
+            scope: fn (Builder $query): Builder => $query->permission('ViewAny:Payment'),
         );
     }
 }
