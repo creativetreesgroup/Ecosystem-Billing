@@ -74,6 +74,7 @@ enum PermissionGroup: string implements HasColor, HasLabel
             self::Keuangan => [
                 'Payment', 'Discount',
                 'SalesReport', 'SalesRevenueChart', 'SalesPaymentMixChart', 'SalesStatsWidget',
+                'SalesUnitTypeChart',
             ],
             self::Operasional => [
                 'RentalSession', 'MenuOrder', 'Customer',
