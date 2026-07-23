@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use App\Filament\Resources\Payments\Pages\ListPayments;
 use App\Models\Customer;
@@ -59,4 +60,26 @@ test('accepting a top-up transfer proof credits the customer wallet', function (
 
     expect($payment->fresh()->status)->toBe(PaymentStatus::Paid)
         ->and($customer->fresh()->balance)->toBe(40_000);
+});
+
+/**
+ * REGRESI: tabel pembayaran dulu membaca unit DAN nama pelanggan lewat
+ * rentalSession. Isi saldo dari kios tidak punya sesi sama sekali, jadi seluruh
+ * barisnya tampil kosong — dan sejak kios ada, justru itulah mayoritasnya.
+ */
+test('a wallet top-up is readable in the payments table', function () {
+    $owner = User::factory()->owner()->create();
+    $customer = Customer::factory()->create(['name' => 'Rina Topup']);
+
+    Payment::create([
+        'customer_id' => $customer->id,
+        'method' => PaymentMethod::Transfer,
+        'status' => PaymentStatus::AwaitingVerification,
+        'amount' => 50_000,
+    ]);
+
+    Livewire::actingAs($owner)
+        ->test(ListPayments::class)
+        ->assertSee('Rina Topup')   // bukan "Tanpa nama"
+        ->assertSee('Isi saldo');   // bukan sel kosong
 });

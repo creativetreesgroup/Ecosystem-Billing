@@ -39,21 +39,41 @@ class PaymentsTable
                     ->default(PaymentStatus::AwaitingVerification->value),
             ])
             ->columns([
+                // Pembayaran punya DUA asal: penyelesaian sesi (punya unit) dan
+                // isi saldo dari kios (tidak punya unit sama sekali). Membaca
+                // keduanya lewat rentalSession membuat seluruh baris isi saldo
+                // tampil kosong — dan sejak kios ada, justru itulah mayoritasnya.
                 TextColumn::make('rentalSession.unit.code')
                     ->icon(Heroicon::OutlinedTv)
-                    ->label('Unit')
+                    ->label('Untuk')
                     ->weight(FontWeight::Bold)
+                    ->default('Isi saldo')
+                    ->color(fn (Payment $record): string => $record->rental_session_id ? 'gray' : 'primary')
                     ->searchable(),
-                TextColumn::make('rentalSession.customer_name')
+                TextColumn::make('customer.name')
                     ->icon(Heroicon::OutlinedUser)
                     ->label('Pelanggan')
+                    // Sesi kasir mencatat namanya sebagai teks (tanpa akun),
+                    // sedangkan isi saldo selalu punya akun pelanggan.
+                    ->state(fn (Payment $record): ?string => $record->customer?->name
+                        ?? $record->rentalSession?->customer_name)
                     ->placeholder('Tanpa nama')
+                    // Disalin, bukan diketik ulang: nama ini dicocokkan dengan
+                    // nama pengirim di mutasi rekening, dan satu huruf meleset
+                    // membuat pencariannya nihil.
+                    ->copyable()
+                    ->copyMessage('Nama disalin')
                     ->searchable(),
                 TextColumn::make('amount')
                     ->icon(Heroicon::OutlinedBanknotes)
                     ->label('Nominal')
                     ->formatStateUsing(fn (int $state): string => Rupiah::format($state))
                     ->weight(FontWeight::Bold)
+                    // Angka mentah yang disalin, bukan "Rp 2.002.500": yang
+                    // ditempel ke pencarian mutasi adalah nominalnya.
+                    ->copyable()
+                    ->copyableState(fn (int $state): string => (string) $state)
+                    ->copyMessage('Nominal disalin')
                     ->sortable(),
                 TextColumn::make('method')
                     ->label('Metode')
