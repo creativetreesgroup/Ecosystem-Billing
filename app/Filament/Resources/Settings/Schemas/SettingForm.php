@@ -27,6 +27,9 @@ class SettingForm
             Section::make(fn (?Setting $record): string => $record?->label() ?? 'Pengaturan')
                 ->description(fn (?Setting $record): ?string => $record?->key?->description())
                 ->icon(fn (?Setting $record) => $record?->key?->getIcon())
+                // Kunci sistem dan nilainya berdampingan: keduanya pendek, dan
+                // menumpuknya membuat form setinggi layar untuk dua baris isi.
+                ->columns(['md' => 2])
                 ->schema([
                     TextEntry::make('key')
                         ->label('Kunci sistem')
