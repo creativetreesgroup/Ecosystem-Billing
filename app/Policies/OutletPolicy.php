@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Domain\Users\UserRole;
 use App\Models\Outlet;
 use App\Models\User;
 
@@ -10,27 +9,27 @@ class OutletPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('ViewAny:Outlet');
     }
 
     public function view(User $user, Outlet $outlet): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('View:Outlet');
     }
 
     public function create(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Create:Outlet');
     }
 
     public function update(User $user, Outlet $outlet): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Update:Outlet');
     }
 
     public function delete(User $user, Outlet $outlet): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Delete:Outlet');
     }
 
     /**
@@ -40,12 +39,12 @@ class OutletPolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('DeleteAny:Outlet');
     }
 
     public function restore(User $user, Outlet $outlet): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Restore:Outlet');
     }
 
     public function forceDelete(User $user, Outlet $outlet): bool

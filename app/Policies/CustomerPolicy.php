@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Domain\Users\UserRole;
 use App\Models\Customer;
 use App\Models\User;
 
@@ -15,18 +14,18 @@ class CustomerPolicy
 {
     public function viewAny(User $user): bool
     {
-        return true;
+        return $user->checkPermissionTo('ViewAny:Customer');
     }
 
     public function view(User $user, Customer $customer): bool
     {
-        return true;
+        return $user->checkPermissionTo('View:Customer');
     }
 
     /** Nama, keaktifan, dan reset PIN — lihat CustomerForm. */
     public function update(User $user, Customer $customer): bool
     {
-        return true;
+        return $user->checkPermissionTo('Update:Customer');
     }
 
     /**
@@ -36,7 +35,7 @@ class CustomerPolicy
      */
     public function adjustBalance(User $user, Customer $customer): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('AdjustBalance:Customer');
     }
 
     /** Member lahir dari pendaftaran mandiri di kios, bukan diketik kasir. */

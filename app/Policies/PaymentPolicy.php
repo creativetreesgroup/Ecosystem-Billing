@@ -15,12 +15,12 @@ class PaymentPolicy
 {
     public function viewAny(User $user): bool
     {
-        return true;
+        return $user->checkPermissionTo('ViewAny:Payment');
     }
 
     public function view(User $user, Payment $payment): bool
     {
-        return true;
+        return $user->checkPermissionTo('View:Payment');
     }
 
     /**
@@ -30,7 +30,10 @@ class PaymentPolicy
      */
     public function verify(User $user, Payment $payment): bool
     {
-        return $payment->status === PaymentStatus::AwaitingVerification;
+        // DUA syarat, dan keduanya perlu: izinnya menentukan SIAPA yang boleh
+        // memutuskan, statusnya menentukan APA yang masih layak diputuskan.
+        return $user->checkPermissionTo('Verify:Payment')
+            && $payment->status === PaymentStatus::AwaitingVerification;
     }
 
     public function reject(User $user, Payment $payment): bool

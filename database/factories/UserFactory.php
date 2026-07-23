@@ -52,6 +52,22 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'role' => UserRole::Owner,
-        ]);
+        ])->afterCreating(fn (User $user) => $user->assignRole('super_admin'));
+    }
+
+    /**
+     * Peran Shield ikut menempel pada pengguna biasa.
+     *
+     * Otorisasi dibaca dari database sekarang; pengguna tanpa peran tidak bisa
+     * apa-apa, dan test yang memakainya akan menguji panel kosong alih-alih
+     * panel yang benar-benar dipakai kasir.
+     */
+    public function configure(): static
+    {
+        return $this->afterCreating(function (User $user): void {
+            if ($user->roles()->doesntExist()) {
+                $user->assignRole('staf_operasional');
+            }
+        });
     }
 }

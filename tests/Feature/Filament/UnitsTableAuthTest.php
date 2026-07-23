@@ -10,7 +10,12 @@ use Livewire\Livewire;
  * menonaktifkan seluruh unit sekaligus dan mematikan operasional outlet.
  */
 test('a cashier cannot see the activate/deactivate bulk actions', function () {
-    Livewire::actingAs(User::factory()->create()) // default role = kasir
+    // Kasir lantai boleh MELIHAT unit (departemen Maintenance), tapi tidak
+    // mengaktifkan/menonaktifkannya — itu tingkat admin.
+    $kasir = User::factory()->create();
+    $kasir->syncRoles(['staf_operasional', 'staf_maintenance']);
+
+    Livewire::actingAs($kasir)
         ->test(ListUnits::class)
         ->assertTableBulkActionHidden('deactivate')
         ->assertTableBulkActionHidden('activate');

@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Domain\Users\UserRole;
 use App\Models\Discount;
 use App\Models\User;
 
@@ -15,22 +14,22 @@ class DiscountPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('ViewAny:Discount');
     }
 
     public function view(User $user, Discount $discount): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('View:Discount');
     }
 
     public function create(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Create:Discount');
     }
 
     public function update(User $user, Discount $discount): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Update:Discount');
     }
 
     public function delete(User $user, Discount $discount): bool

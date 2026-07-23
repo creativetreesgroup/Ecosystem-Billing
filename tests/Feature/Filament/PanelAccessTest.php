@@ -32,7 +32,10 @@ test('owner can reach every admin page', function (string $path) {
 ]);
 
 test('kasir can reach the dashboard, units, and device alerts', function (string $path) {
+    // Unit & alert perangkat milik departemen Maintenance; kasir lantai
+    // memegang peran dari dua departemen sekaligus (lihat PolicyBoundariesTest).
     $kasir = User::factory()->create();
+    $kasir->syncRoles(['staf_operasional', 'staf_maintenance']);
 
     $this->actingAs($kasir)->get($path)->assertSuccessful();
 })->with([

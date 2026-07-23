@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Domain\Users\UserRole;
 use App\Models\Integration;
 use App\Models\User;
 
@@ -14,12 +13,12 @@ class IntegrationPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('ViewAny:Integration');
     }
 
     public function view(User $user, Integration $integration): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('View:Integration');
     }
 
     /**
@@ -34,7 +33,7 @@ class IntegrationPolicy
 
     public function update(User $user, Integration $integration): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Update:Integration');
     }
 
     /**

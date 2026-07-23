@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Domain\Users\UserRole;
 use App\Models\Unit;
 use App\Models\User;
 
@@ -10,22 +9,22 @@ class UnitPolicy
 {
     public function viewAny(User $user): bool
     {
-        return true;
+        return $user->checkPermissionTo('ViewAny:Unit');
     }
 
     public function view(User $user, Unit $unit): bool
     {
-        return true;
+        return $user->checkPermissionTo('View:Unit');
     }
 
     public function create(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Create:Unit');
     }
 
     public function update(User $user, Unit $unit): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Update:Unit');
     }
 
     /**
@@ -50,7 +49,7 @@ class UnitPolicy
 
     public function restore(User $user, Unit $unit): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Restore:Unit');
     }
 
     public function forceDelete(User $user, Unit $unit): bool

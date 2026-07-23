@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Domain\Users\UserRole;
 use App\Models\UnitType;
 use App\Models\User;
 
@@ -10,27 +9,27 @@ class UnitTypePolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('ViewAny:UnitType');
     }
 
     public function view(User $user, UnitType $unitType): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('View:UnitType');
     }
 
     public function create(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Create:UnitType');
     }
 
     public function update(User $user, UnitType $unitType): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Update:UnitType');
     }
 
     public function delete(User $user, UnitType $unitType): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Delete:UnitType');
     }
 
     /**
@@ -40,12 +39,12 @@ class UnitTypePolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('DeleteAny:UnitType');
     }
 
     public function restore(User $user, UnitType $unitType): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Restore:UnitType');
     }
 
     public function forceDelete(User $user, UnitType $unitType): bool

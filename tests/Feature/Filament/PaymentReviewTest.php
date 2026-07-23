@@ -16,6 +16,8 @@ use Livewire\Livewire;
  */
 test('reviewing a kiosk top-up transfer proof does not crash on the missing session', function () {
     $kasir = User::factory()->create();
+    // Verifikasi bukti transfer milik departemen Keuangan.
+    $kasir->syncRoles(['staf_operasional', 'staf_keuangan']);
     $customer = Customer::factory()->create(['name' => 'Budi']);
 
     $payment = Payment::factory()->transferAwaitingVerification()->create([
@@ -41,6 +43,8 @@ test('reviewing a kiosk top-up transfer proof does not crash on the missing sess
  */
 test('accepting a top-up transfer proof credits the customer wallet', function () {
     $kasir = User::factory()->create();
+    // Verifikasi bukti transfer milik departemen Keuangan.
+    $kasir->syncRoles(['staf_operasional', 'staf_keuangan']);
     $customer = Customer::factory()->create();
 
     $payment = Payment::factory()->transferAwaitingVerification()->create([
