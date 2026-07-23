@@ -3,7 +3,6 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
-use App\Domain\Users\UserRole;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
@@ -16,7 +15,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['outlet_id', 'name', 'email', 'password', 'role', 'is_active'])]
+#[Fillable(['outlet_id', 'name', 'email', 'password', 'is_active'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {
@@ -28,7 +27,6 @@ class User extends Authenticatable implements FilamentUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'role' => UserRole::class,
             'is_active' => 'boolean',
         ];
     }
@@ -45,7 +43,12 @@ class User extends Authenticatable implements FilamentUser
      */
     public static function kioskOperator(): self
     {
-        return self::query()->where('role', UserRole::Owner)->orderBy('id')->firstOrFail();
+        // Dicari lewat peran Shield, bukan kolom: setelah peran pindah rumah,
+        // kolomnya tidak lagi menjadi bukti apa pun tentang siapa pemilik outlet.
+        return self::query()
+            ->whereHas('roles', fn ($query) => $query->where('name', config('filament-shield.super_admin.name', 'super_admin')))
+            ->orderBy('id')
+            ->firstOrFail();
     }
 
     public function outlet(): BelongsTo

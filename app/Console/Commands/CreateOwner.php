@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Domain\Users\UserRole;
 use App\Models\Outlet;
 use App\Models\User;
 use Illuminate\Console\Attributes\Description;
@@ -63,7 +62,6 @@ class CreateOwner extends Command
             'name' => $name,
             'email' => $email,
             'password' => $plainPassword, // cast 'hashed' meng-hash saat disimpan
-            'role' => UserRole::Owner,
             'is_active' => true,
         ]);
 

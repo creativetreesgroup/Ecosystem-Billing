@@ -2,7 +2,6 @@
 
 use App\Models\Outlet;
 use App\Models\User;
-use App\Domain\Users\UserRole;
 
 /**
  * make:filament-user tidak bisa membuat user di sistem ini (role NOT NULL tanpa
@@ -23,7 +22,8 @@ test('creates a default outlet and an owner on a fresh install', function () {
     $owner = User::sole();
 
     expect(Outlet::count())->toBe(1)
-        ->and($owner->role)->toBe(UserRole::Owner)
+        // Kuasanya kini datang dari peran Shield, bukan dari kolom.
+        ->and($owner->hasRole('super_admin'))->toBeTrue()
         ->and($owner->email)->toBe('owner@example.test')
         ->and($owner->outlet_id)->toBe(Outlet::sole()->id)
         ->and($owner->is_active)->toBeTrue()
