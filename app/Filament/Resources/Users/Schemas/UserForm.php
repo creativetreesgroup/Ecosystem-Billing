@@ -57,10 +57,6 @@ class UserForm
 
                         Tab::make('Akses')
                             ->icon(Heroicon::OutlinedKey)
-                            // Lencana peran terbaca sebelum tab dibuka — saat
-                            // menelusuri "siapa yang bisa melakukan apa", itu
-                            // satu-satunya hal yang dicari.
-                            ->badge(fn (?User $record): ?string => $record?->roles->pluck('name')->implode(', ') ?: null)
                     // ['md' => 2], bukan columns(2) — columns(2) di Filament
                     // berarti ['lg' => 2] dan tablet ikut menumpuk seperti HP.
                             ->columns(['md' => 2])
