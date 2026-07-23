@@ -5,6 +5,8 @@ namespace App\Filament\Resources\Discounts\Schemas;
 use App\Domain\Discounts\DiscountSource;
 use App\Domain\Discounts\DiscountTarget;
 use App\Domain\Discounts\DiscountType;
+use App\Domain\Discounts\VoucherCode;
+use Filament\Actions\Action;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -12,7 +14,9 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
 
 class DiscountForm
 {
@@ -36,7 +40,20 @@ class DiscountForm
                         // menyimpan null karena field disembunyikan & dikosongkan.
                         TextInput::make('code')
                             ->label('Kode voucher')
-                            ->placeholder('mis. HEMAT20')
+                            // Dibuatkan, bukan diketik: kode yang dikarang
+                            // manusia selalu berasal dari nama promonya, dan
+                            // kode yang bisa ditebak berarti kuotanya habis
+                            // oleh orang yang tak pernah diberi voucher.
+                            ->default(fn (): string => VoucherCode::generate())
+                            ->readOnly()
+                            ->prefixIcon(Heroicon::OutlinedTicket)
+                            ->suffixAction(
+                                Action::make('acakKode')
+                                    ->label('Acak ulang')
+                                    ->icon(Heroicon::OutlinedArrowPath)
+                                    ->action(fn (Set $set) => $set('code', VoucherCode::generate())),
+                            )
+                            ->helperText('Dibuat acak. Tekan ikon di kanan untuk mengacak ulang.')
                             ->maxLength(30)
                             ->unique(ignoreRecord: true)
                             ->required(fn (Get $get): bool => $get('source') === DiscountSource::Voucher->value)

@@ -1,0 +1,36 @@
+<?php
+
+use App\Domain\Discounts\VoucherCode;
+use App\Models\Discount;
+
+/**
+ * Kode voucher acak, bukan turunan nama promonya.
+ *
+ * Kode yang berasal dari nama bisa ditebak — siapa pun yang melihat spanduk
+ * promo bisa mencoba variasinya di kios sampai tembus, dan kuotanya habis oleh
+ * orang yang tak pernah diberi voucher.
+ */
+test('it generates a readable, unguessable code', function () {
+    $code = VoucherCode::generate();
+
+    expect($code)->toMatch('/^[34679ACDEFGHJKMNPQRTUVWXY]{4}-[34679ACDEFGHJKMNPQRTUVWXY]{4}$/');
+});
+
+/** Huruf & angka yang tertukar saat dibacakan lewat telepon tidak dipakai. */
+test('the alphabet leaves out the characters people confuse', function () {
+    $codes = collect(range(1, 200))->map(fn (): string => VoucherCode::generate())->implode('');
+
+    foreach (['0', 'O', '1', 'I', 'L', '5', 'S', '8', 'B', '2', 'Z'] as $ambiguous) {
+        expect($codes)->not->toContain($ambiguous);
+    }
+});
+
+test('it never hands out a code that already exists', function () {
+    $taken = VoucherCode::generate();
+    Discount::factory()->create(['code' => $taken, 'source' => 'voucher']);
+
+    $codes = collect(range(1, 50))->map(fn (): string => VoucherCode::generate());
+
+    expect($codes)->not->toContain($taken)
+        ->and($codes->unique())->toHaveCount(50);
+});
