@@ -7,13 +7,15 @@ enum SettingType: string
     case Minutes = 'minutes';
     case Text = 'text';
     case Rupiah = 'rupiah';
+    case Time = 'time';
+    case Toggle = 'toggle';
 
     public function suffix(): ?string
     {
         return match ($this) {
             self::Minutes => 'menit',
             self::Rupiah => 'rupiah',
-            self::Text => null,
+            self::Text, self::Time, self::Toggle => null,
         };
     }
 

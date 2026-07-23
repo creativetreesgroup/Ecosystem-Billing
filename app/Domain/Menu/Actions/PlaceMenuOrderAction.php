@@ -3,6 +3,7 @@
 namespace App\Domain\Menu\Actions;
 
 use App\Domain\Menu\MenuOrderStatus;
+use App\Domain\Menu\MenuServiceHours;
 use App\Domain\Wallet\Wallet;
 use App\Models\Customer;
 use App\Models\MenuItem;
@@ -32,6 +33,14 @@ class PlaceMenuOrderAction
      */
     public function handle(Customer $customer, Unit $unit, array $quantities): MenuOrder
     {
+        // Menyembunyikan menu di layar BUKAN penutupan: tab kios cuma UI, dan
+        // request Livewire-nya bisa dipanggil langsung. Kalau larangannya hanya
+        // di tampilan, dapur tetap menerima pesanan pukul tiga pagi dan saldo
+        // pelanggan tetap tertarik untuk makanan yang tak akan pernah dibuat.
+        if (! MenuServiceHours::isOpen()) {
+            throw new InvalidArgumentException((string) MenuServiceHours::notice());
+        }
+
         $wanted = [];
 
         foreach ($quantities as $itemId => $quantity) {

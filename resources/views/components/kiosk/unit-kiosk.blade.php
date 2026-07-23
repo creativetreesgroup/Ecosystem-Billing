@@ -27,6 +27,8 @@ use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
 use App\Domain\Wallet\TopUpFee;
 use App\Domain\Menu\Actions\PlaceMenuOrderAction;
 use App\Domain\Menu\MenuOrderStatus;
+use App\Domain\Menu\MenuServiceHours;
+use App\Domain\Menu\MenuServiceStatus;
 use App\Models\MenuCategory;
 use App\Models\MenuItem;
 use App\Models\MenuOrder;
@@ -474,6 +476,23 @@ new class extends Component
     }
 
     /**
+     * Buka / istirahat / tutup / dimatikan. Sumbernya sama persis dengan yang
+     * dipakai PlaceMenuOrderAction untuk menolak, jadi layar tidak akan pernah
+     * menawarkan sesuatu yang jalur uangnya akan tolak sedetik kemudian.
+     */
+    #[Computed]
+    public function kitchen(): MenuServiceStatus
+    {
+        return MenuServiceHours::status();
+    }
+
+    #[Computed]
+    public function kitchenNotice(): ?string
+    {
+        return MenuServiceHours::notice();
+    }
+
+    /**
      * Isi keranjang yang MASIH valid, dengan harga dari database — bukan dari
      * state di HP pelanggan. Item yang keburu dinonaktifkan hilang sendiri dari
      * daftar ini, jadi totalnya tidak pernah menagih barang yang sudah habis.
@@ -560,6 +579,13 @@ new class extends Component
         $this->error = null;
 
         if (! $this->customer) {
+            return;
+        }
+
+        // Dapur bisa tutup ATAU istirahat mulai setelah keranjang terisi.
+        if (! $this->kitchen->isOpen()) {
+            $this->error = $this->kitchenNotice;
+
             return;
         }
 
@@ -1353,6 +1379,20 @@ new class extends Component
         <div class="card">
             <p class="label">Pesan makanan &amp; minuman</p>
 
+            {{-- Dapur tutup/istirahat: beri tahu DAN sebutkan jamnya. Menu
+                 sengaja tidak dirender sama sekali — memperlihatkan pilihan
+                 yang tak bisa dipesan cuma memindahkan kekecewaan ke satu
+                 ketukan berikutnya. --}}
+            @if (! $this->kitchen->isOpen())
+                <div class="kitchen-shut kitchen-shut--{{ $this->kitchen->value }}" role="status">
+                    <span class="kitchen-shut-icon">
+                        @svg($this->kitchen === MenuServiceStatus::Break ? 'heroicon-o-clock' : 'heroicon-o-moon')
+                    </span>
+                    <p class="kitchen-shut-title">{{ $this->kitchen->getLabel() }}</p>
+                    <p class="kitchen-shut-note">{{ $this->kitchenNotice }}</p>
+                </div>
+            @else
+
             @forelse ($this->menu as $category)
                 <div class="menu-sec" wire:key="cat-{{ $category->id }}">
                     <div class="menu-sec-head">
@@ -1382,6 +1422,8 @@ new class extends Component
                 <p class="menu-empty">Belum ada menu di sini.<br>Minta kasir menambahkannya.</p>
             @endforelse
 
+            @endif
+
             @if ($error) <p class="alert">{{ $error }}</p> @endif
 
             @if ($this->openOrders->isNotEmpty())
@@ -1405,7 +1447,7 @@ new class extends Component
 
             {{-- Baki diletakkan TERAKHIR supaya sticky-nya melayang di atas
                  seluruh isi kartu saat digulir, bukan berhenti di tengah. --}}
-            @if ($this->cartTotal > 0)
+            @if ($this->cartTotal > 0 && $this->kitchen->isOpen())
                 @php($cartCount = array_sum(array_column($this->cartLines, 'quantity')))
                 <div class="tray">
                     <div class="tray-body">

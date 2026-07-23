@@ -500,6 +500,24 @@
 
         .menu-empty { text-align: center; color: var(--muted); font-size: .9rem; padding: 1.75rem 0; line-height: 1.6; }
 
+        /* ── Dapur tutup / istirahat ─────────────────────────────────────
+           Bukan pesan galat: pelanggan tidak melakukan kesalahan apa pun, jadi
+           nadanya tenang — bukan merah. Yang harus terbaca lebih dulu dari
+           jarak satu meter adalah KEADAANNYA, baru jam kembalinya. */
+        .kitchen-shut { text-align: center; padding: 2.25rem 1.25rem; border-radius: 14px;
+            background: color-mix(in srgb, var(--ink) 4%, transparent);
+            border: 1px dashed color-mix(in srgb, var(--ink) 18%, transparent); }
+        .kitchen-shut-icon { display: inline-flex; width: 3rem; height: 3rem; align-items: center; justify-content: center;
+            border-radius: 50%; margin-bottom: .85rem; color: var(--accent);
+            background: color-mix(in srgb, var(--accent) 12%, transparent); }
+        .kitchen-shut-icon svg { width: 1.65rem; height: 1.65rem; }
+        .kitchen-shut-title { font-size: 1.15rem; font-weight: 700; color: var(--ink); margin: 0 0 .35rem; }
+        .kitchen-shut-note { font-size: .92rem; color: var(--muted); line-height: 1.65; margin: 0; max-width: 30ch;
+            margin-inline: auto; }
+        /* Istirahat itu sementara — semburat hangat memisahkannya dari tutup. */
+        .kitchen-shut--break { background: color-mix(in srgb, var(--accent) 7%, transparent);
+            border-color: color-mix(in srgb, var(--accent) 32%, transparent); }
+
         /* ── Lantai aksesibilitas ────────────────────────────────────────
            Sebelumnya HANYA input yang punya cincin fokus — tombol sama sekali
            tak terlihat saat dinavigasi keyboard. */

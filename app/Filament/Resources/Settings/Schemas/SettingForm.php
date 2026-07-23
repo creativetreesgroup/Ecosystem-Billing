@@ -5,6 +5,8 @@ namespace App\Filament\Resources\Settings\Schemas;
 use App\Domain\Settings\SettingType;
 use App\Models\Setting;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\TimePicker;
+use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -32,8 +34,33 @@ class SettingForm
                         ->color('gray')
                         ->copyable(),
 
+                    // Saklar dan jam punya kontrolnya sendiri. Memaksa keduanya
+                    // lewat kotak teks berarti pemilik outlet mengetik "1" atau
+                    // "22:00" dengan tangan — dan satu salah ketik di jam tutup
+                    // mematikan pemesanan tanpa ada yang tahu sebabnya.
+                    Toggle::make('value.value')
+                        ->label('Aktif')
+                        ->helperText('Nonaktifkan untuk menutup pemesanan seketika, berapa pun jamnya.')
+                        ->visible(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Toggle)
+                        ->dehydrateStateUsing(fn ($state): int => $state ? 1 : 0),
+
+                    TimePicker::make('value.value')
+                        ->label('Jam')
+                        ->seconds(false)
+                        ->format('H:i')
+                        ->displayFormat('H:i')
+                        // Boleh kosong: jam istirahat kosong = tidak ada
+                        // istirahat, dan jam buka = tutup berarti 24 jam.
+                        ->helperText(fn (?Setting $record): ?string => $record?->key?->description())
+                        ->visible(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Time),
+
                     TextInput::make('value.value')
                         ->label('Nilai')
+                        ->visible(fn (?Setting $record): bool => ! in_array(
+                            $record?->key?->type(),
+                            [SettingType::Toggle, SettingType::Time],
+                            true,
+                        ))
                         ->required()
                         ->suffix(fn (?Setting $record): ?string => $record?->key?->type()->suffix())
                         // Menit & rupiah = numerik. minValue menit 1 (0 menit
