@@ -22,22 +22,6 @@ use Livewire\Attributes\On;
  */
 class OutletOverviewWidget extends StatsOverviewWidget
 {
-    /**
-     * Dasbor boleh dibuka siapa pun yang boleh masuk panel — tapi ISI-nya tidak.
-     *
-     * Widget ini bukan ringkasan: ia grid kasir yang bisa MEMULAI, MEMBERHENTIKAN
-     * dan MENAGIH sesi. Tanpa gerbang ini, staf Keuangan yang benar-benar ditolak
-     * dari /admin/rental-sessions tetap mendarat di dasbor dan bisa menutup sesi
-     * lalu membukukan pembayaran tunai untuk shift yang tak pernah ia jalani.
-     *
-     * Izinnya sudah dibuat Shield dan sudah diberikan ke departemen Operasional;
-     * yang hilang selama ini hanya pembacaannya di sini.
-     */
-    public static function canView(): bool
-    {
-        return auth()->user()?->checkPermissionTo('View:OutletOverviewWidget') ?? false;
-    }
-
     protected int|string|array $columnSpan = 'full';
 
     // Sama alasannya dengan UnitGridWidget: ini konten utama dasbor, bukan

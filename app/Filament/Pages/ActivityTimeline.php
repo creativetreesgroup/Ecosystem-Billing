@@ -11,6 +11,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Grouping\Group;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Builder;
@@ -69,8 +70,14 @@ class ActivityTimeline extends Page implements HasTable
             ->query(fn (): Builder => Activity::query()->with(['causer', 'subject']))
             ->columns([
                 TimelineEntry::make()
-                    ->title(fn (Activity $record): string => $this->actorName($record))
-                    ->content(fn (Activity $record): string => $this->sentence($record)),
+                    ->title(fn (Activity $record): string => $this->sentence($record))
+                    // Pelaku dipindah ke author, judulnya diisi PERBUATANNYA.
+                    // Lini masa dibaca menurun untuk mencari kejadian, bukan
+                    // orang — daftar yang judulnya nama membuat lima baris
+                    // berturut-turut terlihat identik.
+                    ->author(fn (Activity $record): string => $this->actorName($record))
+                    ->time(fn (Activity $record): string => $record->created_at->format('H:i'))
+                    ->content(fn (Activity $record): string => $this->changes($record)),
             ])
             ->filters([
                 SelectFilter::make('pelaku')
@@ -91,6 +98,16 @@ class ActivityTimeline extends Page implements HasTable
                         default => $query,
                     }),
             ])
+            // Dikelompokkan per hari: pertanyaan yang dibawa ke layar ini
+            // selalu "hari itu terjadi apa saja", dan tanpa pengelompokan
+            // pembacanya harus membandingkan tanggal baris demi baris.
+            ->groups([
+                Group::make('created_at')
+                    ->label('Tanggal')
+                    ->date()
+                    ->collapsible(),
+            ])
+            ->defaultGroup('created_at')
             ->defaultSort('created_at', 'desc')
             ->paginated([25, 50, 100])
             ->asTimeline();
@@ -104,6 +121,51 @@ class ActivityTimeline extends Page implements HasTable
             // Bukan "tidak diketahui": tak adanya pelaku BERARTI sesuatu, yaitu
             // sistem yang bertindak sendiri (job terjadwal, sapuan, expiry).
             default => 'Sistem',
+        };
+    }
+
+    /**
+     * Isi perubahannya, bukan sekadar bahwa ada perubahan.
+     *
+     * activity_log menyimpan properti lama & baru, dan justru itulah yang
+     * dicari orang saat menelusuri sengketa saldo — "berubah dari berapa ke
+     * berapa". Tanpa ini lini masa cuma memberi tahu bahwa sesuatu terjadi,
+     * lalu pembacanya tetap harus membuka tabel lain untuk tahu apa.
+     */
+    private function changes(Activity $record): string
+    {
+        $props = collect($record->properties ?? []);
+        $old = collect($props->get('old') ?? []);
+        $new = collect($props->get('attributes') ?? []);
+
+        $lines = $new
+            ->filter(fn ($value, string $key): bool => $old->get($key) !== $value)
+            ->map(fn ($value, string $key): string => sprintf(
+                '%s: %s → %s',
+                $key,
+                $this->readable($old->get($key)),
+                $this->readable($value),
+            ));
+
+        if ($lines->isNotEmpty()) {
+            return $lines->take(4)->implode(' · ');
+        }
+
+        // Perubahan saldo dicatat sebagai properti datar, bukan old/attributes.
+        return $props
+            ->except(['old', 'attributes'])
+            ->map(fn ($value, string $key): string => $key.': '.$this->readable($value))
+            ->take(4)
+            ->implode(' · ');
+    }
+
+    private function readable(mixed $value): string
+    {
+        return match (true) {
+            $value === null => '—',
+            is_bool($value) => $value ? 'ya' : 'tidak',
+            is_array($value) => json_encode($value, JSON_UNESCAPED_UNICODE) ?: '—',
+            default => (string) $value,
         };
     }
 

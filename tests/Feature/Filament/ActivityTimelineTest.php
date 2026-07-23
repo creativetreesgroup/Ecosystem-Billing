@@ -47,3 +47,20 @@ test('the external filter keeps customer activity and drops staff-only rows', fu
         ->assertSuccessful()
         ->assertSee('Budi Eksternal');
 });
+
+/**
+ * Yang dicari orang di lini masa bukan "ada perubahan", melainkan DARI BERAPA
+ * KE BERAPA. Tanpa isi perubahannya, pembacanya tetap harus membuka tabel lain
+ * — dan saat itu lini masa hanya menambah satu langkah, bukan menghematnya.
+ */
+test('the timeline shows what actually changed, not just that something did', function () {
+    $owner = User::factory()->owner()->create();
+    $customer = Customer::factory()->create(['name' => 'Sari Ledger']);
+
+    app(Wallet::class)->topUp($customer, 75_000);
+
+    Livewire::actingAs($owner)
+        ->test(ActivityTimeline::class)
+        ->assertSuccessful()
+        ->assertSee('75000');   // nominalnya terbaca di kartu, bukan cuma "saldo berubah"
+});

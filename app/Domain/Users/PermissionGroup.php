@@ -117,13 +117,9 @@ enum PermissionGroup: string implements HasColor, HasLabel
             self::Keuangan => [
                 'ViewAny:Payment', 'View:Payment', 'Verify:Payment',
             ],
-            // Kasir MENGOPERASIKAN sesi (mulai, perpanjang, hentikan) — itu
-            // seluruh pekerjaannya, dan ia melakukannya dari grid unit di
-            // dasbor. Yang tetap ditahan di tingkat admin adalah MEMBUKA TABEL
-            // sesi (ViewAny) — arsip untuk audit, bukan alat kerja lantai —
-            // dan Void, yang membatalkan tagihan sekaligus mengembalikan saldo.
+            // Pesanan makanan boleh diproses; sesi rental tidak dibuka di sini
+            // karena kasir bekerja dari grid unit, bukan dari tabel sesi.
             self::Operasional => [
-                'Create:RentalSession', 'Update:RentalSession', 'View:RentalSession',
                 'ViewAny:MenuOrder', 'View:MenuOrder', 'Update:MenuOrder',
                 // Update:Customer adalah gerbang top-up tunai di panel —
                 // menerima uang di laci lalu menambah saldo adalah pekerjaan
