@@ -50,7 +50,6 @@ class CustomersTable
                     ->color(fn (int $state): string => $state < 0 ? 'danger' : 'success')
                     ->weight('bold'),
                 TextColumn::make('wallet_transactions_count')
-                    ->icon(Heroicon::OutlinedListBullet)
                     ->label('Transaksi')
                     ->visibleFrom('lg')
                     ->badge()

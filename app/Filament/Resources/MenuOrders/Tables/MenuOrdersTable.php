@@ -33,7 +33,6 @@ class MenuOrdersTable
                     ->since()
                     ->sortable(),
                 TextColumn::make('unit.code')
-                    ->icon(Heroicon::OutlinedTv)
                     ->label('Unit')
                     ->badge()
                     ->color('gray')

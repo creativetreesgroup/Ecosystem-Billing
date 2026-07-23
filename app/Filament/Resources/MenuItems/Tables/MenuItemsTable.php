@@ -20,7 +20,6 @@ class MenuItemsTable
             ->defaultSort('sort_order')
             ->columns([
                 TextColumn::make('category.name')
-                    ->icon(Heroicon::OutlinedFolder)
                     ->label('Kategori')
                     ->badge()
                     ->searchable(),

@@ -16,7 +16,6 @@ class IntegrationsTable
         return $table
             ->columns([
                 TextColumn::make('key')
-                    ->icon(Heroicon::OutlinedKey)
                     ->label('Integrasi')
                     ->badge(),
                 TextColumn::make('base_url')

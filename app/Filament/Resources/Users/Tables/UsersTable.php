@@ -54,7 +54,6 @@ class UsersTable
                 TextColumn::make('roles.name')
                     ->label('Peran')
                     ->badge()
-                    ->icon(Heroicon::OutlinedShieldCheck)
                     ->formatStateUsing(fn ($state): string => Str::of((string) $state)->replace(['_', '-'], ' ')->title()->toString())
                     ->color(fn ($state): string => self::groupColours()[$state] ?? 'danger')
                     ->separator(','),
@@ -65,7 +64,6 @@ class UsersTable
                 TextColumn::make('opened_sessions_count')
                     ->visibleFrom('lg')
                     ->label('Sesi dibuka')
-                    ->icon(Heroicon::OutlinedPlayCircle)
                     ->counts('openedSessions')
                     ->badge()
                     ->color('gray'),

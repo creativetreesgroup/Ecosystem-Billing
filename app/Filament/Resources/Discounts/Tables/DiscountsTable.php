@@ -43,7 +43,6 @@ class DiscountsTable
                         : Rupiah::format($record->value)),
                 // Pemakaian: dihitung dari baris redemption — sumber kebenaran kuota.
                 TextColumn::make('redemptions_count')
-                    ->icon(Heroicon::OutlinedTicket)
                     ->label('Terpakai')
                     ->counts('redemptions')
                     ->badge()
