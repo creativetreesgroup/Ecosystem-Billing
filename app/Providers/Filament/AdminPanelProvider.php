@@ -19,6 +19,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Leandrocfe\FilamentApexCharts\FilamentApexChartsPlugin;
 
@@ -74,10 +75,42 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
+            // Versi yang SEDANG BERJALAN, di sebelah nama sistem. Saat ada
+            // laporan "sudah diperbaiki belum?", pertanyaan pertamanya selalu
+            // versi berapa yang dipakai mesin itu — dan menebaknya dari daftar
+            // commit bukan pekerjaan kasir.
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_START,
+                fn (): string => view('filament.version-badge', [
+                    'version' => self::currentVersion(),
+                ])->render(),
+            )
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): string => $this->countdownScript(),
             );
+    }
+
+    /**
+     * Versi rilis teratas, dibaca dari CHANGELOG.md.
+     *
+     * Sumbernya sengaja berkas yang sama dengan halaman Changelog: satu tempat
+     * saja yang menyatakan "versi berapa ini", jadi lencana dan halaman tidak
+     * bisa berbeda. Di-cache karena ia dirender di SETIAP halaman.
+     */
+    public static function currentVersion(): ?string
+    {
+        return Cache::remember('panel.version', now()->addHour(), function (): ?string {
+            $file = base_path('CHANGELOG.md');
+
+            if (! is_readable($file)) {
+                return null;
+            }
+
+            preg_match('/^## \\[(\\d+\\.\\d+\\.\\d+)\\]/m', (string) file_get_contents($file), $match);
+
+            return $match[1] ?? null;
+        });
     }
 
     /**
