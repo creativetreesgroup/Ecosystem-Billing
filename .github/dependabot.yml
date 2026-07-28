@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # Composer: pembaruan keamanan penting karena sistem ini menangani uang.
+  # Dikelompokkan agar tidak membanjiri antrean review dengan PR satu-satu.
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      laravel:
+        patterns: ["laravel/*", "illuminate/*"]
+      filament:
+        patterns: ["filament/*"]
+      dev-dependencies:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  # Base image PHP dan MySQL: CVE pada base image tidak terlihat oleh composer audit.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly

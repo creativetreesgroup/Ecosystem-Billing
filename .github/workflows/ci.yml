@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mysql:
+        # Versi disamakan dengan docker-compose.yml agar perilaku transaksi yang
+        # diuji di CI sama dengan yang berjalan di outlet.
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci_root_password
+          MYSQL_DATABASE: creative_trees_billing_test
+          MYSQL_USER: ctb_app
+          MYSQL_PASSWORD: ci_app_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -pci_root_password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # PHP 8.4, bukan 8.3. composer.json menulis lantai "^8.3", tetapi
+      # composer.lock menuntut >= 8.4.1 (Symfony 8.1) — memakai 8.3 membuat
+      # `composer install` gagal. Ekstensi disamakan dengan Dockerfile;
+      # `sockets` wajib karena WakeOnLan memanggil socket_create().
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql, mbstring, bcmath, gd, intl, zip, pcntl, exif, sockets
+          coverage: none
+          tools: composer:v2
+
+      # Tanpa --strict: satu dependency (filament-changelog) di-pin ke commit-ref,
+      # yang dianggap warning oleh --strict dan akan menggagalkan CI. Peringatan
+      # itu sah dan sengaja dibiarkan terlihat, bukan disembunyikan — memaksakan
+      # --strict di sini hanya akan membuat orang mematikan langkah ini.
+      - name: Validate composer.json
+        run: composer validate
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      # .env dibutuhkan untuk APP_KEY. Nilai lain di dalamnya tidak menang atas
+      # phpunit.xml: Dotenv bersifat immutable, jadi variabel yang sudah
+      # ditetapkan PHPUnit tidak ditimpa.
+      - name: Prepare environment
+        run: |
+          cp .env.docker .env
+          php artisan key:generate
+
+      - name: Check code style
+        run: vendor/bin/pint --test
+
+      # DB_DATABASE dan APP_ENV sengaja TIDAK diisi di sini. Keduanya datang dari
+      # phpunit.xml; mengisinya lewat env job justru menimpanya — mekanisme yang
+      # sama yang dulu membuat test menyentuh database produksi.
+      - name: Run test suite
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_USERNAME: ctb_app
+          DB_PASSWORD: ci_app_password
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+        run: php artisan test --compact
+
+      # Migrasi dari database benar-benar kosong. Suite memakai RefreshDatabase,
+      # yang tidak membuktikan instalasi baru bisa bermigrasi dari nol.
+      - name: Verify migrations run on an empty database
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: creative_trees_billing_test
+          DB_USERNAME: ctb_app
+          DB_PASSWORD: ci_app_password
+        run: |
+          php artisan migrate:fresh --force
+          php artisan db:seed --class='Database\Seeders\RolesAndPermissionsSeeder' --force
+
+  security:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Audit dependencies for known vulnerabilities
+        run: composer audit --no-interaction
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Konfigurasi compose divalidasi lebih dulu: salah ketik di sana tidak
+      # tertangkap test mana pun, tetapi menjatuhkan seluruh stack outlet saat
+      # deploy.
+      - name: Validate compose configuration
+        run: |
+          cp .env.docker .env
+          docker compose config -q
+          docker compose --profile monitoring --profile host-metrics --profile test config -q
+
+      - name: Build application image
+        run: docker compose build app

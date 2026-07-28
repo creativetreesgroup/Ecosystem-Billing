@@ -1,0 +1,46 @@
+Copyright (c) 2026 Creative Trees Group. All Rights Reserved.
+
+PROPRIETARY SOFTWARE LICENSE
+
+Perangkat lunak ini beserta seluruh source code, dokumentasi, konfigurasi,
+skema basis data, dan berkas pendukungnya ("Perangkat Lunak") adalah milik
+Creative Trees Group dan dilindungi hukum hak cipta serta perjanjian
+internasional.
+
+Source code ini dapat dilihat publik untuk keperluan transparansi, audit, dan
+evaluasi teknis. Dapat dilihat BUKAN berarti bebas dipakai.
+
+DILARANG tanpa izin tertulis dari Creative Trees Group:
+
+1. Menggunakan Perangkat Lunak ini, sebagian maupun seluruhnya, untuk keperluan
+   komersial maupun non-komersial.
+2. Menyalin, menggandakan, atau mendistribusikan Perangkat Lunak.
+3. Memodifikasi, menerjemahkan, atau membuat karya turunan.
+4. Menjalankan Perangkat Lunak sebagai layanan bagi pihak ketiga.
+5. Menjual, menyewakan, melisensikan ulang, atau mengalihkan hak apa pun atas
+   Perangkat Lunak.
+6. Menghapus atau mengaburkan pemberitahuan hak cipta ini.
+
+DIIZINKAN tanpa izin khusus:
+
+1. Membaca source code.
+2. Mengutip potongan kode dalam diskusi teknis, ulasan, riset akademik, atau
+   materi edukasi, dengan menyebut sumbernya.
+3. Melaporkan kerentanan keamanan sesuai SECURITY.md.
+
+TANPA JAMINAN
+
+PERANGKAT LUNAK INI DISEDIAKAN "SEBAGAIMANA ADANYA", TANPA JAMINAN DALAM BENTUK
+APA PUN, TERSURAT MAUPUN TERSIRAT, TERMASUK NAMUN TIDAK TERBATAS PADA JAMINAN
+KELAYAKAN JUAL, KESESUAIAN UNTUK TUJUAN TERTENTU, DAN NON-PELANGGARAN. DALAM
+KEADAAN APA PUN PEMEGANG HAK CIPTA TIDAK BERTANGGUNG JAWAB ATAS KLAIM,
+KERUSAKAN, ATAU KEWAJIBAN LAIN, BAIK DALAM TINDAKAN KONTRAK, PERBUATAN MELAWAN
+HUKUM, MAUPUN LAINNYA, YANG TIMBUL DARI ATAU BERKAITAN DENGAN PERANGKAT LUNAK
+ATAU PENGGUNAANNYA.
+
+Sistem ini menangani transaksi keuangan nyata. Menjalankannya di lingkungan
+produksi tanpa perjanjian tertulis dengan Creative Trees Group dilakukan
+sepenuhnya atas risiko pihak yang menjalankan.
+
+Permintaan izin: hubungi Creative Trees Group melalui kanal resmi yang
+tercantum di halaman organisasi GitHub.

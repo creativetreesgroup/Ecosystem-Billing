@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Laporan kerentanan keamanan
+    url: https://github.com/creativetreesgroup/Ecosystem-Billing/security/advisories/new
+    about: Kerentanan keamanan dilaporkan lewat kanal privat, bukan public issue.

@@ -1,0 +1,14 @@
+# Pemilik default seluruh repository.
+* @creativetreesgroup/engineering
+
+# Area yang menyentuh uang: wajib direview pemilik domain billing.
+/app/Domain/Billing/      @creativetreesgroup/engineering
+/app/Domain/Wallet/       @creativetreesgroup/engineering
+/database/migrations/     @creativetreesgroup/engineering
+/tests/Concurrency/       @creativetreesgroup/engineering
+
+# Infrastruktur & rilis.
+/Dockerfile               @creativetreesgroup/engineering
+/docker-compose.yml       @creativetreesgroup/engineering
+/.github/workflows/       @creativetreesgroup/engineering
+/install.sh               @creativetreesgroup/engineering

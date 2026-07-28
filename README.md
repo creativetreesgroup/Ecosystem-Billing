@@ -1,733 +1,243 @@
-# Creative Trees Billing Game
+<div align="center">
 
-> Sistem billing rental PlayStation berbasis **Laravel 13 + Filament v5 + Reverb**.
-> Menangani **uang sungguhan**: satu sumber kebenaran untuk saldo, sesi, tarif, dan
-> kontrol TV per unit. Realtime ≤ 2 detik, kontrol penuh dari **lokal maupun online**.
+# Ecosystem Billing
 
-Dokumen ini adalah **satu-satunya dokumentasi** proyek: arsitektur, spesifikasi,
-instalasi (Docker & bare-metal), operasional harian, monitoring Grafana, panduan
-pengguna 3 tingkat, dan keputusan teknis — semuanya di sini.
+**Sistem billing rental PlayStation untuk outlet — sesi, tarif, saldo, pembayaran, dan kontrol perangkat dalam satu platform.**
 
----
+[![CI](https://github.com/creativetreesgroup/Ecosystem-Billing/actions/workflows/ci.yml/badge.svg)](https://github.com/creativetreesgroup/Ecosystem-Billing/actions/workflows/ci.yml)
+[![PHP](https://img.shields.io/badge/PHP-8.4%2B-777BB4)](composer.json)
+[![Laravel](https://img.shields.io/badge/Laravel-13-FF2D20)](composer.json)
+[![License](https://img.shields.io/badge/license-Proprietary-lightgrey)](LICENSE)
 
-## Daftar Isi
-
-1. [Ringkasan & prinsip](#1-ringkasan--prinsip)
-2. [Arsitektur & topologi](#2-arsitektur--topologi)
-   - [2.1 Jaringan lokal 1 server + 10 TV](#21-jaringan-lokal-1-server--10-tv)
-   - [2.2 Topologi komponen](#22-topologi-komponen)
-   - [2.3 Kontrol online: Local ↔ Public (VPS + domain)](#23-kontrol-online-local--public-vps--domain)
-   - [2.4 Alur satu sesi 10 TV](#24-alur-satu-sesi-10-tv)
-3. [Spesifikasi (hardware & software)](#3-spesifikasi-hardware--software)
-4. [Instalasi](#4-instalasi)
-   - [4.1 Docker di PC lokal (REKOMENDASI)](#41-docker-di-pc-lokal-rekomendasi)
-   - [4.2 Docker di VPS dari GitHub](#42-docker-di-vps-dari-github)
-   - [4.3 Menyambungkan Local ↔ Public (Tailscale)](#43-menyambungkan-local--public-tailscale)
-   - [4.4 Alternatif: bare-metal (nginx + supervisor)](#44-alternatif-bare-metal-nginx--supervisor)
-5. [Menyalakan, mematikan, menyalakan ulang](#5-menyalakan-mematikan-menyalakan-ulang)
-6. [Monitoring Grafana (offline)](#6-monitoring-grafana-offline)
-7. [Panduan pengguna (3 tingkat)](#7-panduan-pengguna-3-tingkat)
-8. [Operasional & runbook](#8-operasional--runbook)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Keputusan teknis penting](#10-keputusan-teknis-penting)
-11. [Referensi teknis (ERD, sequence, test, stack)](#11-referensi-teknis)
+</div>
 
 ---
 
-## 1. Ringkasan & prinsip
+## Status proyek
 
-Pelanggan main PlayStation, dibayar dari **saldo** (top-up QRIS/transfer/tunai).
-Kasir & owner memakai **panel Filament** di `/admin`; pelanggan memakai **halaman
-kios** per unit (`/kios/{kode}`) — satu-satunya halaman tanpa login. TV dinyalakan
-& dimatikan otomatis lewat jaringan (Home Assistant / Wake-on-LAN / Google Cast),
-**tanpa hardware HDMI tambahan**.
+**Aktif dikembangkan.** Berjalan penuh di Docker dengan 573 test otomatis lulus.
+Belum ada rilis bertag; `main` adalah satu-satunya versi yang didukung.
 
-### Prinsip arsitektur
-
-1. **Laravel satu-satunya source of truth.** Home Assistant & Tasmota hanya *tangan*. State billing tak pernah bergantung pada state device.
-2. **Waktu otoritas server.** Durasi & biaya dihitung dari `started_at`/`ends_at`/`ended_at`; timer browser hanya tampilan.
-3. **Uang = integer rupiah.** Tidak ada float di kolom, kalkulasi, maupun response. Saldo dipotong di dalam kunci baris (row lock) — tak ada main tanpa bayar.
-4. **Realtime terukur.** Perubahan tampil di dashboard ≤ 2 detik via Reverb; fallback polling 15 detik bila WebSocket putus.
-5. **Fail loud, fail secure.** Perintah device yang gagal memunculkan alert yang terlihat kasir, bukan kegagalan diam-diam.
-6. **LAN-only untuk panel.** Panel & database **tidak pernah** dipapar internet langsung (tanpa port-forward). Akses online hanya lewat VPN mesh / reverse-proxy tertunnel — lihat §2.3.
+Kesiapan per area diaudit dan didokumentasikan secara terbuka di
+[`docs/audits/REPOSITORY_AUDIT.md`](docs/audits/REPOSITORY_AUDIT.md) — termasuk
+bagian yang **belum** terverifikasi. Klaim di README ini hanya mencakup yang
+dibuktikan oleh source code, test, atau konfigurasi.
 
 ---
 
-## 2. Arsitektur & topologi
+## Kemampuan utama
 
-### 2.1 Jaringan lokal 1 server + 10 TV
+| Kemampuan | Status | Bukti |
+|-----------|--------|-------|
+| Billing sesi rental — tarif per jam, paket, open play, perpanjangan | Verified | `app/Domain/Sessions`, `app/Domain/Billing`, 11 kasus uji pembulatan |
+| Saldo pelanggan berbasis ledger | Verified | `WalletTransaction` menyimpan `balance_after`; `wallet:audit-balances` |
+| Pembayaran QRIS dengan rekonsiliasi idempoten | Verified | `ApplySettledPaymentAction`, `ReconcileSettledPaymentsTest` |
+| Pemesanan menu dengan jam buka & jeda istirahat | Verified | `app/Domain/Menu`, `OrderingIsRefusedWhenClosedTest` |
+| Diskon & voucher dengan pencatatan penukaran | Verified | `app/Domain/Discounts`, `DiscountRedemption` |
+| Kontrol TV & unit — Wake-on-LAN, MQTT/Tasmota, diagnostik | Verified | `tv:doctor`, `WakeOnLan`, `TasmotaTopic` |
+| Panel owner & kasir (Filament) dengan peran berbutir halus | Verified | 11 peran, 217 izin dari Shield |
+| Monitoring — Grafana, Prometheus, exporter | Verified (manual) | Profil `monitoring`, dashboard ter-provision |
+| Realtime (Reverb) | Sebagian | Service berjalan; jalur siaran ke browser belum diuji otomatis |
+| Home Assistant, WAHA (WhatsApp OTP), Telegram | Sebagian | Konfigurasi ada; integrasi belum terverifikasi otomatis |
+| Health/readiness endpoint | Belum ada | Lihat [ROADMAP.md](ROADMAP.md) |
 
-Semua di **satu jaringan / subnet yang sama**. Router membagi IP (DHCP), switch
-menyambungkan semua perangkat dengan **kabel LAN**, PC server menjalankan seluruh
-aplikasi (di dalam Docker).
+### Dua jaminan yang ditegakkan di tingkat kode
 
-```mermaid
-flowchart TD
-    Internet((Internet / ISP)) --> Router["Router<br/>192.168.1.1<br/>(DHCP + reservasi IP)"]
-    Router --> Switch["Switch Gigabit 16-port"]
-    Switch --> Server["PC SERVER<br/>192.168.1.10<br/>Docker: app · db · redis · reverb · worker · scheduler · grafana"]
-    Switch --> TV1["TV 1 — 192.168.1.101"]
-    Switch --> TV2["TV 2 — 192.168.1.102"]
-    Switch --> TVd["… TV 3–9 …"]
-    Switch --> TV10["TV 10 — 192.168.1.110"]
+**Uang tidak pernah berupa float.** Seluruh kolom nilai uang bertipe `integer`.
+Pembulatan biner tidak bisa dipertanggungjawabkan kepada pelanggan.
 
-    Server -. "kontrol nyala/mati<br/>(Wake-on-LAN + Cast + HA)" .-> TV1
-    Server -. .-> TV2
-    Server -. .-> TVd
-    Server -. .-> TV10
+**Concurrency diuji dengan proses sungguhan.** `tests/Concurrency/` menjalankan
+proses anak yang benar-benar berlomba di database yang sama — bukan mock — untuk
+membuktikan satu unit tidak bisa punya dua sesi aktif.
 
-    Kasir["Laptop/HP Kasir<br/>(browser → 192.168.1.10)"] --- Switch
+---
+
+## Arsitektur
+
+```
+                          ┌──────────────────────────┐
+   Browser kasir ────────▶│  web (nginx)  :80        │
+   Kiosk pelanggan        └────────┬─────────────────┘
+   TV / display                    │ FastCGI          │ WebSocket /app
+                                   ▼                  ▼
+                         ┌───────────────┐   ┌────────────────┐
+                         │ app (PHP-FPM) │   │ reverb  :8080  │
+                         └───────┬───────┘   └────────────────┘
+                                 │
+          ┌──────────────────────┼──────────────────────┐
+          ▼                      ▼                      ▼
+   ┌─────────────┐      ┌────────────────┐     ┌────────────────┐
+   │ db (MySQL)  │      │ redis          │     │ worker         │
+   │  8.4        │      │  cache + queue │     │ scheduler      │
+   └─────────────┘      └────────────────┘     └────────────────┘
+                                 │
+                                 ▼ LAN outlet
+                    PS5 · TV · smart plug (Tasmota/MQTT)
 ```
 
-**Aturan emas jaringan lokal:**
+Satu image Docker menjalankan **semua** peran aplikasi — `app`, `reverb`,
+`worker`, `scheduler`. Perannya ditentukan oleh `command` di
+`docker-compose.yml`, bukan oleh image yang berbeda.
 
-| Hal | Nilai | Kenapa |
-|-----|-------|--------|
-| Subnet | satu, mis. `192.168.1.0/24` | TV, server, kasir harus saling terlihat (mDNS/Cast/WoL tak lewat router) |
-| IP server | **statis / reservasi DHCP** (`192.168.1.10`) | `VITE_REVERB_HOST` & `APP_URL` menunjuk ke IP ini; kalau berubah, realtime & QR mati |
-| IP tiap TV | **reservasi DHCP** | Wake-on-LAN & entity Home Assistant terikat MAC/IP; IP acak = TV salah dinyalakan |
-| Kabel TV | **LAN (bukan WiFi)** untuk WoL andal | WoL lewat WiFi sering gagal saat TV standby |
-| TV | Android TV / Google TV (mendukung Cast) | QR & layar idle dikirim via `media_player.play_media` |
-
-> **Tugas manusia (bukan bagian kode):** reservasi DHCP di router, aktifkan
-> Wake-on-LAN + "Networked Standby" di setiap TV, dan pasangkan TV ke Home
-> Assistant. Lihat §8.
-
-### 2.2 Topologi komponen
-
-```mermaid
-flowchart LR
-    Kasir["Browser Kasir/Owner<br/>(Filament /admin, LAN only)"]
-    Pelanggan["HP Pelanggan<br/>(halaman kios /kios/kode)"]
-
-    subgraph Server["PC Server — Docker"]
-        Web["nginx (web)"]
-        Laravel["Laravel App<br/>(php-fpm)"]
-        Reverb["Reverb<br/>(WebSocket)"]
-        Worker["Queue Worker<br/>(redis)"]
-        Scheduler["Scheduler<br/>(sweep, poll, ceiling)"]
-        MySQL[("MySQL 8.4")]
-        Redis[("Redis<br/>cache · queue")]
-    end
-
-    HA["Home Assistant<br/>(host network, Linux)"]
-    Mosquitto["Mosquitto (MQTT)"]
-    TV["Smart TV (Android/Google TV)"]
-    Plug["Smart Plug (Tasmota)"]
-    WAHA["WAHA<br/>(WhatsApp OTP, LAN)"]
-    TG["Telegram Bot<br/>(notifikasi ops)"]
-
-    Kasir <-->|HTTP| Web
-    Pelanggan <-->|HTTP| Web
-    Web --> Laravel
-    Kasir <-->|WebSocket /app| Web
-    Web <-->|proxy| Reverb
-    Laravel --> MySQL
-    Laravel --> Redis
-    Worker --> Redis
-    Scheduler --> Laravel
-    Laravel -->|broadcast| Reverb
-    Laravel -->|REST, Bearer| HA
-    HA -->|Cast / CEC / WoL| TV
-    Laravel -.->|MQTT| Mosquitto
-    Mosquitto <-->|Tasmota| Plug
-    Laravel -->|OTP| WAHA
-    Laravel -->|alert saldo/device| TG
-```
-
-Satu **image Docker** menjalankan semua peran aplikasi (web, reverb, worker,
-scheduler); perannya ditentukan `command` di `docker-compose.yml`, bukan image
-berbeda. Home Assistant & Mosquitto berjalan terpisah (`docker-compose.devices.yml`,
-`network_mode: host`) karena butuh mDNS/WoL yang tidak melewati jaringan bridge
-Docker — aplikasi menghubunginya lewat IP LAN server (`HA_BASE_URL`, `MQTT_HOST`).
-
-### 2.3 Kontrol online: Local ↔ Public (VPS + domain)
-
-Owner ingin memantau & mengontrol dari **mana saja lewat domain**, tapi mesin
-outlet **tidak boleh** dipapar ke internet (§14 / prinsip #6). Solusinya: **VPS
-memegang domain + TLS**, dan tersambung ke outlet lewat **VPN mesh WireGuard
-(Tailscale)** — koneksi keluar dari LAN, **tanpa port-forward**, tersambung
-non-stop.
-
-```mermaid
-flowchart LR
-    Owner["Owner / HP<br/>di mana saja"]
-
-    subgraph VPS["VPS — domain publik"]
-        Caddy["nginx/Caddy + TLS<br/>panel.tokoanda.com"]
-        TSv["Tailscale"]
-    end
-
-    subgraph Outlet["Outlet — LAN (tanpa port-forward)"]
-        TSo["Tailscale"]
-        AppL["Docker app :80<br/>192.168.1.10"]
-        DBL[("MySQL")]
-        TVL["TV × 10"]
-        KasirL["Kasir"]
-    end
-
-    Owner -->|HTTPS| Caddy
-    Caddy -->|reverse proxy| TSv
-    TSv <==>|"WireGuard mesh<br/>(keluar dari LAN, non-stop)"| TSo
-    TSo --> AppL
-    AppL --> DBL
-    AppL -->|HA / WoL / Cast| TVL
-    KasirL -->|HTTP LAN langsung| AppL
-```
-
-**Pembagian peran:**
-
-- **Kasir di outlet** → akses langsung `http://192.168.1.10` (cepat, tak lewat internet). Kalau internet mati, kasir tetap jalan penuh.
-- **Owner online** → `https://panel.tokoanda.com` → VPS → tunnel Tailscale → app outlet. Yang keluar dari LAN hanya koneksi WireGuard milik Tailscale; tidak ada satu port pun yang dibuka di router outlet.
-- **Data tetap di outlet.** VPS hanya reverse-proxy; database tak pernah pindah ke cloud. Kalau VPS mati, operasional lokal tak terganggu.
-
-> Kenapa bukan taruh aplikasi di VPS saja? Karena kontrol TV (mDNS/SSDP,
-> Wake-on-LAN, pemindai jaringan) hanya bekerja di **jaringan yang sama dengan
-> TV**. VPS di pusat data tak punya jalan ke `192.168.1.x`. Jadi mesin di outlet
-> adalah **syarat**, bukan pilihan.
-
-### 2.4 Alur satu sesi 10 TV
-
-Dengan 10 TV, tidak ada yang berubah secara arsitektur — tiap unit berdiri
-sendiri, satu sesi aktif per unit (dijamin kolom unik `active_unit_id`). Kasir
-melihat 10 kartu unit di dashboard; tiap kartu update realtime sendiri.
-
-```mermaid
-sequenceDiagram
-    participant P as Pelanggan (HP)
-    participant K as Kios /kios/kode
-    participant A as Laravel (Action)
-    participant DB as MySQL
-    participant HA as Home Assistant
-    participant TV as TV unit
-    participant R as Reverb
-    participant D as Dashboard Kasir
-
-    P->>K: buka QR unit, login WA (OTP/PIN)
-    P->>K: pilih paket / Open Play (bayar dari saldo)
-    K->>A: PlayFromWalletAction / StartKioskOpenPlayAction
-    A->>DB: lock baris, potong saldo, buat sesi
-    A->>HA: powerOn(unit) — WoL + turn_on
-    HA->>TV: nyala
-    A->>HA: play_media(QR/idle habis) → layar main
-    A->>R: broadcast SessionStarted
-    R-->>D: kartu unit jadi "AKTIF" (≤2s)
-    Note over A,DB: scheduler tiap menit: sweep sesi habis,<br/>jaga plafon Open Play; tiap 10s poll QRIS
-    A->>HA: (saat habis) powerOff(unit)
-    HA->>TV: mati / standby
-    A->>R: broadcast SessionEnded
-    R-->>D: kartu unit jadi "KOSONG"
-```
+Arsitekturnya **LAN-first**: server berada di dalam jaringan outlet karena
+kontrol perangkat membutuhkan mDNS dan Wake-on-LAN yang tidak melintasi
+internet.
 
 ---
 
-## 3. Spesifikasi (hardware & software)
+## Technology stack
 
-### PC Server lokal (untuk ±10 TV)
-
-| Komponen | Minimum | Rekomendasi |
-|----------|---------|-------------|
-| CPU | 4 core (Intel i3 gen-8 / Ryzen 3) | 6+ core (i5/Ryzen 5) |
-| RAM | 8 GB | 16 GB |
-| Disk | 128 GB SSD | 256 GB SSD (NVMe) |
-| Jaringan | 1× Gigabit Ethernet (kabel ke switch) | idem + WiFi cadangan |
-| OS | **Ubuntu Server 24.04 LTS** (Linux wajib untuk kontrol device) | idem |
-| Daya | UPS kecil sangat dianjurkan (jaga DB saat listrik kedip) | UPS + auto-shutdown |
-
-> Mini PC (Intel NUC / sejenis) sangat cocok: hemat daya, senyap, cukup kuat
-> untuk 10 TV. Windows/macOS bisa untuk **mencoba** (pakai `control_driver=manual`),
-> tapi kontrol TV nyata (mDNS/WoL) butuh Docker Engine di **Linux**.
-
-### Jaringan
-
-- 1 Router (DHCP), 1 Switch Gigabit (port ≥ jumlah TV + server + 2 cadangan).
-- Kabel LAN Cat5e/Cat6 ke tiap TV & ke server.
-- Semua di **satu subnet**.
-
-### VPS (untuk kontrol online — opsional tapi dianjurkan)
-
-| Komponen | Nilai |
-|----------|-------|
-| Spek | 1 vCPU / 1 GB RAM cukup (hanya reverse-proxy) |
-| OS | Ubuntu 24.04 LTS |
-| Perangkat lunak | nginx atau Caddy (TLS otomatis) + Tailscale |
-| Domain | 1 subdomain, mis. `panel.tokoanda.com` → IP VPS |
-
-### Software (semua sudah disiapkan di image Docker)
-
-PHP 8.5 · Laravel 13 · Filament v5 (Livewire 4) · MySQL 8.4 · Redis 7 (predis) ·
-Reverb · **tanpa Node/npm/Vite** (aset Filament sudah ter-compile di `public/`).
-Untuk device: Home Assistant + Mosquitto. Untuk monitoring: Prometheus + Grafana +
-node/cadvisor/mysql/redis exporter.
+| Lapisan | Teknologi |
+|---------|-----------|
+| Bahasa | PHP 8.4+ |
+| Framework | Laravel 13 |
+| Panel admin | Filament 5 + Shield |
+| Realtime | Laravel Reverb 1 (WebSocket) |
+| Database | MySQL 8.4 |
+| Cache & queue | Redis 7 |
+| Web server | nginx 1.27 |
+| Testing | Pest 4 / PHPUnit 12 |
+| Gaya kode | Laravel Pint |
+| Container | Docker Compose |
+| Monitoring | Prometheus, Grafana, cAdvisor, exporter MySQL/Redis |
+| Perangkat | Home Assistant, MQTT (Mosquitto), Tasmota, Wake-on-LAN |
 
 ---
 
-## 4. Instalasi
+## Quick start
 
-Ada **dua jalur deploy — pilih SATU per mesin**, jangan campur:
-
-- **Docker (§4.1–4.2, REKOMENDASI):** satu perintah, semua service terisolasi, monitoring ikut. Cocok untuk PC lokal maupun VPS.
-- **Bare-metal (§4.4):** nginx + PHP-FPM + supervisor langsung di OS. Sudah tersedia di `deploy/` untuk yang tak mau Docker.
-
-Prasyarat Docker (sekali saja):
+**Prasyarat:** Docker Engine + Docker Compose v2, `openssl`.
 
 ```bash
-# Ubuntu 24.04
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER && newgrp docker   # agar tak perlu sudo
-sudo systemctl enable --now docker               # auto-start saat PC menyala
-```
-
-### 4.1 Docker di PC lokal (REKOMENDASI) — satu perintah
-
-**Cara termudah — cukup jalankan installer**, sisanya otomatis (buat `.env`,
-generate semua kunci/password, deteksi IP LAN, build, nyalakan stack + Grafana,
-buat owner):
-
-```bash
-git clone https://github.com/<org>/creative-trees-billing.git
-cd creative-trees-billing
+git clone https://github.com/creativetreesgroup/Ecosystem-Billing.git
+cd Ecosystem-Billing
 ./install.sh
 ```
 
-Itu saja. Di akhir installer menampilkan alamat panel + Grafana beserta
-passwordnya. Opsi (semua opsional):
+Installer akan: membuat `.env` dari `.env.docker`, membangkitkan seluruh kunci
+dan password secara acak, mendeteksi IP LAN, membangun image, menyalakan stack
+beserta monitoring, menjalankan migrasi dan seeder peran, lalu membuat akun
+owner pertama.
+
+Aman dijalankan berulang — nilai yang sudah terisi tidak ditimpa.
 
 ```bash
-SERVER_IP=192.168.1.10 ./install.sh          # paksa IP kalau deteksi keliru
-OWNER_NAME="Owner" OWNER_EMAIL="owner@outlet.test" OWNER_PASSWORD="rahasia-kuat" ./install.sh   # owner tanpa tanya-jawab
-WITH_MONITORING=0 ./install.sh               # tanpa Grafana/Prometheus
+SERVER_IP=192.168.1.10 ./install.sh   # bila deteksi IP keliru
+WITH_MONITORING=0 ./install.sh        # tanpa Grafana/Prometheus
 ```
 
-Installer aman diulang — kunci yang sudah ada tidak ditimpa.
+Setelah selesai, panel tersedia di `http://<IP-server>` dan Grafana di
+`http://<IP-server>:3000`.
 
-<details>
-<summary>Apa yang dilakukan installer (kalau ingin manual)</summary>
+### Operasi sehari-hari
 
 ```bash
-cp .env.docker .env
-#   Isi: APP_URL & VITE_REVERB_HOST = IP LAN server; DB_PASSWORD, DB_ROOT_PASSWORD,
-#   GRAFANA_PASSWORD; REVERB_APP_ID/KEY/SECRET; APP_KEY (base64:...).
-docker compose build
-docker compose --profile monitoring up -d       # migrasi & optimasi jalan otomatis di entrypoint
-docker compose exec app php artisan app:create-owner
-#   JANGAN pakai make:filament-user — users.role & outlet_id wajib terisi, jadi
-#   command inilah yang mengisinya benar (bikin outlet default + owner sekaligus).
-```
-</details>
-
-Selesai. Buka:
-
-- Panel kasir/owner: `http://<IP-server>` (root diarahkan ke `/admin`)
-- Grafana: `http://<IP-server>:3000` (user `admin`, password ditampilkan installer / ada di `.env` `GRAFANA_PASSWORD`)
-
-> **Realtime tidak jalan?** 99% karena `VITE_REVERB_HOST` masih `localhost`.
-> Isi IP LAN server, lalu `docker compose up -d --force-recreate app reverb`.
-
-> **Jangan jalankan `php artisan db:seed` di produksi.** Seeder proyek ini
-> dev-only: butuh dependensi dev (dikeluarkan dari image produksi) dan membuat
-> data contoh (user `@creativetrees.test` + sesi historis palsu) yang tak boleh
-> masuk database outlet sungguhan. Aplikasi berjalan penuh tanpa seed.
-
-### 4.2 Docker di VPS dari GitHub
-
-VPS **tidak** menjalankan aplikasi penuh — ia hanya **reverse-proxy + TLS** ke
-outlet lewat Tailscale (§4.3). Yang dipasang di VPS:
-
-```bash
-# 1) Tailscale (menyambung ke jaringan outlet)
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
-
-# 2) Caddy (TLS otomatis dari Let's Encrypt) — 1 file konfigurasi:
-#    /etc/caddy/Caddyfile
-#      panel.tokoanda.com {
-#          reverse_proxy http://<tailscale-ip-outlet>:80
-#      }
-sudo apt install -y caddy
-sudo systemctl reload caddy
+docker compose --profile monitoring up -d      # nyalakan
+docker compose --profile monitoring down       # matikan (data aman di volume)
+docker compose logs -f app                     # log aplikasi
+docker compose exec app php artisan tv:doctor  # diagnostik perangkat
 ```
 
-Arahkan DNS `panel.tokoanda.com` → IP publik VPS. Caddy mengurus sertifikat
-otomatis. Owner cukup buka `https://panel.tokoanda.com`.
+> Di host **Linux**, tambahkan `--profile host-metrics` untuk menyertakan
+> `node-exporter`. Profil itu dipisah karena membutuhkan PID namespace host dan
+> bind `/` — tidak tersedia di Docker Desktop, dan menyertakannya di sana
+> membuat seluruh stack gagal naik.
 
-> Kalau ingin aplikasi **berjalan penuh di VPS** (mis. demo tanpa TV), langkahnya
-> sama persis dengan §4.1 di mesin VPS — tapi kontrol TV tak akan berfungsi dari
-> VPS (lihat §2.3). Untuk produksi, aplikasi tetap di outlet.
-
-### 4.3 Menyambungkan Local ↔ Public (Tailscale)
-
-Tailscale membuat jaringan privat WireGuard antara VPS dan PC outlet, **keluar
-dari LAN** (tak ada port dibuka di router outlet), dan **tersambung terus**.
-
-```bash
-# Di PC outlet:
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up
-sudo tailscale ip -4        # catat IP tailscale outlet, mis. 100.x.y.z
-```
-
-Masukkan IP itu ke `reverse_proxy` di Caddyfile VPS (§4.2). Hasil akhir:
-
-- Kasir outlet → `http://192.168.1.10` (langsung, cepat).
-- Owner online → `https://panel.tokoanda.com` → VPS → Tailscale → outlet.
-- Putus internet? Kasir tetap penuh; kontrol online kembali sendiri begitu internet pulih (Tailscale reconnect otomatis).
-
-### 4.4 Alternatif: bare-metal (nginx + supervisor)
-
-Untuk yang tak memakai Docker, konfigurasi produksi sudah tersedia di `deploy/`:
-
-- `deploy/nginx/creative-trees-billing.conf` — server block nginx.
-- `deploy/supervisor/*.conf` — `reverb`, `queue-worker`, `scheduler`, `mqtt-bridge`.
-- `deploy/backup/` — script backup/restore + crontab.
-
-Ringkas: `composer install --no-dev`, `php artisan migrate --force`, `php artisan
-optimize`, pasang nginx + 4 program supervisor, pasang crontab backup. Detail
-perintah ada di komentar tiap file `deploy/`.
+Panduan lengkap: [`docs/LEGACY_README.md`](docs/LEGACY_README.md).
 
 ---
 
-## 5. Menyalakan, mematikan, menyalakan ulang
-
-Perintah Docker dari dalam folder proyek. **Data (DB, Redis, Grafana) hidup di
-named volume** dan aman selama tidak memakai `-v`.
-
-| Tujuan | Perintah | Efek data |
-|--------|----------|-----------|
-| Nyalakan semua | `docker compose --profile monitoring up -d` | aman |
-| Matikan sementara (jeda) | `docker compose stop` | aman, cepat nyala lagi |
-| Matikan & hapus container | `docker compose --profile monitoring down` | **aman** (volume tetap) |
-| Restart 1 service | `docker compose restart reverb` | aman |
-| Lihat status | `docker compose ps` | — |
-| Lihat log | `docker compose logs -f app` | — |
-| ⚠️ Hapus TERMASUK data | `docker compose down -v` | **MENGHAPUS DB!** jangan dipakai kecuali sengaja |
-
-### Mematikan PC server dengan benar
+## Pengujian
 
 ```bash
-docker compose stop        # hentikan rapi dulu (biar MySQL flush)
-sudo shutdown -h now       # baru matikan OS
+docker compose --profile test run --rm test php artisan test --compact
 ```
 
-### Menyalakan ulang PC server
+**573 test lulus, 1.413 assertion** — Unit, Feature, dan Concurrency, terakhir
+dijalankan 2026-07-28 di dalam Docker.
 
-Karena semua service `restart: unless-stopped` **dan** Docker sudah
-`systemctl enable`, begitu PC menyala, **semua container hidup sendiri** —
-tak perlu perintah apa pun. Verifikasi:
-
-```bash
-docker compose ps          # semua 'running'/'healthy'
-```
-
-Kalau perlu paksa nyala: `docker compose --profile monitoring up -d`.
-
-### Memperbarui dari GitHub (rilis baru)
-
-```bash
-docker compose stop
-git pull
-docker compose build
-docker compose --profile monitoring up -d    # migrasi jalan otomatis di entrypoint
-```
+> **Jangan pernah `docker compose exec app php artisan test`.** Service `app`
+> membaca `env_file: .env`, sehingga test akan memakai `APP_ENV=production`
+> **dan database produksi**; `RefreshDatabase` lalu menjalankan `migrate:fresh`
+> — `DROP` seluruh tabel outlet. Service `test` ada justru untuk mencegah ini:
+> ia sengaja tidak membaca `.env`, dan `tests/TestCase.php` menolak berjalan
+> bila nama database tidak berakhiran `_test`.
 
 ---
 
-## 6. Monitoring Grafana (offline)
+## Deployment produksi
 
-Profil `monitoring` menyalakan **Prometheus + Grafana + exporter** — semuanya
-lokal, **tanpa internet**, sudah terkonfigurasi (datasource + dashboard otomatis
-ter-provision). Buka `http://192.168.1.10:3000`.
+Target produksi adalah **PC server Linux di dalam jaringan outlet**. macOS dan
+Windows didukung untuk pengembangan dan demo, tetapi kontrol TV sungguhan
+membutuhkan Docker Engine di Linux karena butuh jaringan host.
 
-Dashboard **"Creative Trees — System Overview"** langsung tersedia:
+Sebelum menyalakan di outlet sungguhan:
 
-- **Server (host):** CPU, RAM, disk, uptime.
-- **Per kontainer:** CPU & memori tiap service (app, reverb, worker, db, redis).
-- **MySQL:** status up/down, koneksi, query/detik.
-- **Redis:** memori terpakai, operasi/detik.
+- [ ] `APP_ENV=production` dan `APP_DEBUG=false` — bawaan `.env.docker`
+- [ ] Seluruh password dan kunci dibangkitkan installer, bukan nilai contoh
+- [ ] MySQL berjalan dengan `innodb-flush-log-at-trx-commit=1` dan `sync-binlog=1`
+- [ ] Backup terjadwal **dan restore-nya sudah diuji** — lihat catatan risiko di bawah
+- [ ] Port `db` dan `redis` tidak terekspos ke host (bawaan: tidak)
+- [ ] Grafana dibatasi ke jaringan tepercaya
 
-```mermaid
-flowchart LR
-    subgraph Targets["Yang dipantau"]
-        Node["node-exporter<br/>(CPU/RAM/disk host)"]
-        Cad["cadvisor<br/>(per kontainer)"]
-        MyEx["mysql-exporter"]
-        RdEx["redis-exporter"]
-    end
-    Prom["Prometheus<br/>(scrape tiap 15s)"] --> Node & Cad & MyEx & RdEx
-    Graf["Grafana<br/>:3000"] --> Prom
-    Owner["Owner"] -->|lihat grafik| Graf
-```
-
-Ganti password default Grafana lewat `GRAFANA_PASSWORD` di `.env`. Data metrik
-disimpan di volume `prometheus-data` (retensi default Prometheus).
+> **Risiko terbuka yang harus Anda ketahui:** prosedur restore backup **belum
+> pernah diuji**. Sampai latihan restore dilakukan dan hasilnya dicatat, anggap
+> pemulihan bencana belum terbukti. Ini risiko operasional tertinggi yang
+> tersisa dan tercatat di [ROADMAP.md](ROADMAP.md).
 
 ---
 
-## 7. Panduan pengguna (3 tingkat)
+## Dokumentasi
 
-### 7.1 Untuk pengguna awam — **Kasir**
-
-Yang perlu diingat kasir cuma ini:
-
-1. **Buka panel:** ketik `192.168.1.10` di browser → masukkan email & password → masuk dashboard.
-2. **Dashboard = 10 kartu unit.** Hijau/aktif = sedang dipakai; abu = kosong. Semua update sendiri, **tak perlu refresh**.
-3. **Mulai sesi:** klik kartu unit kosong → pilih **paket** atau **Open Play** → pilih pelanggan/isi nama → **Mulai**. TV nyala sendiri.
-4. **Isi saldo pelanggan:** menu **Member** → cari nama → **Isi Saldo** → pilih QRIS/transfer/tunai → jumlah → simpan.
-5. **Sesi hampir habis?** Kartu memberi tanda; klik **Perpanjang** kalau pelanggan mau nambah.
-6. **Selesai:** sesi berakhir otomatis saat waktu habis, TV mati sendiri. Untuk Open Play, klik **Stop**.
-7. **Ada tanda merah (alert) di kartu?** Berarti TV tak merespons — lihat §9 atau panggil yang lebih paham.
-
-> Kasir **tidak perlu** tahu Docker, terminal, atau jaringan. Cukup browser.
-
-### 7.2 Untuk yang sedikit paham — **Supervisor / Shift Lead**
-
-- **Kelola paket & tarif:** panel → **Paket** / **Tipe Unit**. Ubah harga per jam, durasi paket, aktif/nonaktif.
-- **Diskon & voucher:** panel → **Diskon**. Buat voucher kode atau promo otomatis (potongan paket/Open Play/bonus top-up).
-- **Laporan penjualan:** panel → **Laporan** → rentang tanggal → lihat total, metode bayar, grafik.
-- **Notifikasi:** lonceng 🔔 di kanan atas = notifikasi realtime (bukti transfer masuk, saldo minus, device alert).
-- **Atasi alert device:** buka **Device Alerts** → baca pesan → tindak (nyalakan TV manual bila perlu) → **Acknowledge**.
-- **Cek monitoring:** buka Grafana `:3000` untuk lihat apakah server sehat (CPU/RAM/disk).
-
-### 7.3 Untuk profesional — **Admin / Teknisi**
-
-- **Tambah unit baru:** §8 "Menambah unit baru".
-- **Kontrol TV (Home Assistant):** pasang HA (`docker-compose.devices.yml`), pairing tiap TV, isi `HA_BASE_URL` + `HA_TOKEN`, set `control_driver=home_assistant` & `control_ref=<entity_id>` pada unit.
-- **WhatsApp OTP (WAHA) & Telegram:** isi `WAHA_*` dan `TELEGRAM_*` di `.env` (LAN-only untuk WAHA). Kosong = fitur mati diam-diam (fail secure).
-- **Backup & restore:** §8.
-- **Deploy/perbarui:** §5 "Memperbarui dari GitHub".
-- **Online access:** §4.3 (Tailscale + VPS).
-- **Log & debug:** `docker compose logs -f app`, `docker compose exec app php artisan pail`.
+| Dokumen | Isi |
+|---------|-----|
+| [`docs/INDEX.md`](docs/INDEX.md) | Navigasi dokumentasi berdasarkan peran |
+| [`docs/audits/REPOSITORY_AUDIT.md`](docs/audits/REPOSITORY_AUDIT.md) | Audit menyeluruh: matrix verifikasi fitur, celah keamanan & operasional |
+| [`docs/LEGACY_README.md`](docs/LEGACY_README.md) | Panduan teknis lengkap — instalasi, topologi, runbook, troubleshooting |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Standar engineering, aturan database, aturan pengujian |
+| [`SECURITY.md`](SECURITY.md) | Pelaporan kerentanan dan kontrol yang berlaku |
+| [`ROADMAP.md`](ROADMAP.md) | Rencana kerja per prioritas |
+| [`CHANGELOG.md`](CHANGELOG.md) | Riwayat perubahan |
+| [`SUPPORT.md`](SUPPORT.md) | Kanal dukungan |
 
 ---
 
-## 8. Operasional & runbook
+## Keamanan
 
-### Backup & restore database
+Sistem ini menangani uang sungguhan. **Jangan melaporkan kerentanan lewat public
+issue** — gunakan kanal privat di [`SECURITY.md`](SECURITY.md).
 
-Script siap pakai di `deploy/backup/`:
+Kontrol yang sudah diverifikasi: `.env` tidak pernah masuk git, secret tidak
+bocor ke log maupun UI (keduanya diuji otomatis), database dan Redis tidak
+terekspos ke host, seluruh kredensial produksi dibangkitkan acak, dan test tidak
+bisa menyentuh database produksi.
 
-```bash
-# Backup manual (Docker):
-docker compose exec db sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" creative_trees_billing' > backup-$(date +%F).sql
-
-# Otomatis harian (bare-metal): pasang deploy/backup/crontab (jam 03:00).
-# Restore:
-docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" creative_trees_billing' < backup-2026-07-21.sql
-```
-
-> Simpan salinan backup **di luar** PC server (mis. sync ke NAS/cloud owner).
-> Uji restore minimal sekali sebelum mengandalkannya.
-
-### Menambah unit baru
-
-1. Pasang TV, kabel LAN, **reservasi DHCP** di router (catat MAC & IP).
-2. Aktifkan **Wake-on-LAN** + **Networked Standby** di TV.
-3. (Jika pakai HA) pairing TV di Home Assistant, catat `entity_id`.
-4. Panel → **Unit** → **Buat**: isi kode, tipe, `control_driver`, `control_ref` (entity_id/topic), `tv_mac`.
-5. Deteksi otomatis: `docker compose exec app php artisan units:poll-state` untuk cek power state awal.
-
-### Tugas manusia (tak bisa dikerjakan kode — §14)
-
-Reservasi DHCP · setting Wake-on-LAN/Networked Standby tiap TV · pairing TV ke
-Home Assistant · membuat kredensial Mosquitto (anonim dimatikan, fail secure) ·
-scan WAHA session (QR WhatsApp) · UAT hardware siklus penuh sebelum uang nyata.
-
-### Scheduler (jalan otomatis di container `scheduler`)
-
-| Task | Frekuensi | Fungsi |
-|------|-----------|--------|
-| `sessions:sweep-expired` | tiap menit | akhiri sesi yang waktunya habis, matikan TV |
-| `openplay:enforce-ceiling` | tiap menit | jaring pengaman plafon kredit Open Play (−50k) |
-| `units:poll-state` | tiap 30 detik | sinkron power state TV |
-| `payments:poll-qris` | tiap 10 detik | tanya status QRIS ke gateway (pengganti webhook) |
+Batasan yang diketahui dicantumkan terbuka di
+[`SECURITY.md`](SECURITY.md#batasan-yang-diketahui) agar tidak disalahpahami
+sebagai sudah aman.
 
 ---
 
-## 9. Troubleshooting
+## Kontribusi
 
-| Gejala | Kemungkinan & tindakan |
-|--------|------------------------|
-| **Realtime diam / kartu tak update** | `VITE_REVERB_HOST` bukan IP LAN → perbaiki, `up -d --force-recreate app reverb`. Cek `docker compose logs reverb`. |
-| **TV tak nyala/mati** | Cek reservasi DHCP & WoL TV; HA jalan? (`docker-compose.devices.yml`). Lihat **Device Alerts** di panel. HA & TV harus satu subnet. |
-| **"Pembayaran berhasil" lama muncul** | Poll QRIS tiap 10s; cek `docker compose logs scheduler` & konektivitas gateway. |
-| **Panel tak bisa dibuka** | `docker compose ps` — service `web`/`app` healthy? `docker compose logs app`. |
-| **Owner tak bisa akses online** | Tailscale up di outlet & VPS? (`tailscale status`). DNS domain benar? Caddy reload? |
-| **Aset/tampilan rusak** | Aset Filament ada di `public/`; jalankan `docker compose exec app php artisan filament:optimize`. |
-| **Disk penuh** | Bersihkan image lama: `docker image prune`; cek retensi Prometheus & log. |
-| **Lupa migrasi setelah update** | Entrypoint migrasi otomatis, tapi paksa: `docker compose exec app php artisan migrate --force`. |
+Pengembangan dilakukan tim engineering internal Creative Trees Group. Laporan
+bug dan usulan fitur dari luar diterima lewat
+[Issues](https://github.com/creativetreesgroup/Ecosystem-Billing/issues).
+Baca [`CONTRIBUTING.md`](CONTRIBUTING.md) lebih dulu — perubahan pada billing,
+pembayaran, dan saldo punya syarat pengujian tersendiri.
 
 ---
 
-## 10. Keputusan teknis penting
+## Lisensi
 
-- **`outlet_id` sejak V1** di `users`/`unit_types`/`units` sebagai fondasi siap-scale — V1 berjalan single-outlet tanpa UI ganti-outlet. Arsitektur multi-outlet (agen di tiap outlet + panel pusat di VPS) belum ada di V1.
-- **Polling, bukan webhook.** Mesin outlet tak menerima koneksi dari internet, jadi status QRIS & power TV **ditanyakan keluar** (poll). Frekuensi poll menentukan kecepatan respons (QRIS ≤10s, power ≤30s).
-- **QR unit disimpan sebagai berkas, bukan cache DB.** Menggambar ~750 ms; JPEG 200 KB di cache database (driver DB) membuat query meledak — gambar tempatnya di disk.
-- **Sub-minute schedule** (`everyThirtySeconds`, `everyTenSeconds`) dibulatkan ke preset terdekat karena Laravel tak punya preset 45s.
-- **Job expiry di-dispatch tanpa ID untuk dibatalkan** — sweep tiap menit adalah jaring pengaman, bukan pembatalan presisi.
-- **Secret hanya via `.env`** (HA_TOKEN, WAHA_API_KEY, TELEGRAM_*, MQTT). Dilarang muncul di log, response, exception, atau payload broadcast. Mosquitto anonim dimatikan (fail secure).
-- **Docker vs bare-metal: pilih satu.** Menjalankan aplikasi di dua jalur sekaligus membuat konfigurasi diam-diam menyimpang. `docker-compose.yml` (aplikasi + monitoring) dan `docker-compose.devices.yml` (HA/Mosquitto, host network) saling melengkapi, bukan dua salinan aplikasi.
+Proprietary — © 2026 Creative Trees Group. Seluruh hak dilindungi.
 
----
+Source code dapat dilihat publik untuk transparansi dan audit. **Dapat dilihat
+bukan berarti bebas dipakai**: penggunaan, penyalinan, modifikasi, dan
+pendistribusian memerlukan izin tertulis. Lihat [`LICENSE`](LICENSE).
 
-## 11. Referensi teknis
+<div align="center">
 
-### ERD
+**Creative Trees Group**
 
-```mermaid
-erDiagram
-    OUTLETS ||--o{ USERS : employs
-    OUTLETS ||--o{ UNIT_TYPES : offers
-    OUTLETS ||--o{ UNITS : has
-    UNIT_TYPES ||--o{ UNITS : categorizes
-    UNIT_TYPES ||--o{ PACKAGES : offers
-    UNITS ||--o{ RENTAL_SESSIONS : hosts
-    PACKAGES ||--o{ RENTAL_SESSIONS : "priced by"
-    USERS ||--o{ RENTAL_SESSIONS : opens
-    RENTAL_SESSIONS ||--o{ SESSION_EXTENSIONS : extended_by
-    CUSTOMERS ||--o{ RENTAL_SESSIONS : plays
-    CUSTOMERS ||--o{ WALLET_TRANSACTIONS : has
-    DISCOUNTS ||--o{ DISCOUNT_REDEMPTIONS : redeemed_by
-    UNITS ||--o{ DEVICE_ALERTS : raises
-
-    OUTLETS {
-        bigint id PK
-        string name
-        string timezone
-        bool is_active
-    }
-    USERS {
-        bigint id PK
-        bigint outlet_id FK
-        string name
-        string email UK
-        enum role "owner, kasir"
-        bool is_active
-    }
-    UNIT_TYPES {
-        bigint id PK
-        bigint outlet_id FK
-        string name
-        uint hourly_rate "rupiah"
-    }
-    UNITS {
-        bigint id PK
-        bigint outlet_id FK
-        bigint unit_type_id FK
-        string code UK "per outlet"
-        enum control_driver "home_assistant, tasmota, manual"
-        string control_ref "entity_id / topic"
-        string tv_mac "Wake-on-LAN"
-        enum power_state "on, standby, unreachable, unknown"
-        bool is_active
-    }
-    PACKAGES {
-        bigint id PK
-        bigint unit_type_id FK
-        uint duration_minutes
-        uint price "rupiah"
-        bool is_active
-    }
-    CUSTOMERS {
-        bigint id PK
-        string name
-        string phone UK
-        char card_number UK
-        string pin_hash
-        int balance "rupiah, boleh minus (adjustment manual)"
-        bool is_active
-    }
-    WALLET_TRANSACTIONS {
-        bigint id PK
-        bigint customer_id FK
-        enum type "topup, spend, refund, adjustment"
-        int amount "rupiah, bertanda +/-"
-        int balance_after "rupiah"
-        bigint payment_id FK
-        bigint rental_session_id FK
-        bigint performed_by FK "users"
-    }
-    RENTAL_SESSIONS {
-        bigint id PK
-        bigint unit_id FK
-        bigint customer_id FK
-        enum type "open, package"
-        timestamp started_at
-        timestamp ends_at "null utk open play"
-        timestamp ended_at
-        enum status "pending, active, completed, voided"
-        uint base_amount "rupiah"
-        uint extra_amount "rupiah"
-        uint discount_amount "rupiah"
-        string voucher_code
-        uint total_amount "rupiah"
-        enum payment_method "cash, qris, transfer, wallet"
-        bigint active_unit_id "generated, unik — 1 sesi aktif/unit"
-    }
-    DISCOUNTS {
-        bigint id PK
-        string code UK "null utk promo otomatis"
-        string name
-        enum type "percentage, fixed"
-        enum source "voucher, promo"
-        uint value "1–100 persen / rupiah"
-        json targets "package, open_play, topup"
-        uint min_amount
-        uint max_uses
-        uint max_uses_per_customer
-        bool is_active
-    }
-    DEVICE_ALERTS {
-        bigint id PK
-        bigint unit_id FK
-        enum type "power_off_failed, device_offline, state_mismatch"
-        enum status "open, acknowledged"
-    }
-```
-
-### Sequence: sesi berakhir → TV mati
-
-```mermaid
-sequenceDiagram
-    participant Job as ExpireRentalSession<br/>(delayed job / sweep)
-    participant Action as CompleteSessionAction
-    participant DB as MySQL
-    participant DM as DeviceManager
-    participant Driver as HA / Tasmota Driver
-    participant Verify as VerifyUnitPoweredOffJob (+10s)
-    participant Reverb
-    participant Dash as Dashboard Kasir
-
-    Job->>Action: handle(session)
-    Action->>DB: lockForUpdate() + status=completed
-    Action->>DM: powerOff(unit)
-    DM->>Driver: powerOff(unit)
-    Driver-->>DM: CommandResult
-    DM->>Job: dispatch VerifyUnitPoweredOffJob (delay 10s)
-    Action->>Reverb: broadcast SessionEnded
-    Reverb-->>Dash: push (≤2s), kartu jadi kosong
-    Note over Verify: 10 detik kemudian
-    Verify->>Driver: state(unit)
-    alt masih On
-        Verify->>DB: device_alert (power_off_failed)
-        DB-->>Reverb: broadcast DeviceAlertRaised
-        Reverb-->>Dash: badge alert muncul
-    else Standby/Off
-        Verify->>Verify: no-op
-    end
-```
-
-### Test
-
-```bash
-docker compose exec app php artisan test              # Unit + Feature + Concurrency
-docker compose exec app php artisan test --testsuite=Concurrency   # butuh DB nyata
-# Tanpa Docker:
-php artisan test
-```
-
-### Stack (versi dikunci)
-
-PHP 8.5 · Laravel 13 · Filament v5 (Livewire 4) · MySQL 8.4 · Redis 7 (predis) ·
-Reverb · Pest v4 · `php-mqtt/client` · `bacon/bacon-qr-code` ·
-`spatie/laravel-activitylog` · `laravel/boost`. **Tanpa Node/npm/Vite.**
+</div>

@@ -1,0 +1,34 @@
+name: Usulan fitur
+description: Usulkan kemampuan baru atau perbaikan
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Masalah yang ingin diselesaikan
+      description: Ceritakan masalahnya, bukan solusinya.
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Usulan
+    validations: { required: true }
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Siapa yang membutuhkan ini
+      options: [Owner, Kasir, Teknisi, Pelanggan, Engineer internal]
+    validations: { required: true }
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatif yang sudah dipertimbangkan
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Apakah usulan ini menyentuh area sensitif?
+      options:
+        - label: Menyentuh perhitungan uang atau saldo
+        - label: Menyentuh otorisasi atau peran
+        - label: Membutuhkan perubahan skema database
+        - label: Membutuhkan perangkat keras baru di outlet
