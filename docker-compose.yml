@@ -91,6 +91,49 @@ services:
     environment:
       <<: *app-env
 
+  # Suite test. SENGAJA tanpa `env_file: .env` — itu bukan kelalaian, itu inti
+  # keamanannya. Variabel <env> di phpunit.xml hanya berlaku bila belum ada di
+  # proses, jadi container yang mewarisi .env aplikasi membuat test memakai
+  # APP_ENV=production DAN database produksi: RefreshDatabase lalu menjalankan
+  # migrate:fresh (DROP semua tabel) di data outlet sungguhan. Kebetulan
+  # migrate:fresh dipanggil tanpa --force sehingga ConfirmableTrait menahannya
+  # di environment "production" — satu-satunya alasan data tidak hilang, dan
+  # itu keberuntungan, bukan rancangan.
+  #
+  # Yang di bawah hanya alamat: ke mana harus menyambung, bukan sebagai siapa.
+  # Nama database, APP_ENV, cache/queue/session driver semuanya datang dari
+  # phpunit.xml. Kode di-mount dari host karena image dibangun --no-dev (tanpa
+  # Pest); vendor host yang berisi dev-dependencies yang dipakai.
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: creative-trees-billing:latest
+    profiles: [test]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [ctb]
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USERNAME: "${DB_USERNAME:-ctb_app}"
+      DB_PASSWORD: "${DB_PASSWORD:-change_me}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # Cache Blade menyimpan path absolut file sumber di dalam hasil
+      # kompilasinya. Kode di-mount dari host, jadi cache yang ditulis saat
+      # `npm`/artisan dijalankan di macOS menunjuk /Users/... — path yang tidak
+      # ada di container, dan filemtime() gagal di tengah render. Cache test
+      # diberi rumah sendiri di dalam container supaya kedua sisi tidak saling
+      # merusak, dan cache host tidak perlu dihapus untuk menjalankan test.
+      VIEW_COMPILED_PATH: /tmp/views
+    volumes:
+      - .:/var/www/html
+    command: php artisan test
+
   db:
     image: mysql:8.4
     restart: unless-stopped
@@ -101,9 +144,23 @@ services:
       MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:-change_me_root}"
     # caching_sha2_password sudah default di MySQL 8.4; flag lama
     # --default-authentication-plugin DIHAPUS di 8.4 (mysqld gagal start bila dipakai).
-    command: --innodb-buffer-pool-size=256M
+    # Dua flag durabilitas ditulis EKSPLISIT walau keduanya sudah default di
+    # MySQL 8.4 — justru karena diam-diam benar itulah bahayanya. Keduanya
+    # adalah flag pertama yang dimatikan orang saat mengejar angka benchmark,
+    # dan di mesin outlet yang listriknya bisa padam kapan saja, mematikannya
+    # berarti transaksi yang SUDAH dinyatakan lunas ke pelanggan hilang saat
+    # mesin menyala kembali. Uang yang sudah diterima tidak boleh bergantung
+    # pada nilai bawaan yang tak seorang pun ingat.
+    #   flush_log_at_trx_commit=1 : commit di-fsync ke disk saat itu juga
+    #   sync_binlog=1             : binlog ikut di-fsync, backup tetap konsisten
+    command: >-
+      --innodb-buffer-pool-size=256M
+      --innodb-flush-log-at-trx-commit=1
+      --sync-binlog=1
     volumes:
       - db-data:/var/lib/mysql
+      # Dijalankan hanya saat volume data masih kosong (perilaku image MySQL).
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_ROOT_PASSWORD:-change_me_root}"]
       interval: 10s
@@ -153,9 +210,16 @@ services:
       - grafana-data:/var/lib/grafana
     networks: [ctb]
 
+  # Profil TERPISAH dari `monitoring` karena service ini satu-satunya yang tidak
+  # bisa jalan di mana pun: ia mem-bind `/` dengan propagasi rslave dan memakai
+  # PID namespace host — dua hal yang tidak ada di Docker Desktop (macOS/Windows),
+  # sehingga `--profile monitoring up` GAGAL TOTAL di sana dan menjatuhkan
+  # seluruh stack hanya demi metrik host. install.sh menambahkan profil ini
+  # otomatis di Linux. Di Docker Desktop metriknya pun tak berguna: yang terukur
+  # adalah VM LinuxKit, bukan mesin Anda.
   node-exporter:
     image: prom/node-exporter:latest
-    profiles: [monitoring]
+    profiles: [host-metrics]
     restart: unless-stopped
     command:
       - '--path.rootfs=/host'

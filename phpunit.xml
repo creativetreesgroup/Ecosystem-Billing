@@ -34,7 +34,15 @@
         <env name="DB_CONNECTION" value="mysql"/>
         <env name="DB_HOST" value="127.0.0.1"/>
         <env name="DB_PORT" value="3307"/>
-        <env name="DB_DATABASE" value="creative_trees_billing_test"/>
+        <!-- force: <env> biasa KALAH oleh variabel yang sudah ada di proses.
+             Di dalam Docker `env_file: .env` sudah mengisi DB_DATABASE dengan
+             nama database APLIKASI, jadi tanpa force suite menjalankan
+             RefreshDatabase (migrate:fresh = DROP semua tabel) di database
+             produksi — dan diam-diam, karena koneksinya memang berhasil.
+             Host/port sengaja TIDAK di-force supaya suite tetap bisa diarahkan
+             ke MySQL host maupun service `db` Docker; salah host hanya gagal
+             konek, salah database menghancurkan. -->
+        <env name="DB_DATABASE" value="creative_trees_billing_test" force="true"/>
         <env name="DB_USERNAME" value="ctb_app"/>
         <env name="DB_PASSWORD" value="ctb_local_dev_pw"/>
         <env name="DB_URL" value=""/>
