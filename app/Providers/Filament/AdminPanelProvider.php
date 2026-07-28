@@ -2,8 +2,10 @@
 
 namespace App\Providers\Filament;
 
+use App\Domain\Settings\SettingKey;
 use App\Filament\NavigationGroup;
 use App\Filament\Pages\Dashboard;
+use App\Models\Setting;
 use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
 use Filament\Changelog\ChangelogPlugin;
 use Filament\Http\Middleware\Authenticate;
@@ -31,6 +33,16 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            // Closure, BUKAN nilai langsung. Panel didaftarkan saat boot —
+            // termasuk saat `artisan migrate` berjalan di entrypoint, ketika
+            // tabel settings belum ada. Membaca database di titik itu membuat
+            // migrasi gagal sebelum tabelnya sempat dibuat. Closure baru
+            // dievaluasi saat halaman dirender, dan Setting::get() di-cache
+            // selamanya sehingga tidak menambah query per permintaan.
+            ->brandName(fn (): string => Setting::brandName())
+            ->brandLogo(fn (): ?string => Setting::brandAssetUrl(SettingKey::BrandLogo))
+            ->brandLogoHeight('2rem')
+            ->favicon(fn (): ?string => Setting::brandAssetUrl(SettingKey::BrandFavicon))
             ->colors([
                 'primary' => Color::Amber,
             ])

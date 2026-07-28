@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\Settings\Schemas;
 
+use App\Domain\Settings\SettingKey;
 use App\Domain\Settings\SettingType;
 use App\Models\Setting;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\TimePicker;
 use Filament\Forms\Components\Toggle;
@@ -57,14 +59,34 @@ class SettingForm
                         ->helperText(fn (?Setting $record): ?string => $record?->key?->description())
                         ->visible(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Time),
 
+                    // Disimpan ke disk 'local', bukan 'public': unggahan di
+                    // instalasi Docker ini memang tidak bisa disajikan nginx,
+                    // dan aset merek dilewatkan route brand.asset.
+                    FileUpload::make('value.value')
+                        ->label('Berkas')
+                        ->disk('local')
+                        ->directory('brand')
+                        ->visibility('private')
+                        ->image()
+                        ->imageEditor()
+                        ->maxSize(1024)
+                        ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/svg+xml', 'image/x-icon', 'image/webp'])
+                        ->helperText(fn (?Setting $record): ?string => $record?->key?->description())
+                        ->columnSpanFull()
+                        ->visible(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Image)
+                        // Kosongkan berarti kembali ke bawaan, bukan menyimpan
+                        // null yang membuat brandAssetUrl() melempar.
+                        ->dehydrateStateUsing(fn ($state): string => is_array($state) ? (string) reset($state) : (string) $state),
+
                     TextInput::make('value.value')
                         ->label('Nilai')
                         ->visible(fn (?Setting $record): bool => ! in_array(
                             $record?->key?->type(),
-                            [SettingType::Toggle, SettingType::Time],
+                            [SettingType::Toggle, SettingType::Time, SettingType::Image],
                             true,
                         ))
-                        ->required()
+                        // Nama usaha boleh dikosongkan: kosong = pakai APP_NAME.
+                        ->required(fn (?Setting $record): bool => $record?->key !== SettingKey::BusinessName)
                         ->suffix(fn (?Setting $record): ?string => $record?->key?->type()->suffix())
                         // Menit & rupiah = numerik. minValue menit 1 (0 menit
                         // dulu membuat pembagian pembulatan billing melempar

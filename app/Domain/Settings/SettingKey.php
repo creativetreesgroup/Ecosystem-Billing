@@ -30,6 +30,13 @@ enum SettingKey: string implements HasIcon, HasLabel
     case MenuBreakStartTime = 'menu_break_start_time';
     case MenuBreakEndTime = 'menu_break_end_time';
 
+    // Identitas usaha. Sebelumnya nama outlet dipaku ke APP_NAME di .env,
+    // sehingga menggantinya menuntut pemilik masuk ke server, menyunting
+    // berkas, lalu membangun ulang cache — untuk mengubah satu tulisan.
+    case BusinessName = 'business_name';
+    case BrandLogo = 'brand_logo';
+    case BrandFavicon = 'brand_favicon';
+
     public function getLabel(): string
     {
         return match ($this) {
@@ -45,6 +52,9 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::MenuCloseTime => 'Jam tutup',
             self::MenuBreakStartTime => 'Jam mulai istirahat',
             self::MenuBreakEndTime => 'Jam selesai istirahat',
+            self::BusinessName => 'Nama usaha',
+            self::BrandLogo => 'Logo',
+            self::BrandFavicon => 'Favicon',
         };
     }
 
@@ -55,6 +65,7 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::TopUpAdminFee => SettingType::Rupiah,
             self::MenuOrderingEnabled => SettingType::Toggle,
             self::MenuOpenTime, self::MenuCloseTime, self::MenuBreakStartTime, self::MenuBreakEndTime => SettingType::Time,
+            self::BrandLogo, self::BrandFavicon => SettingType::Image,
             default => SettingType::Text,
         };
     }
@@ -69,6 +80,8 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::MenuOrderingEnabled => Heroicon::OutlinedPower,
             self::MenuOpenTime, self::MenuCloseTime => Heroicon::OutlinedClock,
             self::MenuBreakStartTime, self::MenuBreakEndTime => Heroicon::OutlinedPause,
+            self::BusinessName => Heroicon::OutlinedBuildingStorefront,
+            self::BrandLogo, self::BrandFavicon => Heroicon::OutlinedPhoto,
             default => Heroicon::OutlinedBuildingLibrary,
         };
     }
@@ -92,6 +105,9 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::MenuBreakEndTime => 'Akhir jeda istirahat — jam ini yang ditampilkan ke pelanggan sebagai "buka lagi pukul". Kosongkan bila tidak ada istirahat.',
             self::StaleOrderRefundMinutes => 'Pesanan makanan yang tidak pernah disentuh staf selama sekian menit dibatalkan otomatis dan saldonya dikembalikan ke pelanggan. Isi 0 untuk menonaktifkan — pesanan terbengkalai lalu harus dibatalkan manual.',
             self::TopUpAdminFee => 'Biaya tetap yang DITAMBAHKAN ke isi saldo QRIS & transfer (tunai bebas). Pelanggan membayar nominal + biaya ini; saldo yang masuk tetap sebesar nominal pilihannya. Isi 0 untuk menonaktifkan.',
+            self::BusinessName => 'Nama usaha yang tampil di panel, judul tab browser, dan halaman kios pelanggan. Dikosongkan berarti memakai APP_NAME dari berkas konfigurasi server.',
+            self::BrandLogo => 'Logo di kepala panel, menggantikan tulisan nama usaha. Dikosongkan berarti namanya yang ditampilkan. PNG atau SVG dengan latar transparan paling rapi.',
+            self::BrandFavicon => 'Ikon kecil di tab browser. Dikosongkan berarti memakai ikon bawaan aplikasi. Ukuran persegi, minimal 64x64.',
         };
     }
 
@@ -108,6 +124,18 @@ enum SettingKey: string implements HasIcon, HasLabel
             self::MenuOpenTime, self::MenuCloseTime => '00:00',
             default => '',
         };
+    }
+
+    /**
+     * Pengaturan yang isinya berupa berkas di storage, bukan teks biasa.
+     *
+     * Dipakai route penyaji aset sebagai daftar-putih. Tanpa penjaga ini,
+     * route yang menerima nama pengaturan bisa dipakai membaca nilai
+     * pengaturan APA PUN sebagai berkas — termasuk nomor rekening.
+     */
+    public function isBrandAsset(): bool
+    {
+        return in_array($this, [self::BrandLogo, self::BrandFavicon], true);
     }
 
     /**

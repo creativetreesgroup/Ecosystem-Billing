@@ -1,7 +1,9 @@
 <?php
 
 use App\Domain\Kiosk\UnitKioskScreen;
+use App\Domain\Settings\SettingKey;
 use App\Http\Controllers\HealthController;
+use App\Models\Setting;
 use App\Models\Unit;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
@@ -11,6 +13,30 @@ use Illuminate\Support\Facades\Storage;
 // detail kegagalan internal. Lihat HealthController untuk alasan pemisahannya.
 Route::get('/health', [HealthController::class, 'health'])->name('health');
 Route::get('/ready', [HealthController::class, 'ready'])->name('ready');
+
+// Aset merek (logo & favicon) disajikan dari storage lewat PHP, bukan oleh
+// nginx: container web me-mount public/ dari host read-only, sedangkan
+// unggahan tersimpan di volume milik container app — nginx tidak bisa
+// melihatnya. Pola yang sama dipakai gambar kios di bawah.
+//
+// Tanpa login, karena favicon diminta browser sebelum siapa pun masuk.
+// isBrandAsset() adalah daftar-putihnya: tanpa itu route ini bisa dipakai
+// membaca nilai pengaturan APA PUN sebagai berkas, termasuk nomor rekening.
+Route::get('/brand/{key}', function (string $key) {
+    $settingKey = SettingKey::tryFrom($key);
+
+    abort_unless($settingKey?->isBrandAsset() ?? false, 404);
+
+    $path = trim((string) Setting::get($settingKey));
+
+    abort_if($path === '' || ! Storage::disk('local')->exists($path), 404);
+
+    return response(Storage::disk('local')->get($path), 200, [
+        'Content-Type' => Storage::disk('local')->mimeType($path) ?: 'application/octet-stream',
+        // URL sudah mengandung sidik jari isi berkas, jadi aman di-cache lama.
+        'Cache-Control' => 'public, max-age=604800',
+    ]);
+})->name('brand.asset');
 
 // Root diarahkan ke panel supaya kasir yang mengetik alamat server saja
 // (tanpa /admin) tetap sampai ke tempat yang benar.

@@ -9,13 +9,14 @@ enum SettingType: string
     case Rupiah = 'rupiah';
     case Time = 'time';
     case Toggle = 'toggle';
+    case Image = 'image';
 
     public function suffix(): ?string
     {
         return match ($this) {
             self::Minutes => 'menit',
             self::Rupiah => 'rupiah',
-            self::Text, self::Time, self::Toggle => null,
+            self::Text, self::Time, self::Toggle, self::Image => null,
         };
     }
 
