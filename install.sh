@@ -67,7 +67,14 @@ say "Kunci aplikasi, Reverb, dan password DB/Grafana sudah terisi di .env"
 
 # --- 4. Build + jalankan -------------------------------------------------------
 PROFILE=()
-[ "${WITH_MONITORING:-1}" = "0" ] || PROFILE=(--profile monitoring)
+if [ "${WITH_MONITORING:-1}" != "0" ]; then
+    PROFILE=(--profile monitoring)
+    # node-exporter butuh PID namespace host + bind `/` rslave: ada di Linux,
+    # TIDAK ada di Docker Desktop (macOS/Windows). Menyertakannya di sana
+    # membuat `up` gagal dan seluruh stack ikut tidak naik — jadi profilnya
+    # ditambahkan hanya di host yang benar-benar bisa menyediakannya.
+    [ "$(uname -s)" = "Linux" ] && PROFILE+=(--profile host-metrics)
+fi
 
 say "Membangun image (pertama kali bisa beberapa menit)…"
 docker compose build

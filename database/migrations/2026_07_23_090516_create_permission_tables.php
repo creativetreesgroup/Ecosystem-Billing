@@ -42,6 +42,21 @@ return new class extends Migration
                 $table->index($columnNames['team_foreign_key'], 'roles_team_foreign_key_index');
             }
             $table->string('name');
+            // Peran tidak berdiri sendiri: ia bekerja DI DALAM sebuah
+            // departemen. `group` menentukan modul mana yang boleh ia sentuh
+            // sama sekali — tanpanya daftar 199 izin harus dibaca utuh tiap
+            // kali peran dibuat, dan yang terjadi di lapangan adalah semuanya
+            // dicentang karena itu jauh lebih cepat daripada memilah.
+            //
+            // `is_group_admin` menandai pemimpin departemen: ia memegang
+            // SELURUH izin grupnya, termasuk izin yang baru ada belakangan.
+            // Itu bedanya dengan mencentang manual — centang manual diam-diam
+            // tertinggal setiap kali ada resource baru.
+            //
+            // Keduanya kosong untuk super admin: ia memang tidak tinggal di
+            // departemen mana pun.
+            $table->string('group')->nullable()->index();
+            $table->boolean('is_group_admin')->default(false);
             $table->string('guard_name');
             $table->timestamps();
             if ($teams || config('permission.testing')) {

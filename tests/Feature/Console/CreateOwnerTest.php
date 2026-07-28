@@ -2,6 +2,8 @@
 
 use App\Models\Outlet;
 use App\Models\User;
+use Spatie\Permission\Exceptions\RoleDoesNotExist;
+use Spatie\Permission\Models\Role;
 
 /**
  * make:filament-user tidak bisa membuat user di sistem ini (role NOT NULL tanpa
@@ -53,6 +55,24 @@ test('rejects a duplicate email without creating a user', function () {
     ])->assertFailed();
 
     expect(User::where('email', 'dup@example.test')->count())->toBe(1);
+});
+
+/**
+ * Terjadi sungguhan di instalasi Docker bersih: peran belum di-seed, assignRole
+ * melempar SETELAH user tersimpan, lalu percobaan ulang ditolak "email sudah
+ * dipakai" — instalasi terjebak tanpa jalan maju maupun mundur. Perintahnya kini
+ * satu transaksi, jadi kegagalan harus tidak menyisakan apa pun.
+ */
+test('leaves no half-created owner when the super_admin role is missing', function () {
+    Role::query()->where('name', 'super_admin')->delete();
+
+    expect(fn () => $this->artisan('app:create-owner', [
+        '--name' => 'Owner',
+        '--email' => 'owner@example.test',
+        '--password' => 'rahasia123',
+    ])->run())->toThrow(RoleDoesNotExist::class);
+
+    expect(User::where('email', 'owner@example.test')->exists())->toBeFalse();
 });
 
 test('rejects a too-short password', function () {

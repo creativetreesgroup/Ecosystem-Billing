@@ -66,8 +66,18 @@ class DeviceManager
      * State billing tidak pernah bergantung pada state device (prinsip arsitektur #1).
      * Perintah device dibungkus di sini supaya kegagalannya tidak pernah menggagalkan
      * transaksi billing yang memanggilnya — hanya dicatat sebagai log terstruktur.
+     *
+     * Kembaliannya `mixed`, BUKAN ?CommandResult. Dulu ?CommandResult, dan itu
+     * diam-diam mematahkan setiap pemanggil yang membungkus state(): PowerState
+     * yang dikembalikan callback melanggar tipe kembalian, TypeError-nya
+     * tertangkap oleh catch di bawah, dan hasilnya SELALU null. Gejalanya di
+     * panel: "Uji koneksi TV" melaporkan seluruh TV bermasalah padahal semuanya
+     * menjawab. Pembungkus ini memang untuk segala perintah device, jadi
+     * tipenya harus mengikuti callback-nya, bukan menyempitkannya.
+     *
+     * @return mixed apa pun yang dikembalikan $callback, atau null bila gagal
      */
-    public function attempt(Unit $unit, Closure $callback): ?CommandResult
+    public function attempt(Unit $unit, Closure $callback): mixed
     {
         try {
             return $callback($this->driverFor($unit));

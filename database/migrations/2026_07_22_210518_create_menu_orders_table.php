@@ -28,6 +28,15 @@ return new class extends Migration
             // Antrean staf membaca "yang belum selesai" terus-menerus.
             $table->index(['status', 'created_at']);
         });
+
+        // Kunci asing yang MENUNGGU tabel ini ada. Kolomnya sendiri sudah
+        // dideklarasikan di create_wallet_transactions_table (tabel itu lahir
+        // lebih dulu), tapi kuncinya baru bisa dipasang sekarang. Inilah satu-
+        // satunya cara menjaga "satu tabel = satu migrasi" tanpa memaksa
+        // urutan migrasi berputar-putar.
+        Schema::table('wallet_transactions', function (Blueprint $table): void {
+            $table->foreign('menu_order_id')->references('id')->on('menu_orders')->nullOnDelete();
+        });
     }
 
     public function down(): void

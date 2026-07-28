@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
@@ -57,19 +58,28 @@ class CreateOwner extends Command
             return self::FAILURE;
         }
 
-        $owner = User::create([
-            'outlet_id' => $outlet->id,
-            'name' => $name,
-            'email' => $email,
-            'password' => $plainPassword, // cast 'hashed' meng-hash saat disimpan
-            'is_active' => true,
-        ]);
+        // Satu transaksi untuk user + perannya. assignRole() melempar bila
+        // peran 'super_admin' belum ada di DB, dan tanpa transaksi kegagalan itu
+        // meninggalkan owner tanpa peran: percobaan ulang lalu ditolak "email
+        // sudah dipakai", dan instalasi terjebak — tak bisa maju, tak bisa
+        // diulang, tanpa membersihkan tabel dengan tangan.
+        $owner = DB::transaction(function () use ($outlet, $name, $email, $plainPassword): User {
+            $owner = User::create([
+                'outlet_id' => $outlet->id,
+                'name' => $name,
+                'email' => $email,
+                'password' => $plainPassword, // cast 'hashed' meng-hash saat disimpan
+                'is_active' => true,
+            ]);
 
-        // Otorisasi dibaca dari Shield, bukan dari kolom role. Tanpa baris ini
-        // instalasi baru menghasilkan owner yang bisa masuk panel tapi tidak
-        // melihat apa pun — pemblokir instalasi yang hanya ketahuan saat orang
-        // pertama mencoba memakainya.
-        $owner->assignRole(config('filament-shield.super_admin.name', 'super_admin'));
+            // Otorisasi dibaca dari Shield, bukan dari kolom role. Tanpa baris
+            // ini instalasi baru menghasilkan owner yang bisa masuk panel tapi
+            // tidak melihat apa pun — pemblokir instalasi yang hanya ketahuan
+            // saat orang pertama mencoba memakainya.
+            $owner->assignRole(config('filament-shield.super_admin.name', 'super_admin'));
+
+            return $owner;
+        });
 
         $this->info("Owner '{$owner->name}' <{$owner->email}> dibuat di outlet '{$outlet->name}'. Login di /admin.");
 

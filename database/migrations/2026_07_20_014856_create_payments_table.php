@@ -26,6 +26,11 @@ return new class extends Migration
             $table->enum('method', ['cash', 'qris', 'transfer', 'wallet']);
             $table->enum('status', ['pending', 'awaiting_verification', 'paid', 'rejected', 'expired']);
             $table->unsignedInteger('amount');
+            // Biaya admin isi saldo (QRIS/transfer). `amount` = TOTAL yang
+            // dibayar pelanggan (kotor, itu yang dikirim ke gateway); saldo
+            // yang benar-benar masuk = amount - fee. Default 0 supaya
+            // pembayaran tunai dan sesi biasa tidak perlu memikirkannya.
+            $table->unsignedInteger('fee')->default(0);
 
             // Voucher isi saldo (V2): kode disimpan saat checkout, bonusnya
             // dikreditkan saat pembayaran benar-benar LUNAS (bukan saat pending) —

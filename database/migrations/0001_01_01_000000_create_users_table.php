@@ -18,7 +18,12 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            $table->enum('role', ['owner', 'kasir']);
+            // TIDAK ada kolom `role` di sini, dan itu disengaja. Otorisasi
+            // sepenuhnya milik Filament Shield (tabel roles/permissions).
+            // Kolom peran di baris user akan menjadi sumber kebenaran KEDUA,
+            // dan dua sumber untuk "orang ini boleh apa" adalah cara paling
+            // pasti keduanya menyimpang — form akan menampilkannya seolah
+            // mengubahnya berarti sesuatu, padahal tidak.
             $table->boolean('is_active')->default(true);
             $table->rememberToken();
             $table->timestamps();

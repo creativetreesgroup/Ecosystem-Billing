@@ -12,9 +12,12 @@ FROM php:8.5-fpm-alpine AS app
 # Ekstensi PHP native lewat installer resmi (menangani dependensi sistemnya).
 # gd = render QR/kartu ke TV; intl/bcmath = uang & lokalisasi; pcntl = sinyal
 # reverb/queue; opcache = performa; pdo_mysql/zip/exif = DB, arsip, validasi gambar.
+# sockets = socket_create() untuk magic packet Wake-on-LAN; tanpa ini
+# menyalakan PS5 gagal DI PRODUKSI dengan "undefined function", bukan sekadar
+# di test — unit tidak pernah menyala dan penyebabnya tak terlihat dari panel.
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 RUN chmod +x /usr/local/bin/install-php-extensions \
-    && install-php-extensions pdo_mysql mbstring bcmath gd intl zip pcntl opcache exif \
+    && install-php-extensions pdo_mysql mbstring bcmath gd intl zip pcntl opcache exif sockets \
     && apk add --no-cache fcgi
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
