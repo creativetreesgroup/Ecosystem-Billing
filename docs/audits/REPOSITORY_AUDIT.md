@@ -1,6 +1,7 @@
 # Repository Audit — Ecosystem-Billing
 
 **Tanggal audit:** 2026-07-28
+**Terakhir diperbarui:** 2026-07-28 — setelah siklus perbaikan; lihat bagian G
 **Yang diaudit:** `feat/kiosk-v1-code-complete`, 69 commit di depan `origin/main`
 **Metode:** verifikasi terhadap source code, migrasi, test, dan konfigurasi Docker. Klaim README tidak diterima sebagai bukti.
 
@@ -23,7 +24,7 @@ Creative Trees Group.
 
 **Tingkat kesiapan saat ini.** Aplikasinya matang secara fungsional — 10 domain,
 21 model, 15 perintah artisan operasional, 100 berkas test, dan seluruh suite
-(573 test) lulus di dalam Docker. Yang belum matang adalah **kelengkapan
+(578 test) lulus di dalam Docker. Yang belum matang adalah **kelengkapan
 repository sebagai produk engineering**: tidak ada CI, tidak ada dokumentasi
 terstruktur, dan tidak ada berkas tata kelola.
 
@@ -36,14 +37,18 @@ terstruktur, dan tidak ada berkas tata kelola.
 4. Instalasi Docker bersifat turnkey satu perintah dan terbukti jalan dari
    volume kosong.
 
-**Kekurangan terbesar.**
+**Kekurangan terbesar saat audit dimulai.** Keempatnya sudah ditutup dalam
+siklus ini — rinciannya di bagian G:
 
 1. Tidak ada CI sama sekali — tidak ada yang menahan regresi masuk ke `main`.
 2. README 1.722 baris merangkap arsitektur, runbook, troubleshooting, dan
    panduan instalasi sekaligus; tidak ada `docs/`.
 3. Tidak ada `LICENSE`, `SECURITY.md`, atau `CONTRIBUTING.md`, padahal
    repository akan dipublikasikan.
-4. Tidak ada endpoint health/readiness terverifikasi untuk orkestrator.
+4. Tidak ada endpoint health/readiness untuk orkestrator.
+
+**Kekurangan yang masih terbuka.** Restore backup belum pernah diuji, belum ada
+alerting, dan empat integrasi masih berstatus `Partial`. Lihat bagian H.
 
 **Risiko tertinggi (sudah diperbaiki dalam siklus ini).** Perintah yang
 didokumentasikan sendiri di README —
@@ -52,12 +57,13 @@ didokumentasikan sendiri di README —
 
 **Prioritas perbaikan.**
 
-| # | Prioritas | Alasan |
+| # | Prioritas | Status |
 |---|-----------|--------|
-| 1 | CI wajib hijau sebelum merge | Satu-satunya pencegah regresi otomatis |
-| 2 | Pisahkan README ke `docs/` | 1.722 baris tidak bisa dipelihara maupun dibaca |
-| 3 | `LICENSE` + `SECURITY.md` | Prasyarat repository publik |
-| 4 | Health/readiness endpoint | Prasyarat operasional yang dapat dipantau |
+| 1 | CI wajib hijau sebelum merge | **Selesai** — 3 job, terbukti hijau di PR #1 |
+| 2 | Pisahkan README ke `docs/` | **Sebagian** — README 1.722 → 243 baris; pemecahan tematik berlanjut |
+| 3 | `LICENSE` + `SECURITY.md` | **Selesai** |
+| 4 | Health/readiness endpoint | **Selesai** — `/health` dan `/ready`, 5 test |
+| 5 | Uji restore backup | **Belum** — risiko tertinggi yang tersisa |
 
 ---
 
@@ -103,14 +109,17 @@ didokumentasikan sendiri di README —
 
 ### Test
 
-100 berkas test, 3 testsuite (`Unit`, `Feature`, `Concurrency`).
-**573 test lulus, 1.413 assertion**, dijalankan di dalam Docker pada 2026-07-28.
+101 berkas test, 3 testsuite (`Unit`, `Feature`, `Concurrency`).
+**578 test lulus, 1.434 assertion**, dijalankan di dalam Docker pada 2026-07-28.
 
-### Yang tidak ada
+### Berkas tata kelola
 
-`.github/` (tanpa CI, issue template, CODEOWNERS, dependabot), `docs/`,
-`LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
-`SUPPORT.md`, `GOVERNANCE.md`, `ROADMAP.md`.
+Ditambahkan dalam siklus ini: `.github/` (CI, template issue & PR, CODEOWNERS,
+dependabot), `docs/`, `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`,
+`SUPPORT.md`, `ROADMAP.md`.
+
+Masih belum ada: `CODE_OF_CONDUCT.md`, `GOVERNANCE.md`, dan workflow rilis —
+yang terakhir sengaja ditunda sampai strategi versioning ditetapkan.
 
 ---
 
@@ -133,7 +142,7 @@ didokumentasikan sendiri di README —
 | WAHA (WhatsApp OTP) | Diklaim | `WAHA_BASE_URL` di `.env.docker`, `OtpCode` | Test OTP ada, pengiriman WhatsApp tidak | **Partial** | Kredensial kosong secara bawaan |
 | Telegram notifikasi | Diklaim | `TELEGRAM_BOT_TOKEN` di `.env.docker` | Tidak ditemukan test | **Partial** | — |
 | Monitoring (Grafana/Prometheus) | Diklaim | Profil `monitoring`, dashboard + datasource ter-provision | Tidak ada test otomatis | **Verified (manual)** | Grafana merespons HTTP 200; dashboard `system-overview.json` ada |
-| Health/readiness endpoint | Tidak diklaim | Tidak ditemukan | Tidak ada | **Not implemented** | Direkomendasikan — lihat bagian F |
+| Health & readiness endpoint | Diklaim | `app/Http/Controllers/HealthController.php` | Ada — `HealthEndpointTest` (5 test) | **Verified** | Liveness dipisah dari readiness; kebocoran pesan error diuji |
 | CI/CD | Tidak diklaim | Tidak ada `.github/workflows/` | — | **Not implemented** | Prioritas 1 |
 | Backup & restore | Diklaim di README | `deploy/backup/*.sh` dirujuk README | Tidak ditemukan test restore | **Not verified** | Restore belum pernah dibuktikan berhasil |
 
@@ -205,7 +214,7 @@ Itu keberuntungan, bukan rancangan — dan itu pula sebabnya suite tampak gagal
 | Kebutuhan | Status | Catatan |
 |-----------|--------|---------|
 | Health check container | **Ada** | `app` (fpm-healthcheck), `db`, `redis`, `reverb`, `cadvisor` |
-| Health check aplikasi (`/health`) | **Tidak ada** | Tidak ada endpoint liveness/readiness untuk orkestrator |
+| Health check aplikasi (`/health`, `/ready`) | **Ada** | Liveness tanpa dependensi; readiness mengecek DB, Redis, storage. Healthcheck nginx memakai `/health` |
 | Scheduler heartbeat | **Tidak ada** | `schedule:work` berjalan, tetapi kegagalannya tidak terpantau |
 | Queue failure & retry | **Sebagian** | `--tries=3` di service `worker`; strategi dead-letter belum terdokumentasi |
 | Reverb availability | **Ada** | Healthcheck TCP pada port 8080 |
@@ -229,6 +238,9 @@ Itu keberuntungan, bukan rancangan — dan itu pula sebabnya suite tampak gagal
 | Ekstensi PHP `sockets` | Bug produksi | `WakeOnLan` memanggil `socket_create()`; tanpa ini menyalakan PS5 gagal |
 | `node-exporter` ke profil `host-metrics` | Reliability | `--profile monitoring up` tidak lagi gagal di Docker Desktop |
 | Init SQL database test | Operasional | Database test dibuat otomatis saat volume MySQL diinisialisasi |
+| Endpoint `/health` & `/ready` | Observabilitas | 5 test; liveness dipisah dari readiness, healthcheck nginx memakai `/health` |
+| CI tiga job | Reliability | Terbukti hijau di PR #1 setelah dua perbaikan workflow |
+| README, audit, tata kelola | Maintainability | README 1.722 → 243 baris; isi lama utuh di `docs/LEGACY_README.md` |
 
 ---
 
@@ -238,7 +250,6 @@ Itu keberuntungan, bukan rancangan — dan itu pula sebabnya suite tampak gagal
 |--------|----------|-------------|
 | Restore backup belum pernah diuji | **Tinggi** | Latihan restore ke lingkungan terpisah, dokumentasikan hasilnya |
 | Tidak ada CI | **Tinggi** | Wajibkan test + Pint hijau sebelum merge |
-| Tidak ada endpoint health/readiness | **Sedang** | Pisahkan liveness, readiness, dan diagnostik internal |
 | Tidak ada alerting | **Sedang** | Aturan Prometheus untuk queue gagal, scheduler diam, disk menipis |
 | Realtime belum diuji end-to-end | **Sedang** | Test siaran Reverb ke klien |
 | `composer audit` belum dijalankan | **Sedang** | Jalankan di CI |

@@ -15,7 +15,6 @@ keandalan → pemulihan → observabilitas → kemudahan pemeliharaan.
 | Uji restore backup secara nyata | `Planned` | Risiko tertinggi yang tersisa. Prosedur pemulihan yang belum pernah diuji setara dengan tidak ada. |
 | CI wajib hijau sebelum merge | `In progress` | Workflow sudah ada; branch protection perlu diaktifkan lewat UI GitHub |
 | Pemecahan README ke `docs/` | `In progress` | README masih merangkap arsitektur, runbook, dan instalasi |
-| Endpoint health & readiness | `Planned` | Belum ada cara memantau kesehatan aplikasi dari luar container |
 
 ## Next
 
@@ -55,3 +54,4 @@ keandalan → pemulihan → observabilitas → kemudahan pemeliharaan.
 | Instalasi turnkey satu perintah dari volume kosong | 2026-07-28 |
 | Ekstensi `sockets` untuk Wake-on-LAN | 2026-07-28 |
 | Audit repository menyeluruh | 2026-07-28 |
+| Endpoint `/health` dan `/ready` | 2026-07-28 |

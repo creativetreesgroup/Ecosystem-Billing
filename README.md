@@ -15,7 +15,7 @@
 
 ## Status proyek
 
-**Aktif dikembangkan.** Berjalan penuh di Docker dengan 573 test otomatis lulus.
+**Aktif dikembangkan.** Berjalan penuh di Docker dengan 578 test otomatis lulus.
 Belum ada rilis bertag; `main` adalah satu-satunya versi yang didukung.
 
 Kesiapan per area diaudit dan didokumentasikan secara terbuka di
@@ -39,7 +39,20 @@ dibuktikan oleh source code, test, atau konfigurasi.
 | Monitoring — Grafana, Prometheus, exporter | Verified (manual) | Profil `monitoring`, dashboard ter-provision |
 | Realtime (Reverb) | Sebagian | Service berjalan; jalur siaran ke browser belum diuji otomatis |
 | Home Assistant, WAHA (WhatsApp OTP), Telegram | Sebagian | Konfigurasi ada; integrasi belum terverifikasi otomatis |
-| Health/readiness endpoint | Belum ada | Lihat [ROADMAP.md](ROADMAP.md) |
+| Health & readiness endpoint | Verified | `/health` (liveness) dan `/ready` (DB, Redis, storage), 5 test |
+
+### Pemantauan
+
+```bash
+curl http://<IP-server>/health   # {"status":"ok"}                 — liveness
+curl http://<IP-server>/ready    # {"status":"ready","checks":{…}} — readiness
+```
+
+`/health` sengaja tidak menyentuh dependensi apa pun. Kalau ia ikut mengecek
+database, MySQL yang sedang restart akan membuat orkestrator membunuh aplikasi
+yang sebenarnya sehat — restart loop di tengah jam sibuk. `/ready` menjawab
+`503` saat dependensi jatuh, dan tidak pernah membocorkan pesan error
+internal ke pemanggil anonim.
 
 ### Dua jaminan yang ditegakkan di tingkat kode
 
@@ -153,7 +166,7 @@ Panduan lengkap: [`docs/LEGACY_README.md`](docs/LEGACY_README.md).
 docker compose --profile test run --rm test php artisan test --compact
 ```
 
-**573 test lulus, 1.413 assertion** — Unit, Feature, dan Concurrency, terakhir
+**578 test lulus, 1.434 assertion** — Unit, Feature, dan Concurrency, terakhir
 dijalankan 2026-07-28 di dalam Docker.
 
 > **Jangan pernah `docker compose exec app php artisan test`.** Service `app`

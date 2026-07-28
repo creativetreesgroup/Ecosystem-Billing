@@ -1,9 +1,16 @@
 <?php
 
 use App\Domain\Kiosk\UnitKioskScreen;
+use App\Http\Controllers\HealthController;
 use App\Models\Unit;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+
+// Kesehatan sistem. Tanpa autentikasi karena pemanggilnya adalah orkestrator
+// dan monitoring yang tidak punya sesi — keduanya sengaja tidak membocorkan
+// detail kegagalan internal. Lihat HealthController untuk alasan pemisahannya.
+Route::get('/health', [HealthController::class, 'health'])->name('health');
+Route::get('/ready', [HealthController::class, 'ready'])->name('ready');
 
 // Root diarahkan ke panel supaya kasir yang mengetik alamat server saja
 // (tanpa /admin) tetap sampai ke tempat yang benar.

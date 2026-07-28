@@ -64,6 +64,15 @@ services:
     volumes:
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./public:/var/www/html/public:ro
+    # Sengaja /health, bukan /ready: mematikan nginx karena MySQL sedang
+    # restart hanya memperpanjang pemadaman. /ready dipakai load balancer
+    # untuk mengeluarkan instance dari rotasi, bukan untuk membunuhnya.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks: [ctb]
 
   reverb:
