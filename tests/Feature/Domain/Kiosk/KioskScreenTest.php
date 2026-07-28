@@ -262,3 +262,31 @@ test('each unit carries its own QR, decoded from its own screen', function () {
         ->and($panel($dua))->toContain('PS-92')
         ->and($panel($satu))->not->toBe($panel($dua));
 });
+
+/**
+ * Terjadi sungguhan di image Docker: TIDAK ADA satu pun font TTF terpasang.
+ *
+ * imagettftext() gagal DIAM-DIAM ketika berkas fontnya tidak ada — ia
+ * mengembalikan false dan tidak melempar apa pun. QR tetap tergambar karena
+ * itu bentuk kotak GD, sehingga layar tampak "hampir benar": pelanggan melihat
+ * QR telanjang di TV 43 inci tanpa kode unit, tanpa tipe unit, tanpa harga,
+ * tanpa ajakan memindai. Test warna yang sudah ada lolos semua, karena warna
+ * kartunya memang tidak berubah.
+ *
+ * Guard ini menguji lingkungan, bukan logika, dan itu memang disengaja:
+ * kegagalannya hidup di image, bukan di kode.
+ */
+test('a usable TTF font exists for the television screen', function () {
+    $reflection = new ReflectionClass(UnitKioskScreen::class);
+
+    foreach (['FONT_BOLD', 'FONT_REGULAR'] as $constant) {
+        $candidates = $reflection->getConstant($constant);
+
+        $found = collect($candidates)->first(fn (string $path): bool => is_readable($path));
+
+        expect($found)->not->toBeNull(
+            "Tidak ada font {$constant} yang terbaca. Layar TV akan tampil tanpa teks sama sekali. "
+            .'Pasang paket font di Dockerfile (Alpine: font-dejavu).'
+        );
+    }
+});

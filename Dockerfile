@@ -18,7 +18,13 @@ FROM php:8.5-fpm-alpine AS app
 ADD https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions /usr/local/bin/
 RUN chmod +x /usr/local/bin/install-php-extensions \
     && install-php-extensions pdo_mysql mbstring bcmath gd intl zip pcntl opcache exif sockets \
-    && apk add --no-cache fcgi
+    # font-dejavu: WAJIB, bukan pemanis. Layar TV digambar dengan GD, dan
+    # imagettftext() GAGAL DIAM-DIAM bila berkas fontnya tidak ada — QR tetap
+    # tergambar karena itu bentuk kotak, tetapi kode unit, tipe unit, harga, dan
+    # ajakan "PINDAI UNTUK MULAI" semuanya hilang tanpa satu pun pesan error.
+    # Yang tersisa di layar 43 inci hanyalah QR telanjang, dan pelanggan tidak
+    # tahu unit mana yang sedang ia pindai.
+    && apk add --no-cache fcgi font-dejavu
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

@@ -4,6 +4,7 @@ namespace App\Domain\Kiosk;
 
 use App\Domain\Billing\Rupiah;
 use App\Models\Package;
+use App\Models\Setting;
 use App\Models\Unit;
 use BaconQrCode\Common\ErrorCorrectionLevel;
 use BaconQrCode\Encoder\Encoder;
@@ -199,7 +200,10 @@ final class UnitKioskScreen
                 ? 'Mulai '.Rupiah::format($cheapest->price).'  ·  '.$cheapest->duration_minutes.' menit'
                 : 'Hubungi kasir untuk mulai', $regular, 24, 968 * $s, $soft);
 
-            self::text($image, $left, $right, 'CREATIVE TREES BILLING GAME', $regular, 14, 1004 * $s, $accent, 0.24);
+            // Nama usaha dibaca dari pengaturan, bukan dipaku di sini. Outlet
+            // yang berganti nama tidak boleh menuntut perubahan kode dan build
+            // ulang image hanya untuk satu baris tulisan di kaki layar.
+            self::text($image, $left, $right, mb_strtoupper(Setting::brandName()), $regular, 14, 1004 * $s, $accent, 0.24);
         }
 
         return $image;
