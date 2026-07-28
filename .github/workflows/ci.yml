@@ -112,6 +112,11 @@ jobs:
           DB_DATABASE: creative_trees_billing_test
           DB_USERNAME: ctb_app
           DB_PASSWORD: ci_app_password
+          # Wajib diisi: migrasi permission_tables memanggil Cache::forget(), dan
+          # CACHE_STORE=redis dari .env.docker menunjuk host "redis" -- nama
+          # service Docker yang tidak ada di runner GitHub.
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
         run: |
           php artisan migrate:fresh --force
           php artisan db:seed --class='Database\Seeders\RolesAndPermissionsSeeder' --force
@@ -130,8 +135,10 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      # --locked: job ini sengaja tidak menjalankan composer install agar cepat,
+      # jadi audit membaca composer.lock, bukan vendor/ yang tidak ada.
       - name: Audit dependencies for known vulnerabilities
-        run: composer audit --no-interaction
+        run: composer audit --locked --no-interaction
 
   docker:
     name: Docker build
