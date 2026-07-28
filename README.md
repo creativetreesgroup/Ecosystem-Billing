@@ -15,7 +15,7 @@
 
 ## Status proyek
 
-**Aktif dikembangkan.** Berjalan penuh di Docker dengan 591 test otomatis lulus.
+**Aktif dikembangkan.** Berjalan penuh di Docker dengan 593 test otomatis lulus.
 Belum ada rilis bertag; `main` adalah satu-satunya versi yang didukung.
 
 Kesiapan per area diaudit dan didokumentasikan secara terbuka di
@@ -36,7 +36,7 @@ dibuktikan oleh source code, test, atau konfigurasi.
 | Diskon & voucher dengan pencatatan penukaran | Verified | `app/Domain/Discounts`, `DiscountRedemption` |
 | Kontrol TV & unit — Wake-on-LAN, MQTT/Tasmota, diagnostik | Verified | `tv:doctor`, `WakeOnLan`, `TasmotaTopic` |
 | Panel owner & kasir (Filament) dengan peran berbutir halus | Verified | 11 peran, 217 izin dari Shield |
-| Identitas usaha dapat diubah dari panel — nama, logo, favicon | Verified | `SettingKey::BusinessName/BrandLogo/BrandFavicon`, 8 test |
+| Identitas usaha dapat diubah dari panel — nama, logo, favicon | Verified | `SettingKey::BusinessName/BrandLogo/BrandFavicon`, 10 test termasuk mitigasi XSS SVG |
 | Monitoring — Grafana, Prometheus, exporter | Verified (manual) | Profil `monitoring`, dashboard ter-provision |
 | Realtime (Reverb) | Sebagian | Service berjalan; jalur siaran ke browser belum diuji otomatis |
 | Home Assistant, WAHA (WhatsApp OTP), Telegram | Sebagian | Konfigurasi ada; integrasi belum terverifikasi otomatis |
@@ -167,7 +167,7 @@ Panduan lengkap: [`docs/LEGACY_README.md`](docs/LEGACY_README.md).
 docker compose --profile test run --rm test php artisan test --compact
 ```
 
-**591 test lulus, 1.472 assertion** — Unit, Feature, dan Concurrency, terakhir
+**593 test lulus, 1.479 assertion** — Unit, Feature, dan Concurrency, terakhir
 dijalankan 2026-07-28 di dalam Docker.
 
 > **Jangan pernah `docker compose exec app php artisan test`.** Service `app`

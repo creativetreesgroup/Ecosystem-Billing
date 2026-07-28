@@ -24,7 +24,7 @@ Creative Trees Group.
 
 **Tingkat kesiapan saat ini.** Aplikasinya matang secara fungsional — 10 domain,
 21 model, 15 perintah artisan operasional, 100 berkas test, dan seluruh suite
-(591 test) lulus di dalam Docker. Yang belum matang adalah **kelengkapan
+(593 test) lulus di dalam Docker. Yang belum matang adalah **kelengkapan
 repository sebagai produk engineering**: tidak ada CI, tidak ada dokumentasi
 terstruktur, dan tidak ada berkas tata kelola.
 
@@ -110,7 +110,7 @@ didokumentasikan sendiri di README —
 ### Test
 
 104 berkas test, 3 testsuite (`Unit`, `Feature`, `Concurrency`).
-**591 test lulus, 1.472 assertion**, dijalankan di dalam Docker pada 2026-07-28.
+**593 test lulus, 1.479 assertion**, dijalankan di dalam Docker pada 2026-07-28.
 
 ### Berkas tata kelola
 

@@ -84,3 +84,37 @@ test('brand assets are reachable without logging in', function () {
     $this->assertGuest();
     $this->get(Setting::brandAssetUrl(SettingKey::BrandFavicon))->assertOk();
 });
+
+test('an svg logo cannot execute scripts on the panel origin', function () {
+    Storage::fake('local');
+
+    // SVG adalah dokumen XML, bukan sekadar gambar — ia boleh memuat <script>.
+    // Route ini menyajikannya TANPA login di origin yang sama dengan panel
+    // admin, jadi tanpa mitigasi siapa pun yang bisa mengunggah logo dapat
+    // menanam skrip yang berjalan di sesi kasir atau owner yang sedang login:
+    // stored XSS yang berujung pengambilalihan akun, di sistem pemegang uang.
+    $svg = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(document.cookie)</script></svg>';
+    Storage::disk('local')->put('brand/logo.svg', $svg);
+    Setting::put(SettingKey::BrandLogo, 'brand/logo.svg');
+
+    $response = $this->get('/brand/'.SettingKey::BrandLogo->value)->assertOk();
+
+    expect($response->headers->get('Content-Security-Policy'))
+        ->toContain('sandbox')
+        ->toContain("default-src 'none'")
+        ->and($response->headers->get('X-Content-Type-Options'))->toBe('nosniff');
+});
+
+test('a file whose type is not an allowed image is never rendered by the browser', function () {
+    Storage::fake('local');
+
+    // Berkas berbahaya yang lolos ke storage lewat jalur lain tidak boleh
+    // mendadak dirender sebagai HTML hanya karena browser menebak isinya.
+    Storage::disk('local')->put('brand/jebakan.html', '<script>alert(1)</script>');
+    Setting::put(SettingKey::BrandLogo, 'brand/jebakan.html');
+
+    $response = $this->get('/brand/'.SettingKey::BrandLogo->value)->assertOk();
+
+    expect($response->headers->get('Content-Type'))->toStartWith('application/octet-stream')
+        ->and($response->headers->get('X-Content-Type-Options'))->toBe('nosniff');
+});

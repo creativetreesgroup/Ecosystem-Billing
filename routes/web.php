@@ -31,10 +31,35 @@ Route::get('/brand/{key}', function (string $key) {
 
     abort_if($path === '' || ! Storage::disk('local')->exists($path), 404);
 
+    $mime = Storage::disk('local')->mimeType($path) ?: '';
+
+    // Daftar-putih tipe. Berkas yang tipenya di luar daftar disajikan sebagai
+    // octet-stream — bersama nosniff, browser menolak merendernya sama sekali
+    // alih-alih menebak-nebak isinya.
+    $safeMime = in_array($mime, ['image/png', 'image/jpeg', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/svg+xml'], true)
+        ? $mime
+        : 'application/octet-stream';
+
     return response(Storage::disk('local')->get($path), 200, [
-        'Content-Type' => Storage::disk('local')->mimeType($path) ?: 'application/octet-stream',
+        'Content-Type' => $safeMime,
         // URL sudah mengandung sidik jari isi berkas, jadi aman di-cache lama.
         'Cache-Control' => 'public, max-age=604800',
+
+        // SVG BUKAN sekadar gambar: ia dokumen XML yang boleh memuat <script>,
+        // dan route ini menyajikannya tanpa login di ORIGIN YANG SAMA dengan
+        // panel admin. Tanpa tiga header di bawah, siapa pun yang bisa
+        // mengunggah logo bisa menanam skrip yang berjalan di sesi kasir atau
+        // owner yang sedang membuka panel — stored XSS yang berujung
+        // pengambilalihan akun, di sistem yang memegang uang.
+        //
+        // sandbox + default-src 'none' mematikan skrip di dalam dokumen SVG
+        // saat URL-nya dibuka langsung; style-src 'unsafe-inline' dipertahankan
+        // supaya logo berwarna tetap tampil benar. Dirender lewat <img> skrip
+        // memang tidak jalan — tetapi jalur berbahayanya adalah membuka URL itu
+        // langsung, dan justru itu yang paling mudah dilakukan.
+        'Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        'X-Content-Type-Options' => 'nosniff',
+        'Content-Disposition' => 'inline; filename="brand"',
     ]);
 })->name('brand.asset');
 
