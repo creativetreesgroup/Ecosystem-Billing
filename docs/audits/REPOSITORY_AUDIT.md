@@ -24,7 +24,7 @@ Creative Trees Group.
 
 **Tingkat kesiapan saat ini.** Aplikasinya matang secara fungsional — 10 domain,
 21 model, 15 perintah artisan operasional, 100 berkas test, dan seluruh suite
-(578 test) lulus di dalam Docker. Yang belum matang adalah **kelengkapan
+(583 test) lulus di dalam Docker. Yang belum matang adalah **kelengkapan
 repository sebagai produk engineering**: tidak ada CI, tidak ada dokumentasi
 terstruktur, dan tidak ada berkas tata kelola.
 
@@ -109,8 +109,8 @@ didokumentasikan sendiri di README —
 
 ### Test
 
-101 berkas test, 3 testsuite (`Unit`, `Feature`, `Concurrency`).
-**578 test lulus, 1.434 assertion**, dijalankan di dalam Docker pada 2026-07-28.
+102 berkas test, 3 testsuite (`Unit`, `Feature`, `Concurrency`).
+**583 test lulus, 1.456 assertion**, dijalankan di dalam Docker pada 2026-07-28.
 
 ### Berkas tata kelola
 
@@ -238,6 +238,7 @@ Itu keberuntungan, bukan rancangan — dan itu pula sebabnya suite tampak gagal
 | Ekstensi PHP `sockets` | Bug produksi | `WakeOnLan` memanggil `socket_create()`; tanpa ini menyalakan PS5 gagal |
 | `node-exporter` ke profil `host-metrics` | Reliability | `--profile monitoring up` tidak lagi gagal di Docker Desktop |
 | Init SQL database test | Operasional | Database test dibuat otomatis saat volume MySQL diinisialisasi |
+| Konfigurasi bawaan diwujudkan jadi baris | Usability & auditability | Layar Pengaturan/Integrasi tidak lagi kosong; 5 test, termasuk anti-timpa saat restart |
 | Endpoint `/health` & `/ready` | Observabilitas | 5 test; liveness dipisah dari readiness, healthcheck nginx memakai `/health` |
 | CI tiga job | Reliability | Terbukti hijau di PR #1 setelah dua perbaikan workflow |
 | README, audit, tata kelola | Maintainability | README 1.722 → 243 baris; isi lama utuh di `docs/LEGACY_README.md` |

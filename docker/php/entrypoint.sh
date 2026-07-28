@@ -32,6 +32,14 @@ if [ "$1" = "php-fpm" ]; then
     # menjalankannya tiap start justru cara membagikan izin resource baru.
     php artisan db:seed --class='Database\Seeders\RolesAndPermissionsSeeder' --force
 
+    # Pengaturan & integrasi bawaan diwujudkan jadi baris yang benar-benar ada.
+    # Tanpa ini aplikasi tetap berjalan benar (Setting::get jatuh ke default),
+    # tetapi owner membuka layar Pengaturan dan Integrasi yang KOSONG — tidak
+    # ada cara melihat, apalagi mengubah, tarif dan biaya yang sedang berlaku.
+    # Seeder ini memakai firstOrCreate, jadi nilai yang sudah disesuaikan owner
+    # TIDAK ditimpa setiap container menyala.
+    php artisan db:seed --class='Database\Seeders\DefaultConfigurationSeeder' --force
+
     php artisan storage:link 2>/dev/null || true
     php artisan optimize
     php artisan filament:optimize
