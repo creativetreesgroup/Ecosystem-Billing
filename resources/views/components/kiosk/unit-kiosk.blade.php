@@ -986,6 +986,17 @@ new class extends Component
      berhenti dulu hanya untuk jajan berarti menghentikan tagihan yang sedang
      berjalan — merugikan pelanggan sekaligus outlet. --}}
 @php($playing = (bool) $mine)
+{{-- Layar pembayaran (lunas, menunggu verifikasi, QRIS, transfer) ditampilkan
+     sebagai panel geser yang SUDAH terbuka, bukan kartu yang menumpuk di bawah
+     kartu sesi. Kondisinya disalin persis dari rantai di bawah supaya keadaan
+     pembayaran lain — tunai, gagal, kedaluwarsa — tetap jatuh ke dasbor seperti
+     sebelumnya, bukan berakhir di panel kosong. --}}
+@php($paymentScreen = $this->payment && (
+    $this->payment->status === PaymentStatus::Paid
+    || $this->payment->status === PaymentStatus::AwaitingVerification
+    || ($this->payment->status === PaymentStatus::Pending
+        && in_array($this->payment->method, [PaymentMethod::Qris, PaymentMethod::Transfer], true))
+))
 @php($centered = ! $this->customer || ($sess && ! $mine))
 
 <div class="kiosk {{ $centered ? 'kiosk--center' : '' }}">
@@ -1215,7 +1226,21 @@ new class extends Component
 
     {{-- LUNAS — konfirmasi berhasil yang benar-benar terlihat, konsisten untuk
          QRIS maupun transfer, ditutup sendiri oleh pelanggan. --}}
-    @elseif ($this->payment?->status === PaymentStatus::Paid)
+    @elseif ($paymentScreen)
+        {{-- is-open sejak dirender: pembayaran yang sedang menunggu bukan
+             sesuatu yang harus dicari pelanggan. Ia muncul sendiri, dan
+             tetap bisa ditutup lewat tombol di kepala panel. --}}
+        <div class="sheet is-open"
+             x-data="{ open: true }"
+             x-on:keydown.escape.window="open = false"
+             :class="{ 'is-open': open }">
+
+            <div class="sheet-head">
+                <span class="sheet-grip" aria-hidden="true"></span>
+                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
+            </div>
+
+        @if ($this->payment?->status === PaymentStatus::Paid)
         <div class="card pay-card">
             <div class="center"><span class="icon-badge icon-badge-ok">@svg('heroicon-o-check-circle')</span></div>
             <h2 class="card-title">Pembayaran berhasil</h2>
@@ -1289,6 +1314,9 @@ new class extends Component
             <button type="button" class="linkish" wire:click="cancelPayment" wire:confirm="Batalkan tagihan isi saldo ini?">Batalkan</button>
         </div>
 
+        @endif
+        </div>{{-- /panel pembayaran --}}
+
     @else
         {{-- Dihitung SEBELUM cabang mana pun: keduanya dipakai halaman dasar
              maupun panel geser. Sebelumnya keduanya lahir di dalam blok yang
@@ -1361,8 +1389,16 @@ new class extends Component
         <div class="quick">
             @foreach ($quickTiles as [$key, $labelText, $icon])
                 @php($disabled = $locked && in_array($key, ['main', 'order'], true))
+                {{-- Menekan tile TIDAK cukup mengganti tab: isi Pesan, Isi saldo,
+                     dan Riwayat kini hidup di dalam panel geser yang tersembunyi
+                     sampai dibuka. Tanpa dispatch di bawah, tab berpindah tetapi
+                     panelnya tetap tertutup — pelanggan menekan tombol lalu
+                     menatap halaman KOSONG, dan tidak ada pesan apa pun yang
+                     menjelaskan mengapa. "Main" dikecualikan: isinya memang
+                     berada di halaman, bukan di panel. --}}
                 <button type="button" class="quick-tile {{ $activeTab === $key ? 'is-active' : '' }} {{ $disabled ? 'quick-off' : '' }}"
                         @if ($disabled) disabled @else wire:click="$set('tab', '{{ $key }}')" @endif
+                        @if (! $disabled && $key !== 'main') x-on:click="$dispatch('kiosk-sheet')" @endif
                         aria-label="{{ $labelText }}" title="{{ $labelText }}">
                     @svg($icon)
                 </button>

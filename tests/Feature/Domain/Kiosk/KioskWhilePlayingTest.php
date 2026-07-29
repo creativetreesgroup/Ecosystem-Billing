@@ -204,3 +204,42 @@ test('while playing the balance card is not rendered at all', function () {
         ->and($html)->toContain('class="sheet"')
         ->and($html)->not->toContain('sheet is-open');
 });
+
+test('every tile that opens the panel actually opens it', function () {
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    // Isi Pesan, Isi saldo, dan Riwayat hidup di dalam panel yang tersembunyi
+    // sampai dibuka. Tile yang hanya mengganti tab tanpa membuka panel membuat
+    // pelanggan menekan tombol lalu menatap halaman KOSONG — tanpa pesan apa
+    // pun yang menjelaskan mengapa. Persis itu yang pernah terjadi.
+    foreach (['Pesan', 'Isi saldo', 'Riwayat'] as $label) {
+        expect($html)->toMatch(
+            '/aria-label="'.preg_quote($label, '/').'"/',
+            "Tile {$label} tidak dirender."
+        );
+    }
+
+    // Jumlah pengirim peristiwa harus sama dengan jumlah tile yang isinya ada
+    // di panel: tiga di halaman dasar.
+    expect(substr_count($html, "\$dispatch('kiosk-sheet')"))->toBeGreaterThanOrEqual(3);
+});
+
+test('a pending payment shows itself as an already-open panel', function () {
+    // Satu rangkaian pada komponen yang SAMA: paymentId hidup di state
+    // komponen, jadi instance baru tidak akan mengenali pembayaran itu.
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('tab', 'topup')
+        ->set('topUpAmount', 200_000)
+        ->set('method', 'transfer')
+        ->call('askTopUp')
+        ->call('topUp')
+        ->html();
+
+    // Pembayaran yang sedang menunggu bukan sesuatu yang harus DICARI
+    // pelanggan. Ia muncul sendiri sebagai panel, bukan kartu yang menumpuk
+    // di bawah kartu sesi sampai perlu digulir untuk ditemukan.
+    expect($html)->toContain('sheet is-open');
+});
