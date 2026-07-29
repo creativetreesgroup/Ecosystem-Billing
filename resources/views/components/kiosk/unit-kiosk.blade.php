@@ -1595,6 +1595,20 @@ new class extends Component
         @endif
 
         <button type="button" class="linkish" wire:click="signOut">Keluar</button>
+
+        {{-- Penutup pembungkus panel geser, DI DALAM cabang yang sama tempat
+             ia dibuka. Sebelumnya penutup ini tersesat ke dalam
+             @elseif ($confirm === 'topup'), sehingga hanya terender saat modal
+             top-up kebetulan terbuka; di keadaan lain root komponen tidak
+             pernah ditutup. Livewire lalu menolak memasang komponennya
+             ("missing closing tags found") dan setiap wire:click sesudahnya
+             gagal dengan "Cannot read properties of undefined (reading 'uri')"
+             -- tombol tampak hidup, tetapi tidak ada yang terjadi saat ditekan.
+
+             Menaruhnya di luar semua cabang juga salah: pembungkus ini hanya
+             dibuka untuk pelanggan yang sudah masuk, jadi bagi tamu penutupnya
+             akan menutup sesuatu yang tidak pernah ada. --}}
+        </div>{{-- /pembungkus panel geser --}}
     @endif
     </div>
 
@@ -1734,7 +1748,5 @@ new class extends Component
                 <button type="button" class="btn btn-ghost btn-block-gap" wire:click="cancelConfirm">Batal</button>
             </div>
         </div>
-
-        </div>{{-- /pembungkus panel geser --}}
     @endif
 </div>
