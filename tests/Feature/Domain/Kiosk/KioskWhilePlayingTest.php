@@ -150,15 +150,20 @@ test('the dashboard becomes a slide-up sheet while playing', function () {
         ->and($playingHtml)->toContain('kiosk-sheet');
 });
 
-test('outside a session the dashboard stays a plain page, not a sheet', function () {
-    // Pembungkusnya tidak boleh berkelas apa pun di luar sesi -- kalau tidak,
-    // dasbor biasa ikut tersembunyi di balik panel yang tak pernah dibuka.
+test('outside a session the panel exists but stays closed, with the page still usable', function () {
     $html = Livewire::actingAs($this->customer, 'customer')
         ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
         ->html();
 
-    expect($html)->not->toContain('sheet is-open')
-        ->and($html)->not->toContain('kiosk-sheet');
+    // Panel dipakai SELALU, bukan hanya saat bermain: satu aplikasi tidak boleh
+    // punya dua perilaku untuk tombol yang sama.
+    expect($html)->toContain('class="sheet"')
+        // Tertutup saat halaman dimuat.
+        ->and($html)->not->toContain('sheet is-open')
+        // Halaman dasar tetap berisi: kartu saldo dan pilihan cara main ada di
+        // luar panel, jadi pelanggan baru tidak menghadapi layar kosong.
+        ->and($html)->toContain('balance-card')
+        ->and($html)->toContain('aria-label="Main"');
 });
 
 test('the slide-over panel is hidden from the very first paint', function () {
@@ -179,7 +184,7 @@ test('the slide-over panel is hidden from the very first paint', function () {
         ->and($html)->not->toContain("'sheet is-open' : 'sheet'");
 });
 
-test('while playing only the session card is on screen, the balance card moves into the panel', function () {
+test('while playing the balance card is not rendered at all', function () {
     Livewire::actingAs($this->customer, 'customer')
         ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
         ->set('packageId', $this->package->id)
@@ -189,15 +194,13 @@ test('while playing only the session card is on screen, the balance card moves i
         ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
         ->html();
 
-    $sheetAt = strpos($html, 'class="sheet"');
-    $balanceAt = strpos($html, 'balance-card');
-
-    expect($sheetAt)->not->toBeFalse('Panel geser tidak dirender saat bermain.')
-        ->and($balanceAt)->not->toBeFalse('Kartu saldo hilang sama sekali dari dasbor.');
-
-    // Kartu saldo harus berada SESUDAH pembuka panel, artinya di dalamnya.
-    // Ketika ia berdiri di luar, layar menampilkan dua kartu bertumpuk dengan
-    // dua angka saldo yang berbeda beberapa rupiah — satu berjalan per detik,
-    // satu diam — dan pelanggan tidak tahu mana yang benar.
-    expect($balanceAt)->toBeGreaterThan($sheetAt);
+    // Kartu sesi sudah memuat saldo yang berjalan per detik. Kartu saldo kedua
+    // menampilkan angka yang berbeda beberapa rupiah — satu berjalan, satu diam
+    // — dan pelanggan tidak punya cara tahu mana yang benar. Yang tampil saat
+    // bermain cukup kartu sesinya.
+    expect($html)->not->toContain('balance-card')
+        ->and($html)->toContain('Sedang main')
+        // Panelnya tetap ada dan tertutup, siap dibuka lewat tile di kartu sesi.
+        ->and($html)->toContain('class="sheet"')
+        ->and($html)->not->toContain('sheet is-open');
 });

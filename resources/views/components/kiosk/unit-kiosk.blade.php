@@ -1290,35 +1290,21 @@ new class extends Component
         </div>
 
     @else
-        {{-- Saat bermain, SELURUH dasbor -- termasuk kartu saldo -- pindah ke
-             panel yang menggeser naik dari bawah layar. Pembungkus ini karena
-             itu dibuka DI SINI, tepat setelah cabang dasbor dimulai, bukan di
-             tengah-tengahnya: sebelumnya kartu saldo berdiri di luar pembungkus
-             sehingga tetap tampil di bawah kartu sesi. Dua kartu bertumpuk
-             dengan dua angka saldo yang berbeda beberapa rupiah -- satu berjalan
-             per detik, satu diam -- membuat pelanggan ragu mana yang benar.
+        {{-- Dihitung SEBELUM cabang mana pun: keduanya dipakai halaman dasar
+             maupun panel geser. Sebelumnya keduanya lahir di dalam blok yang
+             hanya berjalan saat tidak bermain, sehingga panel yang dibuka saat
+             bermain meledak dengan "Undefined variable $activeTab".
 
-             Yang tampil saat bermain cukup kartu sesinya saja. Sisanya muncul
-             ketika pelanggan menekan Pesan, Isi saldo, atau Riwayat.
+             Saldo minus = akun TERKUNCI untuk main sampai dilunasi. Bukan flag
+             terpisah: saldo negatif itu sendiri yang mengunci. --}}
+        @php($locked = $this->customer->balance < 0)
+        @php($activeTab = ($locked || $playing) && $tab === 'main' ? 'topup' : $tab)
 
-             class="sheet" ditulis STATIS, bukan hanya lewat :class Alpine.
-             Sebelum Alpine sempat menghidupkan komponennya, wrapper tanpa kelas
-             berarti seluruh isi panel terender penuh lebih dulu lalu mengejut
-             hilang -- di HP kelas bawah terlihat jelas sebagai halaman yang
-             melompat. Alpine kini hanya menambahkan is-open. --}}
-        <div @if ($playing) class="sheet"
-                 x-data="{ open: false }"
-                 x-on:kiosk-sheet.window="open = true"
-                 x-on:keydown.escape.window="open = false"
-                 :class="{ 'is-open': open }" @endif>
-
-        @if ($playing)
-            <div class="sheet-head">
-                <span class="sheet-grip" aria-hidden="true"></span>
-                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
-            </div>
-        @endif
-
+        {{-- Saat bermain, kartu saldo tidak ditampilkan sama sekali. Kartu
+             sesi di atasnya sudah memuat saldo yang berjalan per detik; dua
+             kartu bertumpuk dengan dua angka yang berbeda beberapa rupiah —
+             satu berjalan, satu diam — membuat pelanggan ragu mana yang benar. --}}
+        @unless ($playing)
         {{-- DASBOR — kartu saldo paling atas: saldonya satu-satunya angka yang
              menentukan apakah pelanggan bisa langsung main atau harus isi dulu.
              Dikemas seperti kartu pembayaran; nomor kartunya tersamar (hanya 4
@@ -1354,13 +1340,6 @@ new class extends Component
         </div>
         @if ($notice) <p class="notice">{{ $notice }}</p> @endif
 
-        {{-- Saldo minus = akun TERKUNCI untuk main sampai dilunasi. Bukan flag
-             terpisah: saldo negatif itu sendiri yang mengunci — tile "Main"
-             dimatikan dan tab dipaksa ke "Isi saldo". --}}
-        @php($locked = $this->customer->balance < 0)
-        {{-- Sedang main mematikan tile "Main" saja. "Pesan" dan "Isi saldo"
-             justru paling dibutuhkan tepat saat sedang bermain. --}}
-        @php($activeTab = ($locked || $playing) && $tab === 'main' ? 'topup' : $tab)
         @if ($locked)
             <p class="alert">Saldo minus <b>−{{ Rupiah::format(abs($this->customer->balance)) }}</b>. Lunasi dulu untuk bisa main lagi.</p>
         @endif
@@ -1433,7 +1412,44 @@ new class extends Component
 
             <button type="button" class="btn" wire:click="askPlay" wire:loading.attr="disabled" wire:target="askPlay">Mulai main</button>
         </div>
-        @elseif ($activeTab === 'order')
+        @endif
+        @endunless
+
+        {{-- Panel geser: Pesan, Isi saldo, dan Riwayat SELALU naik dari bawah,
+             baik sedang bermain maupun tidak. Sebelumnya ketiganya tampil
+             menurun di halaman saat tidak bermain dan sebagai panel saat
+             bermain — satu aplikasi dengan dua perilaku untuk tombol yang sama.
+
+             "Pilih cara main" sengaja TIDAK ikut ke dalam panel: itu langkah
+             pertama pelanggan baru, dan menyembunyikannya di balik satu tekanan
+             tombol menambah satu langkah tepat sebelum ia membayar. --}}
+        <div class="sheet"
+             x-data="{ open: false }"
+             x-on:kiosk-sheet.window="open = true"
+             x-on:keydown.escape.window="open = false"
+             :class="{ 'is-open': open }">
+
+            <div class="sheet-head">
+                <span class="sheet-grip" aria-hidden="true"></span>
+                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
+            </div>
+
+            {{-- Tiga saja: "Main" tidak pernah ikut ke panel. Panel ini isinya
+                 Pesan, Isi saldo, dan Riwayat; menaruh "Main" di sini berarti
+                 menawarkan mulai bermain dari tempat yang justru dibuka karena
+                 pelanggan sedang tidak ingin memulai apa pun. --}}
+            <div class="quick quick-inline">
+                @foreach ([['order', 'Pesan', 'heroicon-o-shopping-bag'], ['topup', 'Isi saldo', 'heroicon-o-plus'], ['history', 'Riwayat', 'heroicon-o-clock']] as [$sKey, $sLabel, $sIcon])
+                    <button type="button"
+                            class="quick-tile {{ $activeTab === $sKey ? 'is-active' : '' }} {{ $locked && $sKey === 'order' ? 'quick-off' : '' }}"
+                            @if ($locked && $sKey === 'order') disabled @else wire:click="$set('tab', '{{ $sKey }}')" @endif
+                            aria-label="{{ $sLabel }}" title="{{ $sLabel }}">
+                        @svg($sIcon)
+                    </button>
+                @endforeach
+            </div>
+
+        @if ($activeTab === 'order')
         <div class="card">
             <p class="label">Pesan makanan &amp; minuman</p>
 
@@ -1560,7 +1576,12 @@ new class extends Component
 
             <button type="button" class="btn btn-block-gap" wire:click="askTopUp" wire:loading.attr="disabled" wire:target="askTopUp">Lanjut</button>
         </div>
-        @else
+        {{-- @elseif eksplisit, BUKAN @else. Rantai ini sekarang dimulai dari
+             'order', jadi @else akan ikut menangkap tab 'main' — panel diam-diam
+             merender riwayat lengkap dengan query-nya di layar pilih-cara-main,
+             dan pelanggan yang membuka panel menemukan riwayat, bukan yang ia
+             tekan. --}}
+        @elseif ($activeTab === 'history')
         <div class="card">
             <div class="section-title">
                 <h3>Transaksi</h3>
@@ -1609,8 +1630,6 @@ new class extends Component
         </div>
         @endif
 
-        <button type="button" class="linkish" wire:click="signOut">Keluar</button>
-
         {{-- Penutup pembungkus panel geser, DI DALAM cabang yang sama tempat
              ia dibuka. Sebelumnya penutup ini tersesat ke dalam
              @elseif ($confirm === 'topup'), sehingga hanya terender saat modal
@@ -1624,6 +1643,11 @@ new class extends Component
              dibuka untuk pelanggan yang sudah masuk, jadi bagi tamu penutupnya
              akan menutup sesuatu yang tidak pernah ada. --}}
         </div>{{-- /pembungkus panel geser --}}
+
+        {{-- Keluar berada di halaman, bukan di dalam panel: menutup sesi masuk
+             bukan bagian dari memesan atau mengisi saldo, dan menyembunyikannya
+             di balik panel membuat pelanggan tidak menemukan cara keluar. --}}
+        <button type="button" class="linkish" wire:click="signOut">Keluar</button>
     @endif
     </div>
 
