@@ -355,16 +355,44 @@
         .sheet.is-open { transform: translateY(0); visibility: visible; }
         @media (prefers-reduced-motion: reduce) { .sheet { transition: none; } }
 
-        .sheet-head { position: sticky; top: 0; display: flex; align-items: center;
-            justify-content: center; padding: .55rem 0 .35rem; background: var(--bg); }
-        .sheet-grip { width: 2.5rem; height: .25rem; border-radius: 999px; background: var(--border-strong); }
-        .sheet-close {
-            position: absolute; right: .1rem; top: .25rem;
-            width: 2.25rem; height: 2.25rem; border: 0; border-radius: 999px;
-            background: transparent; color: var(--muted);
-            font-size: 1.6rem; line-height: 1; cursor: pointer;
+        /* Kepala panel: pegangan benar-benar di tengah, tombol tutup di kanan.
+           Dulu tombolnya diposisikan absolut ke sudut panel sehingga melayang
+           di atas isinya tanpa ruang sendiri — terbaca seperti tempelan, bukan
+           bagian dari panel. Kini keduanya duduk dalam satu baris grid: kolom
+           kiri kosong seukuran tombol, jadi pegangan tetap tepat di tengah
+           tanpa didorong tombol di kanannya. */
+        .sheet-head {
+            position: sticky; top: 0; z-index: 1;
+            display: grid; grid-template-columns: 2.5rem 1fr 2.5rem; align-items: center;
+            padding: .75rem .25rem .5rem; background: var(--bg);
         }
-        .sheet-close:active { transform: translateY(1px); }
+        .sheet-grip {
+            grid-column: 2; justify-self: center;
+            width: 2.5rem; height: .25rem; border-radius: 999px; background: var(--border-strong);
+        }
+        .sheet-close {
+            grid-column: 3; justify-self: end;
+            display: flex; align-items: center; justify-content: center;
+            /* 2.5rem = 40px. Di bawah itu tombol tutup jadi sasaran meleset di
+               HP, dan yang meleset di panel pembayaran berarti pelanggan
+               menekan hal lain saat hendak membatalkan. */
+            width: 2.5rem; height: 2.5rem; border: 0; border-radius: 999px;
+            background: var(--border); color: var(--muted); cursor: pointer;
+            transition: background .15s, color .15s, transform .05s;
+        }
+        .sheet-close svg { width: 1.15rem; height: 1.15rem; stroke-width: 2; }
+        .sheet-close:hover { background: var(--border-strong); color: var(--ink); }
+        .sheet-close:active { transform: scale(.94); }
+
+        /* Kartu DI DALAM panel kehilangan wadahnya sendiri: panel sudah menjadi
+           permukaannya. Tanpa ini yang tampil adalah kartu putih di atas panel
+           putih — dua tepi membulat bertumpuk dengan jarak ganda di antaranya,
+           dan isinya terlihat terjepit alih-alih lapang. */
+        .sheet > .card,
+        .sheet .pay-card {
+            background: transparent; box-shadow: none; border: 0;
+            padding-left: 0; padding-right: 0; margin-top: 0;
+        }
         .quick-tile {
             width: 3.5rem; height: 3.5rem; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;

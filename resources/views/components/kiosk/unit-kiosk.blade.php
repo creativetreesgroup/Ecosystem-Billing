@@ -1241,7 +1241,7 @@ new class extends Component
         @if ($playing)
             <div class="sheet-head">
                 <span class="sheet-grip" aria-hidden="true"></span>
-                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
+                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">@svg('heroicon-o-x-mark')</button>
             </div>
         @endif
 
@@ -1480,7 +1480,7 @@ new class extends Component
         @if ($playing)
             <div class="sheet-head">
                 <span class="sheet-grip" aria-hidden="true"></span>
-                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
+                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">@svg('heroicon-o-x-mark')</button>
             </div>
         @endif
 
