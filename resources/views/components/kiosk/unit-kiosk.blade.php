@@ -979,7 +979,14 @@ new class extends Component
 };
 ?>
 
-@php($centered = ! $this->customer || $this->activeSession)
+@php($sess = $this->activeSession)
+@php($mine = $sess && $this->customer && $sess->customer_id === $this->customer->id)
+{{-- Sedang main MILIK SENDIRI bukan lagi keadaan yang menggantikan dasbor.
+     Pelanggan yang sudah main tetap butuh isi saldo dan pesan makanan; memaksanya
+     berhenti dulu hanya untuk jajan berarti menghentikan tagihan yang sedang
+     berjalan — merugikan pelanggan sekaligus outlet. --}}
+@php($playing = (bool) $mine)
+@php($centered = ! $this->customer || ($sess && ! $mine))
 
 <div class="kiosk {{ $centered ? 'kiosk--center' : '' }}">
     {{-- Langganan realtime kanal privat pelanggan (lihat kioskRealtime di layout).
@@ -995,11 +1002,7 @@ new class extends Component
     </div>
 
     <div class="stack">
-    @if ($this->activeSession)
-        @php($sess = $this->activeSession)
-        @php($mine = $this->customer && $sess->customer_id === $this->customer->id)
-
-        @if ($mine && $sess->type === SessionType::Open)
+    @if ($playing && $sess->type === SessionType::Open)
             {{-- Open Play milik pelanggan ini: saldo hidup (turun per detik) +
                  tombol berhenti. Angkanya dihitung di sisi klien dari tarif &
                  waktu jalan — tagihan pastinya tetap dihitung server saat
@@ -1032,7 +1035,7 @@ new class extends Component
                         x-text="elapsed < 60 ? ('Berhenti dalam ' + (60 - elapsed) + ' detik') : 'Berhenti & bayar'">Berhenti &amp; bayar</button>
             </div>
 
-        @elseif ($mine && $sess->ends_at)
+    @elseif ($playing && $sess->ends_at)
             {{-- Paket milik pelanggan ini: hitung mundur, tidak ada tombol —
                  waktunya sudah dibayar di muka. --}}
             <div class="card" wire:poll.10s="refreshStatus">
@@ -1046,8 +1049,11 @@ new class extends Component
                 <p class="muted center">Selamat bermain!</p>
             </div>
 
-        @else
-            {{-- Sesi orang lain (atau belum login): info saja. --}}
+    @endif
+
+    @if ($sess && ! $mine)
+            {{-- Sesi orang lain (atau belum login): info saja. Dasbor memang
+                 dihentikan di sini — unit ini bukan miliknya. --}}
             <div class="card" wire:poll.10s="refreshStatus">
                 <p class="label center">Unit sedang dipakai</p>
                 @if ($sess->ends_at)
@@ -1060,7 +1066,6 @@ new class extends Component
                 @endif
                 <p class="muted center">Pindai lagi kode ini setelah unit selesai dipakai.</p>
             </div>
-        @endif
 
     @elseif (! $this->customer)
         {{-- LANGKAH 1 — nomor WhatsApp saja --}}
@@ -1294,7 +1299,9 @@ new class extends Component
              terpisah: saldo negatif itu sendiri yang mengunci — tile "Main"
              dimatikan dan tab dipaksa ke "Isi saldo". --}}
         @php($locked = $this->customer->balance < 0)
-        @php($activeTab = $locked && $tab === 'main' ? 'topup' : $tab)
+        {{-- Sedang main mematikan tile "Main" saja. "Pesan" dan "Isi saldo"
+             justru paling dibutuhkan tepat saat sedang bermain. --}}
+        @php($activeTab = ($locked || $playing) && $tab === 'main' ? 'topup' : $tab)
         @if ($locked)
             <p class="alert">Saldo minus <b>−{{ Rupiah::format(abs($this->customer->balance)) }}</b>. Lunasi dulu untuk bisa main lagi.</p>
         @endif
@@ -1303,7 +1310,7 @@ new class extends Component
              bawah. aria-label wajib karena tidak ada teks. --}}
         <div class="quick">
             @foreach ([['main', 'Main', 'heroicon-o-play'], ['order', 'Pesan', 'heroicon-o-shopping-bag'], ['topup', 'Isi saldo', 'heroicon-o-plus'], ['history', 'Riwayat', 'heroicon-o-clock']] as [$key, $labelText, $icon])
-                @php($disabled = $locked && in_array($key, ['main', 'order'], true))
+                @php($disabled = ($locked && in_array($key, ['main', 'order'], true)) || ($playing && $key === 'main'))
                 <button type="button" class="quick-tile {{ $activeTab === $key ? 'is-active' : '' }} {{ $disabled ? 'quick-off' : '' }}"
                         @if ($disabled) disabled @else wire:click="$set('tab', '{{ $key }}')" @endif
                         aria-label="{{ $labelText }}" title="{{ $labelText }}">
