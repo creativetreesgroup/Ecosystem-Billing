@@ -1366,10 +1366,22 @@ new class extends Component
         @endif
 
         {{-- Menu cepat: tombol bulat ikon-saja, tekan satu → bagiannya muncul di
-             bawah. aria-label wajib karena tidak ada teks. --}}
+             bawah. aria-label wajib karena tidak ada teks.
+
+             Saat bermain, "Main" DIBUANG, bukan ditampilkan sebagai tombol mati.
+             Tombol mati tetap meminta perhatian dan tetap ditekan orang, lalu
+             tidak terjadi apa-apa — pelanggan mengira aplikasinya rusak. Sisanya
+             tinggal tiga, sama persis dengan baris di dalam kartu sesi, jadi
+             kedua tempat itu tidak lagi menawarkan pilihan yang berbeda. --}}
+        @php($quickTiles = collect([
+            ['main', 'Main', 'heroicon-o-play'],
+            ['order', 'Pesan', 'heroicon-o-shopping-bag'],
+            ['topup', 'Isi saldo', 'heroicon-o-plus'],
+            ['history', 'Riwayat', 'heroicon-o-clock'],
+        ])->reject(fn (array $tile): bool => $playing && $tile[0] === 'main'))
         <div class="quick">
-            @foreach ([['main', 'Main', 'heroicon-o-play'], ['order', 'Pesan', 'heroicon-o-shopping-bag'], ['topup', 'Isi saldo', 'heroicon-o-plus'], ['history', 'Riwayat', 'heroicon-o-clock']] as [$key, $labelText, $icon])
-                @php($disabled = ($locked && in_array($key, ['main', 'order'], true)) || ($playing && $key === 'main'))
+            @foreach ($quickTiles as [$key, $labelText, $icon])
+                @php($disabled = $locked && in_array($key, ['main', 'order'], true))
                 <button type="button" class="quick-tile {{ $activeTab === $key ? 'is-active' : '' }} {{ $disabled ? 'quick-off' : '' }}"
                         @if ($disabled) disabled @else wire:click="$set('tab', '{{ $key }}')" @endif
                         aria-label="{{ $labelText }}" title="{{ $labelText }}">

@@ -46,7 +46,7 @@ test('a customer who is playing can still reach top up and food ordering', funct
         ->assertSee('Pesan');
 });
 
-test('the play tile is switched off while a session is running', function () {
+test('the play tile disappears while a session is running, leaving exactly three', function () {
     Livewire::actingAs($this->customer, 'customer')
         ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
         ->set('packageId', $this->package->id)
@@ -56,11 +56,17 @@ test('the play tile is switched off while a session is running', function () {
         ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
         ->html();
 
-    // Memulai sesi kedua di unit yang sama tidak masuk akal, jadi tile "Main"
-    // dimatikan — tetapi HANYA itu. Mematikan "Pesan" sekalian adalah persis
-    // masalah yang sedang diperbaiki.
-    expect($html)->toContain('aria-label="Main"')
-        ->and($html)->toMatch('/disabled[^>]*aria-label="Main"|aria-label="Main"[^>]*disabled/s');
+    // Dibuang, bukan dimatikan. Tombol mati tetap meminta perhatian dan tetap
+    // ditekan orang, lalu tidak terjadi apa-apa — pelanggan mengira
+    // aplikasinya rusak. Memulai sesi kedua di unit yang sama memang tidak
+    // mungkin, jadi tombolnya tidak perlu ada sama sekali.
+    expect($html)->not->toContain('aria-label="Main"');
+
+    // Yang tersisa harus tiga, sama persis dengan baris di dalam kartu sesi,
+    // supaya kedua tempat itu tidak menawarkan pilihan yang berbeda.
+    foreach (['Pesan', 'Isi saldo', 'Riwayat'] as $label) {
+        expect($html)->toContain('aria-label="'.$label.'"');
+    }
 });
 
 test('opening the order tab does not disturb the running session', function () {
