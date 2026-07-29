@@ -10,8 +10,8 @@ use App\Domain\Billing\Rupiah;
 use App\Models\Payment;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
-use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Support\Enums\Alignment;
 use Filament\Support\Enums\FontWeight;
@@ -136,25 +136,18 @@ class PaymentsTable
                         .' · '.$record->created_at->setTimezone(config('app.display_timezone'))->format('d M Y H:i'))
                     ->size(TextSize::Small)
                     ->color('gray'),
-                // Bukti transfer adalah gambar yang diunggah PELANGGAN: bisa
-                // potret dari HP, bisa tangkapan layar 16:9 selebar 2000px.
-                // Membatasi tingginya saja tidak cukup — gambar 16:9 setinggi
-                // 320px menjadi ~570px lebar dan menembus keluar modal, menutupi
-                // tabel di belakangnya beserta tombol Batal dan Terima.
+                // Bukti transfer diunggah PELANGGAN: bisa potret dari HP, bisa
+                // tangkapan layar 16:9 selebar 2000px. Membatasi tingginya saja
+                // membuat gambar lebar menembus keluar modal dan menutupi tombol
+                // Batal serta Terima di belakangnya.
                 //
-                // max-w-full mengikat lebarnya ke modal, object-contain menjaga
-                // rasio supaya nominal pada struk tidak ikut melar, dan tingginya
-                // dibatasi lewat style agar bukti potret yang jangkung tidak
-                // mendorong tombol keluar layar.
-                ImageEntry::make('proof_path')
+                // ImageEntry juga hanya bisa menampilkan; kasir tetap harus membaca
+                // nominal kecil dan digit rekening dari foto layar m-banking.
+                // Penampil sendiri memberi zoom & geser tanpa menambah plugin
+                // yang akan mengunci versi Filament.
+                ViewEntry::make('proof_path')
                     ->hiddenLabel()
-                    ->alignCenter()
-                    ->disk('local')
-                    ->extraImgAttributes([
-                        'class' => 'mx-auto w-auto max-w-full rounded-lg object-contain ring-1 ring-gray-950/10 dark:ring-white/10',
-                        'style' => 'max-height:20rem',
-                    ])
-                    ->placeholder('Pelanggan belum mengunggah bukti.'),
+                    ->view('filament.infolists.entries.zoomable-proof'),
             ])
             ->action(function (Payment $record): void {
                 try {

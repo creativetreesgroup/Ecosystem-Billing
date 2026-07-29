@@ -98,13 +98,20 @@ test('a wallet top-up is readable in the payments table', function () {
  * KioskScreenTest untuk menjaga tetapan yang tak terlihat dari hasil render.
  */
 test('the transfer proof image is bound to the modal width', function () {
-    $source = file_get_contents(app_path('Filament/Resources/Payments/Tables/PaymentsTable.php'));
+    $view = file_get_contents(resource_path('views/filament/infolists/entries/zoomable-proof.blade.php'));
 
-    expect($source)
-        // Mengikat lebar gambar ke modal.
-        ->toContain('max-w-full')
+    expect($view)
+        // Wadahnya memotong apa pun yang melewati batas, berapa pun perbesarannya.
+        ->toContain('overflow:hidden')
         // Menjaga rasio, supaya nominal pada struk tidak melar dan tetap terbaca.
-        ->toContain('object-contain')
-        // Tinggi tetap yang lama justru penyebabnya: ia membiarkan lebar bebas.
-        ->not->toContain('->height(320)');
+        ->toContain('object-fit:contain')
+        // Perbesaran dibatasi: tanpa batas atas, satu gulir panjang membuat
+        // gambar melompat ke ratusan kali dan kasir kehilangan jejak isinya.
+        ->toContain('Math.min(4')
+        ->toContain('Math.max(1');
+
+    $php = file_get_contents(app_path('Filament/Resources/Payments/Tables/PaymentsTable.php'));
+
+    // Tinggi tetap yang lama justru penyebabnya: ia membiarkan lebar bebas.
+    expect($php)->not->toContain('->height(320)');
 });
