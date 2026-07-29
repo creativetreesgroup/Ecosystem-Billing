@@ -140,3 +140,76 @@ test('the kiosk markup stays balanced when the unit belongs to someone else', fu
 
     expect(kioskMarkupProblems($html))->toBe([]);
 });
+
+/**
+ * Leluhur sebuah elemen, dari terluar ke terdalam, berupa daftar nilai
+ * atribut class-nya.
+ *
+ * @return array<int, string>
+ */
+function kioskAncestorClassesOf(string $html, string $needleClass): array
+{
+    $html = (string) preg_replace('/<!--.*?-->/s', '', $html);
+
+    $void = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta',
+        'source', 'track', 'wbr', 'path', 'circle', 'rect', 'line', 'polyline',
+        'polygon', 'ellipse', 'stop', 'use'];
+
+    preg_match_all('/<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*?)(\/?)>/', $html, $matches, PREG_SET_ORDER);
+
+    $stack = [];
+
+    foreach ($matches as $match) {
+        [, $closing, $name, $attrs, $selfClosing] = $match + [4 => ''];
+        $name = strtolower($name);
+
+        if (in_array($name, $void, true) || $selfClosing === '/') {
+            continue;
+        }
+
+        if ($closing === '/') {
+            array_pop($stack);
+
+            continue;
+        }
+
+        preg_match('/class="([^"]*)"/', $attrs, $classMatch);
+        $class = $classMatch[1] ?? '';
+
+        if (str_contains($class, $needleClass)) {
+            return $stack;
+        }
+
+        $stack[] = $class;
+    }
+
+    return [];
+}
+
+test('a payment confirmation is never trapped inside the collapsible panel', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    // Konfirmasi dibuka SAAT bermain, yaitu saat panel dasbor bisa tertutup.
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('tab', 'topup')
+        ->set('topUpAmount', 200_000)
+        ->set('method', 'transfer')
+        ->call('askTopUp')
+        ->html();
+
+    expect($html)->toContain('modal-backdrop');
+
+    $ancestors = kioskAncestorClassesOf($html, 'modal-backdrop');
+
+    // Panel dasbor memakai visibility:hidden saat tertutup. Konfirmasi yang
+    // bersarang di dalamnya akan ikut tak terlihat — pelanggan menekan
+    // "Lanjut", saldonya tertahan menunggu keputusan, dan layar tidak
+    // menampilkan apa pun untuk diputuskan.
+    foreach ($ancestors as $class) {
+        expect($class)->not->toContain('sheet');
+    }
+});

@@ -436,21 +436,45 @@
         .pad-key:active { background: var(--accent-tint); transform: translateY(1px); }
         .pad-key svg { width: 1.4rem; height: 1.4rem; color: var(--muted); }
 
-        /* Konfirmasi pembelian — sheet menutupi layar, muncul dari bawah. */
+        /* Konfirmasi pembelian — panel geser penuh, sama seperti panel dasbor.
+           Latarnya SENGAJA dipertahankan: konfirmasi yang memotong saldo harus
+           memblokir apa pun di belakangnya. Panel tanpa latar terasa bisa
+           diabaikan, dan langkah yang memindahkan uang tidak boleh terasa
+           begitu. Yang berubah hanya bentuknya, bukan sifat menuntutnya. */
         .modal-backdrop {
-            position: fixed; inset: 0; z-index: 50;
+            position: fixed; inset: 0; z-index: 70;
             background: rgba(38, 19, 17, .55);
             display: flex; align-items: flex-end; justify-content: center;
-            padding: 1rem; animation: fade .15s ease;
+            padding: 0; animation: fade .15s ease;
         }
         @keyframes fade { from { opacity: 0; } }
         .modal {
-            width: 100%; max-width: 24rem;
-            background: var(--card); border-radius: var(--radius);
-            padding: 1.5rem clamp(1.25rem, 5vw, 1.75rem) calc(1.5rem + env(safe-area-inset-bottom));
-            box-shadow: 0 -8px 40px -8px rgba(38, 19, 17, .35); animation: sheet .2s ease;
+            width: 100%; max-width: 28rem;
+            background: var(--card);
+            border-radius: 1.5rem 1.5rem 0 0;
+            padding: 1.25rem clamp(1.25rem, 5vw, 1.75rem) calc(1.5rem + env(safe-area-inset-bottom));
+            box-shadow: 0 -14px 44px rgba(38, 19, 17, .3);
+            /* Tinggi dibatasi & bisa digulir: konfirmasi paket dengan banyak
+               baris rincian pernah mendorong tombol "Ya" keluar layar di HP
+               pendek — pelanggan melihat rinciannya tetapi tidak bisa membayar. */
+            max-height: 88vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+            /* transform, bukan height: hanya transform & opacity yang bisa
+               dianimasikan compositor tanpa layout ulang tiap frame. */
+            animation: sheet-up .34s cubic-bezier(.32, .72, 0, 1);
         }
-        @keyframes sheet { from { transform: translateY(24px); opacity: .5; } }
+        /* Pegangan panel digambar lewat pseudo-element supaya keempat blok
+           konfirmasi tidak perlu menambah markup yang sama empat kali. */
+        .modal::before {
+            content: ''; display: block;
+            width: 2.5rem; height: .25rem; border-radius: 999px;
+            background: var(--border-strong);
+            margin: 0 auto 1rem;
+        }
+        @keyframes sheet-up { from { transform: translateY(100%); } }
+        @media (prefers-reduced-motion: reduce) {
+            .modal { animation: none; }
+            .modal-backdrop { animation: none; }
+        }
         .confirm-rows { margin: 1rem 0 .25rem; }
         .confirm-rows > div { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .65rem 0; font-size: .95rem; }
         .confirm-rows > div + div { border-top: 1px solid var(--border); }
