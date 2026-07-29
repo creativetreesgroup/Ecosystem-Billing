@@ -4,7 +4,6 @@ namespace Database\Factories;
 
 use App\Models\Outlet;
 use App\Models\User;
-use App\Models\UserRole;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -32,7 +31,6 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
-            'role' => UserRole::Kasir,
             'is_active' => true,
             'remember_token' => Str::random(10),
         ];
@@ -50,8 +48,22 @@ class UserFactory extends Factory
 
     public function owner(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'role' => UserRole::Owner,
-        ]);
+        return $this->afterCreating(fn (User $user) => $user->syncRoles(['super_admin']));
+    }
+
+    /**
+     * Peran Shield ikut menempel pada pengguna biasa.
+     *
+     * Otorisasi dibaca dari database sekarang; pengguna tanpa peran tidak bisa
+     * apa-apa, dan test yang memakainya akan menguji panel kosong alih-alih
+     * panel yang benar-benar dipakai kasir.
+     */
+    public function configure(): static
+    {
+        return $this->afterCreating(function (User $user): void {
+            if ($user->roles()->doesntExist()) {
+                $user->assignRole('staf_operasional');
+            }
+        });
     }
 }

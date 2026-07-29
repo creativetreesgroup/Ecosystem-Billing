@@ -5,8 +5,8 @@ use App\Domain\Devices\ControlDriver;
 use App\Domain\Sessions\Actions\StartSessionAction;
 use App\Domain\Sessions\Events\SessionStarted;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
-use App\Domain\Sessions\Jobs\ExpireRentalSession;
-use App\Domain\Sessions\Jobs\WarnSessionEnding;
+use App\Domain\Sessions\Jobs\ExpireRentalSessionJob;
+use App\Domain\Sessions\Jobs\WarnSessionEndingJob;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Models\Package;
@@ -110,13 +110,13 @@ test('only package sessions dispatch the expiry job, since open play has no fixe
 
     startAction()->handle($unit, $kasir, SessionType::Open);
 
-    Bus::assertNotDispatched(ExpireRentalSession::class);
+    Bus::assertNotDispatched(ExpireRentalSessionJob::class);
 
     $package = Package::factory()->for($unit->unitType)->create();
     $unit2 = Unit::factory()->create(['control_driver' => ControlDriver::Manual, 'unit_type_id' => $unit->unit_type_id]);
 
     startAction()->handle($unit2, $kasir, SessionType::Package, package: $package, paymentMethod: PaymentMethod::Cash);
 
-    Bus::assertDispatched(ExpireRentalSession::class);
-    Bus::assertDispatched(WarnSessionEnding::class);
+    Bus::assertDispatched(ExpireRentalSessionJob::class);
+    Bus::assertDispatched(WarnSessionEndingJob::class);
 });

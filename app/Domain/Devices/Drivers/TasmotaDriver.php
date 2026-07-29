@@ -67,6 +67,16 @@ class TasmotaDriver implements TvControl
         return false;
     }
 
+    public function showIdleScreen(Unit $unit): CommandResult
+    {
+        return CommandResult::success('Tasmota (smart plug): tidak ada cast, dilewati.');
+    }
+
+    public function clearScreen(Unit $unit): CommandResult
+    {
+        return CommandResult::success('Tasmota (smart plug): tidak ada cast, dilewati.');
+    }
+
     public function notify(Unit $unit, string $message): CommandResult
     {
         Log::info('Notifikasi dilewati: unit tasmota (smart plug) tidak mendukung notify.', ['unit_id' => $unit->id]);

@@ -24,13 +24,21 @@ class UnitsTable
 {
     public static function configure(Table $table): Table
     {
+        // Mengaktifkan/menonaktifkan unit adalah wewenang owner (UnitPolicy::update
+        // owner-only). Aksi bulk kustom TIDAK tergerbang policy otomatis, jadi
+        // tanpa gerbang ini kasir — yang tetap bisa membuka daftar unit — bisa
+        // menonaktifkan semua unit sekaligus dan mematikan operasional outlet.
+        $ownerOnly = fn (): bool => auth()->user()?->checkPermissionTo('Update:Unit') ?? false;
+
         return $table
             ->defaultSort('code')
             ->columns([
                 TextColumn::make('code')
+                    ->icon(Heroicon::OutlinedHashtag)
                     ->label('Kode')
                     ->searchable(),
                 TextColumn::make('unitType.name')
+                    ->icon(Heroicon::OutlinedSquares2x2)
                     ->label('Tipe')
                     ->searchable(),
                 TextColumn::make('control_driver')
@@ -41,6 +49,7 @@ class UnitsTable
                     ->label('Status TV')
                     ->badge(),
                 TextColumn::make('last_seen_at')
+                    ->icon(Heroicon::OutlinedSignal)
                     ->visibleFrom('lg')
                     ->label('Terakhir terlihat')
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
@@ -107,6 +116,7 @@ class UnitsTable
                         ->label('Nonaktifkan')
                         ->icon(Heroicon::OutlinedEyeSlash)
                         ->color('warning')
+                        ->visible($ownerOnly)
                         ->requiresConfirmation()
                         ->modalDescription('Unit nonaktif hilang dari dasbor kasir. Sesi yang sedang berjalan TIDAK ikut ditutup.')
                         ->deselectRecordsAfterCompletion()
@@ -122,6 +132,7 @@ class UnitsTable
                         ->label('Aktifkan')
                         ->icon(Heroicon::OutlinedEye)
                         ->color('success')
+                        ->visible($ownerOnly)
                         ->deselectRecordsAfterCompletion()
                         ->action(function (Collection $records): void {
                             $jumlah = $records->reject(fn (Unit $u) => $u->is_active)

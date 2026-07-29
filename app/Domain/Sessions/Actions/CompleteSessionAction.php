@@ -31,7 +31,7 @@ class CompleteSessionAction
 
         $justCompleted = false;
 
-        $completed = DB::transaction(function () use ($session, $paymentMethod, $expectedExpiryToken, &$justCompleted, $verifiedBy) {
+        $completed = DB::transaction(function () use ($session, $paymentMethod, $expectedExpiryToken, &$justCompleted, $verifiedBy): RentalSession {
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== SessionStatus::Active) {
@@ -72,13 +72,21 @@ class CompleteSessionAction
             // mandiri (QRIS lewat gateway, transfer dengan bukti) membuat
             // barisnya dengan status Pending dan baru menjadi Lunas setelah
             // terbukti — di sana kolom terisi tidak berarti uang masuk.
-            $locked->payments()->create([
-                'method' => $locked->payment_method,
-                'status' => PaymentStatus::Paid,
-                'amount' => $totalAmount,
-                'verified_by' => $verifiedBy?->id,
-                'verified_at' => $endedAt,
-            ]);
+            //
+            // HANYA bila belum ada pembayaran lunas: sesi kios prabayar (paket
+            // QRIS/transfer) sudah punya baris Lunas dari checkout. Membuat lagi
+            // di sini menghasilkan baris hantu tanpa referensi gateway yang
+            // merusak rekonsiliasi QRIS/transfer. Penyelesaian kasir (tanpa
+            // pembayaran sebelumnya) tetap membuatnya.
+            if (! $locked->settledPayment()->exists()) {
+                $locked->payments()->create([
+                    'method' => $locked->payment_method,
+                    'status' => PaymentStatus::Paid,
+                    'amount' => $totalAmount,
+                    'verified_by' => $verifiedBy?->id,
+                    'verified_at' => $endedAt,
+                ]);
+            }
 
             activity()
                 ->performedOn($locked)
@@ -86,14 +94,17 @@ class CompleteSessionAction
                 ->event('completed')
                 ->log('Sesi selesai');
 
-            $this->devices->powerOff($locked->unit);
-
             $justCompleted = true;
 
             return $locked->fresh();
         });
 
+        // Perintah TV DI LUAR transaksi: panggilan HTTP ke Home Assistant tidak
+        // boleh menahan kunci baris sesi. Sesi berakhir → TV tampilkan QR lagi
+        // untuk pelanggan berikutnya (bukan dimatikan — kios swalayan butuh QR
+        // terlihat supaya bisa dipindai).
         if ($justCompleted) {
+            $this->devices->showIdleScreen($completed->unit);
             SessionEnded::dispatch($completed->id, $completed->unit_id);
         }
 

@@ -9,10 +9,12 @@ use App\Domain\Devices\ControlDriver;
 use App\Domain\Devices\DeviceAlertStatus;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
+use App\Domain\Discounts\Exceptions\DiscountNotApplicableException;
 use App\Domain\Sessions\Actions\CompleteSessionAction;
 use App\Domain\Sessions\Actions\ExtendSessionAction;
 use App\Domain\Sessions\Actions\StartSessionAction;
 use App\Domain\Sessions\SessionType;
+use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
 use App\Models\Package;
 use App\Models\RentalSession;
 use App\Models\Unit;
@@ -253,25 +255,41 @@ class UnitGridWidget extends TableWidget
                         ->visible(fn (Get $get) => $get('type') === 'package'),
                     ToggleButtons::make('payment_method')
                         ->hiddenLabel()
-                        ->options(PaymentMethod::class)
+                        ->options(PaymentMethod::cashierOptions())
+                        ->colors(PaymentMethod::cashierColors())
                         ->inline()
                         ->grouped()
                         ->extraAttributes(self::SEGMENTED_CONTROL)
                         ->required(fn (Get $get) => $get('type') === 'package')
+                        ->visible(fn (Get $get) => $get('type') === 'package'),
+                    // Voucher opsional untuk paket. Divalidasi & ditagih ulang
+                    // di StartSessionAction (kuota di bawah kunci); kode salah
+                    // menggagalkan aksi dengan pesannya, bukan diam-diam penuh.
+                    TextInput::make('voucher_code')
+                        ->hiddenLabel()
+                        ->placeholder('Kode voucher (opsional)')
+                        ->extraInputAttributes(['style' => 'text-transform:uppercase'])
                         ->visible(fn (Get $get) => $get('type') === 'package'),
                 ];
             })
             ->action(function (array $data, Unit $record): void {
                 $package = isset($data['package_id']) ? Package::find($data['package_id']) : null;
 
-                app(StartSessionAction::class)->handle(
-                    $record,
-                    Auth::user(),
-                    SessionType::from($data['type']),
-                    package: $package,
-                    customerName: $data['customer_name'] ?: null,
-                    paymentMethod: self::resolvePaymentMethod($data['payment_method'] ?? null),
-                );
+                try {
+                    app(StartSessionAction::class)->handle(
+                        $record,
+                        Auth::user(),
+                        SessionType::from($data['type']),
+                        package: $package,
+                        customerName: $data['customer_name'] ?: null,
+                        paymentMethod: self::resolvePaymentMethod($data['payment_method'] ?? null),
+                        voucherCode: $data['voucher_code'] ?: null,
+                    );
+                } catch (DiscountNotApplicableException $e) {
+                    Notification::make()->title('Voucher tidak dipakai')->body($e->getMessage())->warning()->send();
+
+                    return;
+                }
 
                 Notification::make()->title('Sesi dimulai')->success()->send();
             });
@@ -314,12 +332,24 @@ class UnitGridWidget extends TableWidget
                     ->required(),
             ])
             ->action(function (array $data, Unit $record): void {
-                app(ExtendSessionAction::class)->handle(
-                    $record->activeSession,
-                    addedMinutes: (int) $data['added_minutes'],
-                    amount: (int) $data['amount'],
-                    user: Auth::user(),
-                );
+                try {
+                    app(ExtendSessionAction::class)->handle(
+                        $record->activeSession,
+                        addedMinutes: (int) $data['added_minutes'],
+                        amount: (int) $data['amount'],
+                        user: Auth::user(),
+                    );
+                } catch (InsufficientBalanceException) {
+                    // Sesi bayar-saldo yang saldonya tak cukup untuk perpanjangan:
+                    // seluruhnya batal (atomik). Kasir minta pelanggan isi saldo dulu.
+                    Notification::make()
+                        ->title('Saldo pelanggan tidak cukup')
+                        ->body('Perpanjangan dibatalkan — minta pelanggan isi saldo dulu.')
+                        ->warning()
+                        ->send();
+
+                    return;
+                }
 
                 Notification::make()->title('Sesi diperpanjang')->success()->send();
             });
@@ -401,7 +431,8 @@ class UnitGridWidget extends TableWidget
                     // ikut rata tengah tanpa perlu CSS tambahan.
                     ToggleButtons::make('payment_method')
                         ->hiddenLabel()
-                        ->options(PaymentMethod::class)
+                        ->options(PaymentMethod::cashierOptions())
+                        ->colors(PaymentMethod::cashierColors())
                         ->inline()
                         ->grouped()
                         ->extraAttributes(self::SEGMENTED_CONTROL)

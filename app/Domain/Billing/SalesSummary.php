@@ -90,6 +90,17 @@ final class SalesSummary
         return (int) $this->sessions()->sum('total_amount');
     }
 
+    /**
+     * Total potongan yang diberikan pada sesi yang dihitung sebagai pendapatan
+     * (voucher & promo, paket maupun Open Play) — pendapatan yang "direlakan"
+     * demi diskon. Dari dataset sesi yang sama dengan revenue, jadi selalu
+     * selaras dengannya. Bonus isi saldo tidak termasuk (itu bukan pendapatan).
+     */
+    public function totalDiscount(): int
+    {
+        return (int) $this->sessions()->sum('discount_amount');
+    }
+
     public function averageRevenue(): int
     {
         $count = $this->totalSessions();

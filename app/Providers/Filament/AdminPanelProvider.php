@@ -2,7 +2,12 @@
 
 namespace App\Providers\Filament;
 
+use App\Domain\Settings\SettingKey;
+use App\Filament\NavigationGroup;
 use App\Filament\Pages\Dashboard;
+use App\Models\Setting;
+use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
+use Filament\Changelog\ChangelogPlugin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -28,6 +33,16 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            // Closure, BUKAN nilai langsung. Panel didaftarkan saat boot —
+            // termasuk saat `artisan migrate` berjalan di entrypoint, ketika
+            // tabel settings belum ada. Membaca database di titik itu membuat
+            // migrasi gagal sebelum tabelnya sempat dibuat. Closure baru
+            // dievaluasi saat halaman dirender, dan Setting::get() di-cache
+            // selamanya sehingga tidak menambah query per permintaan.
+            ->brandName(fn (): string => Setting::brandName())
+            ->brandLogo(fn (): ?string => Setting::brandAssetUrl(SettingKey::BrandLogo))
+            ->brandLogoHeight('2rem')
+            ->favicon(fn (): ?string => Setting::brandAssetUrl(SettingKey::BrandFavicon))
             ->colors([
                 'primary' => Color::Amber,
             ])
@@ -41,6 +56,22 @@ class AdminPanelProvider extends PanelProvider
             // didaftarkan di panel — view-nya memanggil filament('filament-apex-charts')
             // dan akan melempar LogicException kalau tidak terdaftar.
             ->plugin(FilamentApexChartsPlugin::make())
+            // Peran & izin dikelola dari database, bukan enum di kode: menambah
+            // peran baru tidak lagi berarti deploy ulang.
+            ->plugin(FilamentShieldPlugin::make())
+            // Membaca CHANGELOG.md proyek secara langsung (config source =
+            // 'file'), jadi yang dibaca staf di panel selalu sama dengan yang
+            // benar-benar dirilis — bukan salinan yang lupa diperbarui.
+            ->plugin(
+                ChangelogPlugin::make()
+                    ->navigationLabel('Changelog')
+                    ->navigationGroup(NavigationGroup::Sistem)
+            )
+            // Lonceng notifikasi tersimpan (tabel notifications). Push realtime
+            // lewat Reverb (config/filament.php → broadcasting.echo sudah disetel);
+            // polling 30 detik hanya cadangan bila WebSocket putus.
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('30s')
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

@@ -110,3 +110,25 @@ test('notify calls the notify service for units that support it', function () {
     Http::assertSent(fn (Request $request) => $request['message'] === 'Waktu sesi hampir habis'
         && $request['target'] === 'media_player.tv_ps01');
 });
+
+test('showing the idle screen casts the QR image via play_media', function () {
+    Http::fake(['ha.test/api/services/media_player/play_media' => Http::response([], 200)]);
+    $unit = haTestUnit(['code' => 'PS-09']);
+
+    $result = haTestDriver()->showIdleScreen($unit);
+
+    expect($result->successful)->toBeTrue();
+    Http::assertSent(fn (Request $request) => $request->url() === 'http://ha.test/api/services/media_player/play_media'
+        && $request['media_content_type'] === 'image/jpeg'
+        && str_contains($request['media_content_id'], '/kios/PS-09/qr.jpg'));
+});
+
+test('clearing the screen stops the cast via media_stop so the game shows', function () {
+    Http::fake(['ha.test/api/services/media_player/media_stop' => Http::response([], 200)]);
+    $unit = haTestUnit();
+
+    $result = haTestDriver()->clearScreen($unit);
+
+    expect($result->successful)->toBeTrue();
+    Http::assertSent(fn (Request $request) => $request->url() === 'http://ha.test/api/services/media_player/media_stop');
+});

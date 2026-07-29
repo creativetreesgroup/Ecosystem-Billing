@@ -8,8 +8,17 @@ use App\Models\Unit;
 use App\Models\UnitType;
 use App\Models\User;
 
+/**
+ * Kasir lantai memegang peran dari DUA departemen — itu bukan siasat, itu
+ * modelnya: satu peran tinggal di satu departemen, dan seorang manusia boleh
+ * bekerja di lebih dari satu. Pekerjaan kasir memang begitu: pesanan &
+ * pelanggan (Operasional) sekaligus melihat unit & menangani alert TV
+ * (Maintenance).
+ */
 beforeEach(function () {
     $this->kasir = User::factory()->create();
+    $this->kasir->syncRoles(['staf_operasional', 'staf_maintenance']);
+
     $this->owner = User::factory()->owner()->create();
 });
 

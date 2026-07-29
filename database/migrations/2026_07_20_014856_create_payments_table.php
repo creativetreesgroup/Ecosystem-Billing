@@ -16,11 +16,26 @@ return new class extends Migration
             // transfer ditolak lalu diunggah ulang. Menimpa barisnya akan
             // menghapus jejak percobaan yang gagal — justru jejak itu yang
             // dicari saat ada sengketa nominal.
-            $table->foreignId('rental_session_id')->constrained()->cascadeOnDelete();
+            // nullable digabung dari let_payments_top_up_a_wallet: isi saldo tidak
+            // terikat sesi mana pun.
+            $table->foreignId('rental_session_id')->nullable()->constrained()->cascadeOnDelete();
+            // digabung dari let_payments_top_up_a_wallet: pembayaran isi saldo.
+            $table->foreignId('customer_id')->nullable()->constrained()->nullOnDelete();
 
-            $table->enum('method', ['cash', 'qris', 'transfer']);
+            // 'wallet' digabung dari add_wallet_to_payment_method_enums.
+            $table->enum('method', ['cash', 'qris', 'transfer', 'wallet']);
             $table->enum('status', ['pending', 'awaiting_verification', 'paid', 'rejected', 'expired']);
             $table->unsignedInteger('amount');
+            // Biaya admin isi saldo (QRIS/transfer). `amount` = TOTAL yang
+            // dibayar pelanggan (kotor, itu yang dikirim ke gateway); saldo
+            // yang benar-benar masuk = amount - fee. Default 0 supaya
+            // pembayaran tunai dan sesi biasa tidak perlu memikirkannya.
+            $table->unsignedInteger('fee')->default(0);
+
+            // Voucher isi saldo (V2): kode disimpan saat checkout, bonusnya
+            // dikreditkan saat pembayaran benar-benar LUNAS (bukan saat pending) —
+            // supaya bonus tak pernah keluar tanpa uang masuk.
+            $table->string('voucher_code')->nullable();
 
             // Rujukan dari luar: order_id Midtrans untuk QRIS, atau catatan bank
             // untuk transfer. Unique supaya satu transaksi gateway tidak pernah

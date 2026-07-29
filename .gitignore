@@ -32,3 +32,9 @@ Thumbs.db
 !/docker/mosquitto/log/.gitkeep
 /docker/mosquitto/config/passwordfile
 storage/app/kiosk-screens/
+
+# Backup .env bertanda waktu (dibuat installer/operator) — berisi secret asli.
+.env.backup*
+
+# Override compose lokal yang dinonaktifkan.
+docker-compose.override.yml.disabled

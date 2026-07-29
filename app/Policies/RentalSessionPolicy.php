@@ -4,18 +4,17 @@ namespace App\Policies;
 
 use App\Models\RentalSession;
 use App\Models\User;
-use App\Models\UserRole;
 
 class RentalSessionPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('ViewAny:RentalSession');
     }
 
     public function view(User $user, RentalSession $rentalSession): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('View:RentalSession');
     }
 
     public function create(User $user): bool
@@ -34,7 +33,7 @@ class RentalSessionPolicy
 
     public function void(User $user, RentalSession $rentalSession): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Void:RentalSession');
     }
 
     public function delete(User $user, RentalSession $rentalSession): bool

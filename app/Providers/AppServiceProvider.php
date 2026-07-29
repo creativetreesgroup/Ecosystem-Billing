@@ -4,11 +4,15 @@ namespace App\Providers;
 
 use App\Domain\Customers\Otp\LoggingOtpChannel;
 use App\Domain\Customers\Otp\OtpChannel;
+use App\Domain\Customers\Otp\WahaOtpChannel;
+use App\Policies\ChangelogEntryPolicy;
+use Filament\Changelog\Models\ChangelogEntry;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Tables\Columns\SelectColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -26,18 +30,26 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Model milik vendor, jadi penamaan otomatis Laravel tidak menemukan
+        // policy-nya. Tanpa baris ini Filament mengizinkan siapa pun membuka —
+        // bahkan menyunting — catatan rilis.
+        Gate::policy(ChangelogEntry::class, ChangelogEntryPolicy::class);
+
         // §12: buktikan tabel Filament sudah eager-load relasinya dengan benar
         // — lazy loading yang lolos di sini berarti N+1 nyata di production.
         Model::preventLazyLoading(! $this->app->isProduction());
 
         $this->useNonNativeDropdownsEverywhere();
 
-        // Penyalur OTP dipilih di satu tempat. Selama belum ada penyedia
-        // WhatsApp yang dikonfigurasi, dipakai penyalur log — yang sengaja
-        // MENOLAK bekerja di produksi, supaya kios yang tidak bisa dipakai
-        // siapa pun ketahuan saat memasang, bukan saat pelanggan pertama
-        // sudah berdiri di depan TV.
-        $this->app->bind(OtpChannel::class, LoggingOtpChannel::class);
+        // Penyalur OTP dipilih di satu tempat: WAHA bila sudah dikonfigurasi,
+        // selain itu penyalur log — yang sengaja MENOLAK bekerja di produksi,
+        // supaya kios yang tidak bisa mengirim OTP ketahuan saat memasang, bukan
+        // saat pelanggan pertama sudah berdiri di depan TV.
+        $this->app->bind(OtpChannel::class, function (): OtpChannel {
+            $waha = app(WahaOtpChannel::class);
+
+            return $waha->isConfigured() ? $waha : new LoggingOtpChannel;
+        });
     }
 
     /**

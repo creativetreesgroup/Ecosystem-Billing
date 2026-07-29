@@ -7,6 +7,7 @@ use App\Filament\Pages\SalesReport;
 use App\Filament\Widgets\SalesPaymentMixChart;
 use App\Filament\Widgets\SalesRevenueChart;
 use App\Filament\Widgets\SalesStatsWidget;
+use App\Filament\Widgets\SalesUnitTypeChart;
 use App\Filament\Widgets\UnitGridWidget;
 use App\Models\RentalSession;
 use App\Models\Unit;
@@ -161,8 +162,10 @@ test('the payment mix chart emits one stacked series per payment method', functi
 
     $mix = (new SalesSummary('2026-05-01', '2026-05-03'))->dailyPaymentSeries();
 
+    // Saldo ikut sebagai deret keempat: sesi bayar-saldo tetap pendapatan,
+    // hanya dipisahkan dari uang laci yang baru.
     expect($mix['labels'])->toBe(['01 May', '02 May', '03 May'])
-        ->and(array_column($mix['series'], 'name'))->toBe(['Tunai', 'QRIS', 'Transfer']);
+        ->and(array_column($mix['series'], 'name'))->toBe(['Tunai', 'QRIS', 'Transfer', 'Saldo']);
 
     // Tiap deret harus sepanjang labels, kalau tidak batangnya bergeser hari.
     foreach ($mix['series'] as $serie) {
@@ -170,4 +173,17 @@ test('the payment mix chart emits one stacked series per payment method', functi
     }
 
     expect($mix['series'][2]['data'])->toBe([0, 12000, 0]); // Transfer di 02 May
+});
+
+/**
+ * Grafik pendapatan per tipe unit menjawab pertanyaan investasi, bukan harian.
+ * Yang diuji: ia membaca SalesSummary yang sama dengan sisa laporan, jadi
+ * angkanya tidak bisa menyimpang dari tabel di atasnya.
+ */
+test('the unit type chart renders and reads the same summary as the report', function () {
+    $owner = User::factory()->owner()->create();
+
+    Livewire::actingAs($owner)
+        ->test(SalesUnitTypeChart::class)
+        ->assertSuccessful();
 });

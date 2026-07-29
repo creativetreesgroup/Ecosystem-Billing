@@ -5,7 +5,7 @@ use App\Domain\Devices\ControlDriver;
 use App\Domain\Sessions\Actions\CompleteSessionAction;
 use App\Domain\Sessions\Actions\ExtendSessionAction;
 use App\Domain\Sessions\Actions\StartSessionAction;
-use App\Domain\Sessions\Jobs\ExpireRentalSession;
+use App\Domain\Sessions\Jobs\ExpireRentalSessionJob;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Models\Package;
@@ -32,7 +32,7 @@ function startExpiringPackageSession(): array
 test('a job with a matching token completes the still-active session', function () {
     [$session] = startExpiringPackageSession();
 
-    (new ExpireRentalSession($session->id, $session->expiry_token))->handle(app(CompleteSessionAction::class));
+    (new ExpireRentalSessionJob($session->id, $session->expiry_token))->handle(app(CompleteSessionAction::class));
 
     expect($session->fresh()->status)->toBe(SessionStatus::Completed);
 });
@@ -43,7 +43,7 @@ test('a stale token from before an extension is a no-op', function () {
 
     app(ExtendSessionAction::class)->handle($session, addedMinutes: 30, amount: 4000, user: $kasir);
 
-    (new ExpireRentalSession($session->id, $staleToken))->handle(app(CompleteSessionAction::class));
+    (new ExpireRentalSessionJob($session->id, $staleToken))->handle(app(CompleteSessionAction::class));
 
     expect($session->fresh()->status)->toBe(SessionStatus::Active);
 });
@@ -54,7 +54,7 @@ test('a job for an already-completed session is a no-op', function () {
     app(CompleteSessionAction::class)->handle($session);
     $completedAt = $session->fresh()->ended_at;
 
-    (new ExpireRentalSession($session->id, $token))->handle(app(CompleteSessionAction::class));
+    (new ExpireRentalSessionJob($session->id, $token))->handle(app(CompleteSessionAction::class));
 
     expect($session->fresh()->ended_at->equalTo($completedAt))->toBeTrue();
 });

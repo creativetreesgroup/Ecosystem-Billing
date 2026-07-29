@@ -1,0 +1,66 @@
+name: Laporan bug
+description: Laporkan perilaku yang salah pada sistem billing
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Jangan gunakan formulir ini untuk kerentanan keamanan.**
+        Lihat [SECURITY.md](../blob/main/SECURITY.md) — laporan keamanan lewat kanal privat.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Apa yang terjadi
+      description: Termasuk dampaknya ke operasional outlet bila ada.
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Apa yang seharusnya terjadi
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: Langkah reproduksi
+      placeholder: |
+        1.
+        2.
+        3.
+    validations: { required: true }
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area terdampak
+      options:
+        - Billing / tarif sesi
+        - Saldo pelanggan (wallet)
+        - Pembayaran / QRIS
+        - Menu & pesanan
+        - Kontrol TV / perangkat
+        - Panel admin (Filament)
+        - Realtime (Reverb)
+        - Docker / deployment
+        - Monitoring
+        - Lainnya
+    validations: { required: true }
+  - type: input
+    id: money
+    attributes:
+      label: Apakah ada uang atau saldo yang terpengaruh?
+      description: Isi "tidak" bila tidak ada. Bila ada, sebutkan nominal dan arahnya.
+    validations: { required: true }
+  - type: textarea
+    id: environment
+    attributes:
+      label: Lingkungan
+      placeholder: |
+        Commit/tag:
+        Docker atau native:
+        OS host:
+        Versi PHP:
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log atau pesan error
+      description: Sensor semua token, password, dan data pelanggan lebih dulu.
+      render: shell

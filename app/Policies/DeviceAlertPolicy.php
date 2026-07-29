@@ -9,12 +9,12 @@ class DeviceAlertPolicy
 {
     public function viewAny(User $user): bool
     {
-        return true;
+        return $user->checkPermissionTo('ViewAny:DeviceAlert');
     }
 
     public function view(User $user, DeviceAlert $deviceAlert): bool
     {
-        return true;
+        return $user->checkPermissionTo('View:DeviceAlert');
     }
 
     public function create(User $user): bool
@@ -30,7 +30,7 @@ class DeviceAlertPolicy
 
     public function acknowledge(User $user, DeviceAlert $deviceAlert): bool
     {
-        return true;
+        return $user->checkPermissionTo('Acknowledge:DeviceAlert');
     }
 
     public function delete(User $user, DeviceAlert $deviceAlert): bool

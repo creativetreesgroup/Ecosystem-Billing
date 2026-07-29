@@ -28,15 +28,21 @@ class PackageForm
                             ->label('Nama paket')
                             ->placeholder('mis. Paket 3 Jam')
                             ->required(),
+                        // minValue WAJIB: kolomnya unsigned, jadi nilai negatif
+                        // lolos validasi numeric() lalu menabrak kolom dan
+                        // melempar 500. minValue(1) sekaligus menutup paket
+                        // Rp0/0 menit yang langsung kedaluwarsa.
                         TextInput::make('duration_minutes')
                             ->label('Durasi')
                             ->required()
                             ->numeric()
+                            ->minValue(1)
                             ->suffix('menit'),
                         TextInput::make('price')
                             ->label('Harga')
                             ->required()
                             ->numeric()
+                            ->minValue(1)
                             ->prefix('Rp'),
                         Toggle::make('is_active')
                             ->label('Aktif')

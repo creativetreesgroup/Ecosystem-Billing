@@ -6,14 +6,20 @@ use App\Domain\Devices\DeviceManager;
 use App\Domain\Sessions\Events\SessionEnded;
 use App\Domain\Sessions\Exceptions\IllegalSessionTransitionException;
 use App\Domain\Sessions\SessionStatus;
+use App\Domain\Wallet\Wallet;
+use App\Models\DiscountRedemption;
 use App\Models\RentalSession;
 use App\Models\User;
+use App\Models\WalletTransaction;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class VoidSessionAction
 {
-    public function __construct(private readonly DeviceManager $devices) {}
+    public function __construct(
+        private readonly DeviceManager $devices,
+        private readonly Wallet $wallet,
+    ) {}
 
     public function handle(RentalSession $session, User $voidedBy, string $reason): RentalSession
     {
@@ -21,7 +27,7 @@ class VoidSessionAction
             throw new InvalidArgumentException('Alasan void wajib diisi.');
         }
 
-        $voided = DB::transaction(function () use ($session, $voidedBy, $reason) {
+        $voided = DB::transaction(function () use ($session, $voidedBy, $reason): RentalSession {
             $locked = RentalSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status === SessionStatus::Voided) {
@@ -30,6 +36,31 @@ class VoidSessionAction
 
             $before = ['status' => $locked->status->value];
             $wasActive = $locked->status === SessionStatus::Active;
+
+            // Kembalikan saldo sebesar yang BENAR-BENAR ditarik dari dompet untuk
+            // sesi ini — dihitung dari buku besar, bukan baris Payment. Sumber ini
+            // menutup kedua jalur sekaligus: PlayFromWallet memotong di awal tanpa
+            // baris Payment, Open Play mencatat baris Saldo saat berhenti; keduanya
+            // meninggalkan transaksi dompet ber-rental_session_id. Void
+            // mengeluarkan sesi dari pendapatan, jadi tanpa refund pelanggan tetap
+            // terpotong untuk sesi yang justru dibatalkan outlet. Pembayaran
+            // non-dompet (QRIS/tunai/transfer) tidak punya transaksi dompet →
+            // otomatis nol di sini; refund fisiknya urusan kasir.
+            if ($locked->customer) {
+                $charged = -(int) WalletTransaction::query()
+                    ->where('rental_session_id', $locked->id)
+                    ->sum('amount');
+
+                if ($charged > 0) {
+                    $this->wallet->refund($locked->customer, $charged, $locked, $voidedBy);
+                }
+            }
+
+            // Bebaskan kuota voucher: sesi ini dibatalkan, jadi penebusannya bukan
+            // pemakaian sungguhan. Tanpa ini, voucher max_uses=1 yang dipakai di
+            // sesi yang lalu di-void "habis" selamanya padahal transaksinya batal.
+            // Jejak pembatalannya sendiri tetap tercatat di activity log.
+            DiscountRedemption::query()->where('rental_session_id', $locked->id)->delete();
 
             $locked->update([
                 'status' => SessionStatus::Voided,

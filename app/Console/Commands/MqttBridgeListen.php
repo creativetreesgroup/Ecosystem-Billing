@@ -7,6 +7,8 @@ use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
 use App\Domain\Devices\TasmotaTopic;
 use App\Models\Unit;
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use PhpMqtt\Client\ConnectionSettings;
@@ -24,12 +26,10 @@ use Throwable;
  * downtime, ia langsung menerima retained message (state terkini tiap
  * device) alih-alih menunggu perubahan berikutnya.
  */
+#[Signature('bridge:mqtt-listen')]
+#[Description('Dengarkan status power unit Tasmota lewat MQTT (stat/+/POWER, tele/+/LWT).')]
 class MqttBridgeListen extends Command
 {
-    protected $signature = 'bridge:mqtt-listen';
-
-    protected $description = 'Dengarkan status power unit Tasmota lewat MQTT (stat/+/POWER, tele/+/LWT).';
-
     private const int INITIAL_BACKOFF_SECONDS = 1;
 
     private const int MAX_BACKOFF_SECONDS = 30;

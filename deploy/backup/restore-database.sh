@@ -4,7 +4,7 @@ set -euo pipefail
 # Restore satu file backup .sql.gz ke database. WAJIB dites minimal sekali
 # saat setup awal dan tiap kali proses backup berubah — restore yang belum
 # pernah dicoba bukan backup, cuma harapan (§11, lihat catatan uji restore
-# di RUNBOOK.md).
+# di README.md).
 #
 # Pemakaian: deploy/backup/restore-database.sh /path/to/backup.sql.gz
 # APP_DIR bisa dioverride lewat environment variable (dipakai untuk uji

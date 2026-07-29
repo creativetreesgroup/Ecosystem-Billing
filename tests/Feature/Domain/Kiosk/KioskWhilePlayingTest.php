@@ -1,0 +1,256 @@
+<?php
+
+use App\Domain\Devices\ControlDriver;
+use App\Models\Customer;
+use App\Models\Package;
+use App\Models\Unit;
+use App\Models\User;
+use Livewire\Livewire;
+
+/**
+ * Pelanggan yang sedang bermain tetap butuh isi saldo dan pesan makanan.
+ *
+ * Sebelumnya sesi aktif MENGGANTIKAN seluruh dasbor: yang tersisa di layar
+ * hanya kartu "Sedang main" dengan satu tombol "Berhenti & bayar". Untuk jajan,
+ * pelanggan harus menghentikan sesinya dulu — menghentikan tagihan yang sedang
+ * berjalan, lalu memulainya lagi dari awal. Merugikan pelanggan (repot) dan
+ * outlet (pesanan yang batal karena malas).
+ */
+beforeEach(function () {
+    User::factory()->owner()->create();
+
+    $this->unit = Unit::factory()->create(['control_driver' => ControlDriver::Manual]);
+    $this->package = Package::factory()->for($this->unit->unitType)->create([
+        'price' => 10_000,
+        'duration_minutes' => 60,
+        'is_active' => true,
+    ]);
+    $this->customer = Customer::factory()->create(['balance' => 50_000]);
+});
+
+test('a customer who is playing can still reach top up and food ordering', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play')
+        ->assertHasNoErrors();
+
+    expect($this->unit->fresh()->activeSession)->not->toBeNull();
+
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        // Kartu sesi tetap ada — ia berdiri DI ATAS dasbor, bukan menggantikannya.
+        ->assertSee('Sedang main')
+        // Dan dasbornya tetap terjangkau.
+        ->assertSee('Isi saldo')
+        ->assertSee('Pesan');
+});
+
+test('the play tile disappears while a session is running, leaving exactly three', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    // Dibuang, bukan dimatikan. Tombol mati tetap meminta perhatian dan tetap
+    // ditekan orang, lalu tidak terjadi apa-apa — pelanggan mengira
+    // aplikasinya rusak. Memulai sesi kedua di unit yang sama memang tidak
+    // mungkin, jadi tombolnya tidak perlu ada sama sekali.
+    expect($html)->not->toContain('aria-label="Main"');
+
+    // Yang tersisa harus tiga, sama persis dengan baris di dalam kartu sesi,
+    // supaya kedua tempat itu tidak menawarkan pilihan yang berbeda.
+    foreach (['Pesan', 'Isi saldo', 'Riwayat'] as $label) {
+        expect($html)->toContain('aria-label="'.$label.'"');
+    }
+});
+
+test('opening the order tab does not disturb the running session', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $session = $this->unit->fresh()->activeSession;
+
+    // Membuka tab pesanan tidak boleh menyentuh sesi maupun saldo — jalur uang
+    // hanya bergerak saat pesanan benar-benar dibayar.
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('tab', 'order')
+        ->assertHasNoErrors();
+
+    $after = $this->unit->fresh()->activeSession;
+
+    expect($after)->not->toBeNull()
+        ->and($after->id)->toBe($session->id)
+        ->and($after->status)->toBe($session->status)
+        ->and($this->customer->fresh()->balance)->toBe(40_000);
+});
+
+test('a session belonging to someone else still hides the dashboard', function () {
+    $other = Customer::factory()->create(['balance' => 50_000]);
+
+    Livewire::actingAs($other, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    // Batasnya tetap tegas: unit yang sedang dipakai orang lain tidak boleh
+    // menampilkan dasbor siapa pun — bukan sekadar soal tampilan, itu pintu
+    // masuk ke saldo dan pesanan milik orang lain.
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->assertSee('Unit sedang dipakai')
+        ->assertDontSee('aria-label="Isi saldo"', escape: false);
+});
+
+test('the quick tiles sit inside the session card, not further down the page', function () {
+    // Open Play, bukan paket: hanya kartu Open Play yang punya tombol berhenti,
+    // dan tombol itulah patokan bawah yang dipakai test ini.
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->call('startOpenPlay');
+
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    // Barisnya harus berada SETELAH waktu berjalan dan SEBELUM tombol berhenti.
+    // Menaruhnya jauh di bawah halaman sama saja menyembunyikannya: mata
+    // pelanggan sedang berada di kartu sesi, bukan di ujung layar.
+    $tiles = strpos($html, 'quick-inline');
+    // Atribut tombolnya, bukan sekadar kata "stopOpenPlay": kata itu juga
+    // muncul lebih dulu di x-init sebagai penjaga plafon saldo.
+    $stop = strpos($html, 'wire:click="stopOpenPlay"');
+
+    expect($tiles)->not->toBeFalse()
+        ->and($stop)->not->toBeFalse()
+        ->and($tiles)->toBeLessThan($stop);
+});
+
+test('the dashboard becomes a slide-up sheet while playing', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $playingHtml = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    // Kelas dasarnya statis; Alpine hanya menambahkan is-open saat dibuka.
+    // Menegaskan perilakunya, bukan bentuk ekspresi Alpine-nya.
+    expect($playingHtml)->toContain('class="sheet"')
+        ->and($playingHtml)->toContain("'is-open'")
+        ->and($playingHtml)->toContain('kiosk-sheet');
+});
+
+test('outside a session there is no panel at all, the content sits on the page', function () {
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('tab', 'history')
+        ->html();
+
+    // Di luar sesi layar sedang lapang: tidak ada yang perlu dilindungi dari
+    // tertutup, dan menyembunyikan isi di balik panel hanya menambah satu
+    // tekanan tombol tanpa imbalan. Isinya harus langsung terbaca di halaman.
+    expect($html)->not->toContain('class="sheet"')
+        ->and($html)->toContain('Transaksi');
+});
+
+test('the slide-over panel is hidden from the very first paint', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    // Kelasnya harus ada di HTML, bukan ditempelkan Alpine setelahnya. Tanpa
+    // ini seluruh dasbor terender penuh di bawah kartu sesi lebih dulu, lalu
+    // mengejut hilang begitu Alpine hidup -- halaman yang melompat di setiap
+    // muat, dan paling terasa justru di HP kelas bawah yang dipakai pelanggan.
+    expect($html)->toContain('class="sheet"')
+        ->and($html)->not->toContain("'sheet is-open' : 'sheet'");
+});
+
+test('while playing the balance card is not rendered at all', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    // Kartu sesi sudah memuat saldo yang berjalan per detik. Kartu saldo kedua
+    // menampilkan angka yang berbeda beberapa rupiah — satu berjalan, satu diam
+    // — dan pelanggan tidak punya cara tahu mana yang benar. Yang tampil saat
+    // bermain cukup kartu sesinya.
+    expect($html)->not->toContain('balance-card')
+        ->and($html)->toContain('Sedang main')
+        // Panelnya tetap ada dan tertutup, siap dibuka lewat tile di kartu sesi.
+        ->and($html)->toContain('class="sheet"')
+        ->and($html)->not->toContain('sheet is-open');
+});
+
+test('a tile never leaves the customer staring at an empty page', function () {
+    // Di luar sesi: menekan tile langsung menampilkan isinya di halaman.
+    foreach ([['history', 'Transaksi'], ['topup', 'Isi saldo']] as [$tab, $marker]) {
+        $html = Livewire::actingAs($this->customer, 'customer')
+            ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+            ->set('tab', $tab)
+            ->html();
+
+        // toContain() Pest memperlakukan argumen kedua sebagai kata yang ikut
+        // dicari, bukan pesan kegagalan — jadi konteksnya ditaruh di assertion
+        // terpisah agar kegagalannya tetap menyebut tab mana yang kosong.
+        expect($html)->toContain($marker);
+        expect([$tab => str_contains($html, $marker)])->toBe([$tab => true]);
+    }
+
+    // Saat bermain isinya pindah ke panel, jadi tilenya WAJIB membukanya.
+    // Tanpa itu tab berpindah, isinya masuk ke panel yang masih tersembunyi,
+    // dan pelanggan menatap halaman kosong tanpa pesan apa pun.
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $playing = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    expect(substr_count($playing, "\$dispatch('kiosk-sheet')"))->toBeGreaterThanOrEqual(3);
+});
+
+test('a pending payment opens itself as a panel while playing', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    // Satu rangkaian pada komponen yang SAMA: paymentId hidup di state
+    // komponen, jadi instance baru tidak akan mengenali pembayaran itu.
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('tab', 'topup')
+        ->set('topUpAmount', 200_000)
+        ->set('method', 'transfer')
+        ->call('askTopUp')
+        ->call('topUp')
+        ->html();
+
+    // Pembayaran yang sedang menunggu bukan sesuatu yang harus DICARI. Saat
+    // bermain ia muncul sendiri sebagai panel, bukan kartu yang menumpuk di
+    // bawah kartu sesi sampai perlu digulir.
+    expect($html)->toContain('sheet is-open');
+});

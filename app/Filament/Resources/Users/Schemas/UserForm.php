@@ -3,8 +3,8 @@
 namespace App\Filament\Resources\Users\Schemas;
 
 use App\Models\Outlet;
+use App\Models\Role;
 use App\Models\User;
-use App\Models\UserRole;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -57,10 +57,6 @@ class UserForm
 
                         Tab::make('Akses')
                             ->icon(Heroicon::OutlinedKey)
-                            // Lencana peran terbaca sebelum tab dibuka — saat
-                            // menelusuri "siapa yang bisa melakukan apa", itu
-                            // satu-satunya hal yang dicari.
-                            ->badge(fn (?User $record) => $record?->role?->getLabel())
                     // ['md' => 2], bukan columns(2) — columns(2) di Filament
                     // berarti ['lg' => 2] dan tablet ikut menumpuk seperti HP.
                             ->columns(['md' => 2])
@@ -69,17 +65,29 @@ class UserForm
                                 // menurunkan diri jadi kasir atau menonaktifkan diri sendiri
                                 // langsung mengunci keluar dari panel, dan tidak ada jalur
                                 // pemulihan di dalam aplikasi (harus lewat tinker di server).
-                                Select::make('role')
+                                // Peran datang dari Shield, bukan lagi kolom di
+                                // tabel users. Ganda karena seorang manusia boleh
+                                // bekerja di lebih dari satu departemen — kasir
+                                // lantai lazimnya memegang Operasional sekaligus
+                                // Maintenance.
+                                Select::make('roles')
                                     ->label('Peran')
-                                    ->options(UserRole::class)
-                                    ->default(UserRole::Kasir)
+                                    ->relationship('roles', 'name')
+                                    ->getOptionLabelFromRecordUsing(fn (Role $record): string => $record->label())
+                                    ->multiple()
+                                    ->preload()
+                                    ->searchable()
+                                    ->native(false)
+                                    ->prefixIcon(Heroicon::OutlinedShieldCheck)
                                     ->required()
                                     ->disabled(fn (?User $record): bool => self::isSelf($record))
                                     ->helperText(fn (?User $record): string => self::isSelf($record)
                                         ? 'Peran akun sendiri tidak bisa diubah dari sini.'
-                                        : 'Kasir: operasi sesi & unit. Owner: semuanya, termasuk laporan, void, dan pengaturan.'),
+                                        : 'Boleh lebih dari satu.'),
                                 Select::make('outlet_id')
                                     ->label('Outlet')
+                                    ->prefixIcon(Heroicon::OutlinedBuildingStorefront)
+                                    ->native(false)
                                     ->relationship('outlet', 'name')
                                     ->default(fn () => Outlet::query()->value('id'))
                                     ->required(),

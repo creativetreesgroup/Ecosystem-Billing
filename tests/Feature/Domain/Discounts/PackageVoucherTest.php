@@ -1,0 +1,108 @@
+<?php
+
+use App\Domain\Devices\ControlDriver;
+use App\Domain\Discounts\Exceptions\DiscountNotApplicableException;
+use App\Domain\Sessions\Actions\CompleteSessionAction;
+use App\Domain\Sessions\Actions\VoidSessionAction;
+use App\Domain\Wallet\Actions\PlayFromWalletAction;
+use App\Domain\Wallet\Wallet;
+use App\Models\Customer;
+use App\Models\Discount;
+use App\Models\DiscountRedemption;
+use App\Models\Package;
+use App\Models\Unit;
+use App\Models\User;
+
+beforeEach(function () {
+    User::factory()->owner()->create(); // operator kios
+    $this->customer = Customer::factory()->create();
+    $this->unit = Unit::factory()->create(['control_driver' => ControlDriver::Manual]);
+    $this->package = Package::factory()->for($this->unit->unitType)->create(['price' => 25_000, 'duration_minutes' => 60]);
+    app(Wallet::class)->topUp($this->customer, 100_000);
+});
+
+test('a valid voucher charges the discounted price and records the redemption', function () {
+    Discount::factory()->percentage(20)->create(['code' => 'HEMAT20']);
+
+    $session = app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit, $this->package, 'HEMAT20');
+
+    // Ditagih setelah diskon: 25.000 − 20% = 20.000. Saldo 100k → 80k.
+    expect($this->customer->fresh()->balance)->toBe(80_000)
+        ->and($this->customer->fresh()->ledgerBalance())->toBe(80_000)
+        // base_amount = harga list, total_amount = setelah diskon.
+        ->and($session->base_amount)->toBe(25_000)
+        ->and($session->total_amount)->toBe(20_000);
+
+    // Pemakaian tercatat & tertaut ke sesinya.
+    $redemption = DiscountRedemption::where('rental_session_id', $session->id)->first();
+
+    expect($redemption)->not->toBeNull()
+        ->and($redemption->amount)->toBe(5_000)
+        ->and($redemption->customer_id)->toBe($this->customer->id);
+});
+
+/**
+ * Diskon harus bertahan sampai penyelesaian: dulu SessionTotal (base+extra)
+ * menimpa total_amount balik ke harga penuh saat sesi selesai/kedaluwarsa,
+ * membuang potongannya. discount_amount mencegah itu.
+ */
+test('a package discount survives completion, total stays discounted', function () {
+    Discount::factory()->percentage(20)->create(['code' => 'HEMAT20']);
+    $session = app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit, $this->package, 'HEMAT20');
+
+    $completed = app(CompleteSessionAction::class)->handle($session->fresh());
+
+    expect($completed->total_amount)->toBe(20_000)   // tetap diskon, bukan 25.000
+        ->and($completed->discount_amount)->toBe(5_000)
+        ->and($completed->payments()->sole()->amount)->toBe(20_000);
+});
+
+/**
+ * Void sesi berdiskon membebaskan kuota voucher: sesi dibatalkan = penebusannya
+ * bukan pemakaian sungguhan. Voucher max_uses=1 yang dipakai di sesi ter-void
+ * harus bisa dipakai lagi.
+ */
+test('voiding a discounted session frees the voucher quota for reuse', function () {
+    $owner = User::factory()->owner()->create();
+    Discount::factory()->percentage(20)->create(['code' => 'HEMAT20', 'max_uses' => 1]);
+
+    $a = app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit, $this->package, 'HEMAT20');
+    app(VoidSessionAction::class)->handle($a, $owner, 'Salah buka');
+
+    // Kuota kembali → voucher bisa dipakai lagi pada sesi baru di unit yang sama.
+    $b = app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit->fresh(), $this->package, 'HEMAT20');
+
+    expect($b->discount_amount)->toBe(5_000)
+        ->and(DiscountRedemption::where('rental_session_id', $a->id)->count())->toBe(0); // yang lama terhapus
+});
+
+test('without a voucher the full price is charged', function () {
+    $session = app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit, $this->package);
+
+    expect($this->customer->fresh()->balance)->toBe(75_000)
+        ->and($session->total_amount)->toBe(25_000)
+        ->and(DiscountRedemption::count())->toBe(0);
+});
+
+test('an invalid voucher stops the purchase and charges nothing', function () {
+    expect(fn () => app(PlayFromWalletAction::class)->handle($this->customer->fresh(), $this->unit, $this->package, 'NGACO'))
+        ->toThrow(DiscountNotApplicableException::class);
+
+    expect($this->customer->fresh()->balance)->toBe(100_000) // tak berubah
+        ->and($this->unit->fresh()->activeSession)->toBeNull();
+});
+
+/**
+ * Diskon menurunkan yang harus dibayar: pelanggan yang saldonya tak cukup untuk
+ * harga penuh tetap bisa main bila setelah voucher jadi terjangkau.
+ */
+test('a voucher can make an otherwise-unaffordable package affordable', function () {
+    $poor = Customer::factory()->create();
+    app(Wallet::class)->topUp($poor, 21_000); // < 25.000 harga penuh
+    Discount::factory()->percentage(20)->create(['code' => 'HEMAT20']); // → 20.000
+
+    $session = app(PlayFromWalletAction::class)->handle($poor->fresh(), $this->unit, $this->package, 'HEMAT20');
+
+    expect($session->total_amount)->toBe(20_000)
+        ->and($poor->fresh()->balance)->toBe(1_000);
+});

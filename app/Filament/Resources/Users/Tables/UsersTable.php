@@ -2,16 +2,36 @@
 
 namespace App\Filament\Resources\Users\Tables;
 
-use App\Models\UserRole;
+use App\Domain\Users\PermissionGroup;
+use App\Models\Role;
 use Filament\Actions\EditAction;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
+use Illuminate\Support\Str;
 
 class UsersTable
 {
+    /**
+     * Warna lencana per nama peran, dihitung SEKALI.
+     *
+     * Versi pertama menanyakan grup peran di dalam closure warna, yaitu dua
+     * query untuk setiap lencana di setiap baris — tak terasa dengan lima
+     * pengguna, dan menjadi ratusan query begitu daftarnya bertambah.
+     *
+     * @return array<string, string>
+     */
+    private static function groupColours(): array
+    {
+        return once(fn (): array => Role::query()
+            ->pluck('group', 'name')
+            ->map(fn (?PermissionGroup $group): string => $group?->getColor() ?? 'danger')
+            ->all());
+    }
+
     public static function configure(Table $table): Table
     {
         return $table
@@ -19,16 +39,24 @@ class UsersTable
             ->columns([
                 TextColumn::make('name')
                     ->label('Nama')
+                    ->icon(Heroicon::OutlinedUser)
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('email')
                     ->visibleFrom('md')
                     ->label('Email')
+                    ->icon(Heroicon::OutlinedEnvelope)
                     ->searchable()
                     ->copyable(),
-                TextColumn::make('role')
+                // Peran kini bisa lebih dari satu, dan warnanya mengikuti
+                // departemen — dari jarak satu meter itu yang terbaca lebih
+                // dulu daripada namanya.
+                TextColumn::make('roles.name')
                     ->label('Peran')
-                    ->badge(),
+                    ->badge()
+                    ->formatStateUsing(fn ($state): string => Str::of((string) $state)->replace(['_', '-'], ' ')->title()->toString())
+                    ->color(fn ($state): string => self::groupColours()[$state] ?? 'danger')
+                    ->separator(','),
                 IconColumn::make('is_active')
                     ->visibleFrom('md')
                     ->label('Aktif')
@@ -41,9 +69,11 @@ class UsersTable
                     ->color('gray'),
             ])
             ->filters([
-                SelectFilter::make('role')
+                SelectFilter::make('roles')
                     ->label('Peran')
-                    ->options(UserRole::class),
+                    ->relationship('roles', 'name')
+                    ->multiple()
+                    ->preload(),
                 TernaryFilter::make('is_active')
                     ->label('Aktif'),
             ])

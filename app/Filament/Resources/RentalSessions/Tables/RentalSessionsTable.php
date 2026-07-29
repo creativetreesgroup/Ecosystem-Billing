@@ -29,13 +29,16 @@ class RentalSessionsTable
             ->defaultSort('started_at', 'desc')
             ->columns([
                 TextColumn::make('unit.code')
+                    ->icon(Heroicon::OutlinedTv)
                     ->label('Unit')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('openedBy.name')
+                    ->icon(Heroicon::OutlinedUserCircle)
                     ->visibleFrom('lg')
                     ->label('Kasir'),
                 TextColumn::make('customer_name')
+                    ->icon(Heroicon::OutlinedUser)
                     ->label('Pelanggan')
                     ->searchable()
                     ->placeholder('-'),
@@ -44,15 +47,18 @@ class RentalSessionsTable
                     ->label('Tipe')
                     ->badge(),
                 TextColumn::make('package.name')
+                    ->icon(Heroicon::OutlinedTicket)
                     ->visibleFrom('xl')
                     ->label('Paket')
                     ->placeholder('-'),
                 TextColumn::make('started_at')
+                    ->icon(Heroicon::OutlinedPlay)
                     ->visibleFrom('lg')
                     ->label('Mulai')
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
                     ->sortable(),
                 TextColumn::make('ended_at')
+                    ->icon(Heroicon::OutlinedStop)
                     ->visibleFrom('md')
                     ->label('Selesai')
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))
@@ -62,10 +68,22 @@ class RentalSessionsTable
                     ->label('Status')
                     ->badge(),
                 TextColumn::make('total_amount')
+                    ->icon(Heroicon::OutlinedBanknotes)
                     ->label('Total')
                     ->formatStateUsing(fn (?int $state) => $state === null ? null : Rupiah::format($state))
                     ->placeholder('-')
                     ->sortable(),
+                // Potongan yang diberikan (kode voucher / promo). Hanya tampil
+                // bila ada, supaya baris tanpa diskon tetap ringkas.
+                TextColumn::make('discount_amount')
+                    ->icon(Heroicon::OutlinedScissors)
+                    ->label('Diskon')
+                    ->visibleFrom('lg')
+                    ->color('success')
+                    ->formatStateUsing(fn (?int $state, RentalSession $record) => $state > 0
+                        ? '− '.Rupiah::format($state).($record->voucher_code ? ' ('.$record->voucher_code.')' : '')
+                        : null)
+                    ->placeholder('-'),
                 TextColumn::make('payment_method')
                     ->visibleFrom('md')
                     ->label('Pembayaran')

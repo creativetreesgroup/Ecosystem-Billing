@@ -16,6 +16,9 @@ use Livewire\Livewire;
 
 beforeEach(function () {
     $this->kasir = User::factory()->create();
+    // Grid unit milik departemen Operasional; sebelum ini ia terbuka untuk
+    // siapa pun yang bisa masuk panel, tanpa izin apa pun.
+    $this->kasir->syncRoles(['staf_operasional']);
 });
 
 function widgetUnit(int $hourlyRate = 6000): Unit

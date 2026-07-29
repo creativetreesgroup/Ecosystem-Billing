@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Billing\Events\KioskPaymentSettled;
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Billing\PaymentStatus;
 use Database\Factories\PaymentFactory;
@@ -20,8 +21,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * transfer bisa palsu, salah nominal, atau milik transaksi lain.
  */
 #[Fillable([
-    'rental_session_id', 'customer_id', 'method', 'status', 'amount', 'reference',
-    'proof_path', 'verified_by', 'verified_at', 'rejection_reason',
+    'rental_session_id', 'customer_id', 'method', 'status', 'amount', 'fee', 'reference',
+    'proof_path', 'verified_by', 'verified_at', 'rejection_reason', 'voucher_code',
 ])]
 class Payment extends Model
 {
@@ -34,8 +35,30 @@ class Payment extends Model
             'method' => PaymentMethod::class,
             'status' => PaymentStatus::class,
             'amount' => 'integer',
+            'fee' => 'integer',
             'verified_at' => 'datetime',
         ];
+    }
+
+    /** Saldo yang benar-benar masuk ke pelanggan: total bayar dikurangi biaya admin. */
+    public function creditedAmount(): int
+    {
+        return $this->amount - $this->fee;
+    }
+
+    /**
+     * Saat status BERALIH menjadi lunas (bukan tiap penyimpanan), dorong HP
+     * pelanggannya lewat kanal privat supaya layar kiosnya maju seketika. Satu
+     * tempat menangkap SEMUA jalur penyelesaian (QRIS gateway maupun ACC kasir),
+     * tepat sekali per peralihan — bukan tiap polling penjadwal.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (self $payment): void {
+            if ($payment->wasChanged('status') && $payment->isSettled() && $payment->customer_id !== null) {
+                KioskPaymentSettled::dispatch($payment->customer_id);
+            }
+        });
     }
 
     public function rentalSession(): BelongsTo

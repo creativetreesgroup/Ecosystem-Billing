@@ -51,4 +51,19 @@ return [
         'password' => env('MQTT_PASSWORD'),
     ],
 
+    // WAHA (WhatsApp HTTP API) untuk kirim OTP. base_url = alamat LAN (§14),
+    // api_key hanya di .env.
+    'waha' => [
+        'base_url' => env('WAHA_BASE_URL'),
+        'api_key' => env('WAHA_API_KEY'),
+        'session' => env('WAHA_SESSION', 'default'),
+    ],
+
+    // Bot Telegram untuk notifikasi operasional ke owner/staf (keluar ke
+    // api.telegram.org). Token & chat_id hanya di .env.
+    'telegram' => [
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'chat_id' => env('TELEGRAM_CHAT_ID'),
+    ],
+
 ];

@@ -35,6 +35,16 @@ class ManualDriver implements TvControl
         return CommandResult::success('Manual: matikan TV secara fisik.');
     }
 
+    public function showIdleScreen(Unit $unit): CommandResult
+    {
+        return CommandResult::success('Manual: tidak ada cast, dilewati.');
+    }
+
+    public function clearScreen(Unit $unit): CommandResult
+    {
+        return CommandResult::success('Manual: tidak ada cast, dilewati.');
+    }
+
     public function state(Unit $unit): PowerState
     {
         return PowerState::Unknown;

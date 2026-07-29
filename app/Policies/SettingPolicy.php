@@ -4,18 +4,17 @@ namespace App\Policies;
 
 use App\Models\Setting;
 use App\Models\User;
-use App\Models\UserRole;
 
 class SettingPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('ViewAny:Setting');
     }
 
     public function view(User $user, Setting $setting): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('View:Setting');
     }
 
     public function create(User $user): bool
@@ -27,7 +26,7 @@ class SettingPolicy
 
     public function update(User $user, Setting $setting): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Update:Setting');
     }
 
     public function delete(User $user, Setting $setting): bool

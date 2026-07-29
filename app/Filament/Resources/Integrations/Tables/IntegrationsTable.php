@@ -19,6 +19,7 @@ class IntegrationsTable
                     ->label('Integrasi')
                     ->badge(),
                 TextColumn::make('base_url')
+                    ->icon(Heroicon::OutlinedLink)
                     ->label('Alamat')
                     ->visibleFrom('md')
                     // Kosong berarti hal yang BERBEDA per integrasi: Home Assistant
@@ -38,6 +39,7 @@ class IntegrationsTable
                         ? Heroicon::OutlinedLockClosed
                         : Heroicon::OutlinedExclamationTriangle),
                 TextColumn::make('verified_at')
+                    ->icon(Heroicon::OutlinedCheckCircle)
                     ->label('Terakhir diuji')
                     ->visibleFrom('lg')
                     ->dateTime('d/m/Y H:i', timezone: config('app.display_timezone'))

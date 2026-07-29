@@ -10,8 +10,8 @@ use App\Domain\Billing\Rupiah;
 use App\Models\Payment;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
-use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Support\Enums\Alignment;
 use Filament\Support\Enums\FontWeight;
@@ -28,7 +28,7 @@ class PaymentsTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->query(fn () => Payment::query()->with(['rentalSession.unit', 'verifiedBy']))
+            ->query(fn () => Payment::query()->with(['rentalSession.unit', 'customer', 'verifiedBy']))
             // Yang menunggu diperiksa lebih dulu: layar ini dibuka untuk
             // MENGERJAKAN antreannya, bukan membaca arsip pembayaran.
             ->defaultSort('created_at', 'desc')
@@ -39,18 +39,41 @@ class PaymentsTable
                     ->default(PaymentStatus::AwaitingVerification->value),
             ])
             ->columns([
+                // Pembayaran punya DUA asal: penyelesaian sesi (punya unit) dan
+                // isi saldo dari kios (tidak punya unit sama sekali). Membaca
+                // keduanya lewat rentalSession membuat seluruh baris isi saldo
+                // tampil kosong — dan sejak kios ada, justru itulah mayoritasnya.
                 TextColumn::make('rentalSession.unit.code')
-                    ->label('Unit')
+                    ->icon(Heroicon::OutlinedTv)
+                    ->label('Untuk')
                     ->weight(FontWeight::Bold)
+                    ->default('Isi saldo')
+                    ->color(fn (Payment $record): string => $record->rental_session_id ? 'gray' : 'primary')
                     ->searchable(),
-                TextColumn::make('rentalSession.customer_name')
+                TextColumn::make('customer.name')
+                    ->icon(Heroicon::OutlinedUser)
                     ->label('Pelanggan')
+                    // Sesi kasir mencatat namanya sebagai teks (tanpa akun),
+                    // sedangkan isi saldo selalu punya akun pelanggan.
+                    ->state(fn (Payment $record): ?string => $record->customer?->name
+                        ?? $record->rentalSession?->customer_name)
                     ->placeholder('Tanpa nama')
+                    // Disalin, bukan diketik ulang: nama ini dicocokkan dengan
+                    // nama pengirim di mutasi rekening, dan satu huruf meleset
+                    // membuat pencariannya nihil.
+                    ->copyable()
+                    ->copyMessage('Nama disalin')
                     ->searchable(),
                 TextColumn::make('amount')
+                    ->icon(Heroicon::OutlinedBanknotes)
                     ->label('Nominal')
                     ->formatStateUsing(fn (int $state): string => Rupiah::format($state))
                     ->weight(FontWeight::Bold)
+                    // Angka mentah yang disalin, bukan "Rp 2.002.500": yang
+                    // ditempel ke pencarian mutasi adalah nominalnya.
+                    ->copyable()
+                    ->copyableState(fn (int $state): string => (string) $state)
+                    ->copyMessage('Nominal disalin')
                     ->sortable(),
                 TextColumn::make('method')
                     ->label('Metode')
@@ -59,10 +82,12 @@ class PaymentsTable
                     ->label('Status')
                     ->badge(),
                 TextColumn::make('created_at')
+                    ->icon(Heroicon::OutlinedCalendar)
                     ->label('Diterima')
                     ->visibleFrom('lg')
                     ->since(),
                 TextColumn::make('verifiedBy.name')
+                    ->icon(Heroicon::OutlinedCheckBadge)
                     ->label('Diperiksa oleh')
                     ->visibleFrom('xl')
                     ->placeholder('-'),
@@ -93,7 +118,7 @@ class PaymentsTable
             ->modalFooterActionsAlignment(Alignment::Center)
             ->modalIcon(Heroicon::OutlinedBanknotes)
             ->modalIconColor('success')
-            ->modalHeading(fn (Payment $record): string => 'Bukti transfer — '.$record->rentalSession->unit->code)
+            ->modalHeading(fn (Payment $record): string => 'Bukti transfer — '.self::subject($record))
             ->modalDescription('Cocokkan dengan mutasi rekening sebelum menerima. Setelah diterima, angkanya langsung masuk laporan pendapatan.')
             ->modalSubmitActionLabel('Ya, uangnya sudah masuk')
             ->schema([
@@ -107,17 +132,22 @@ class PaymentsTable
                 TextEntry::make('konteks')
                     ->hiddenLabel()
                     ->alignCenter()
-                    ->state(fn (Payment $record): string => ($record->rentalSession->customer_name ?: 'Tanpa nama')
-                        .' · '.$record->rentalSession->unit->code
+                    ->state(fn (Payment $record): string => self::subjectContext($record)
                         .' · '.$record->created_at->setTimezone(config('app.display_timezone'))->format('d M Y H:i'))
                     ->size(TextSize::Small)
                     ->color('gray'),
-                ImageEntry::make('proof_path')
+                // Bukti transfer diunggah PELANGGAN: bisa potret dari HP, bisa
+                // tangkapan layar 16:9 selebar 2000px. Membatasi tingginya saja
+                // membuat gambar lebar menembus keluar modal dan menutupi tombol
+                // Batal serta Terima di belakangnya.
+                //
+                // ImageEntry juga hanya bisa menampilkan; kasir tetap harus membaca
+                // nominal kecil dan digit rekening dari foto layar m-banking.
+                // Penampil sendiri memberi zoom & geser tanpa menambah plugin
+                // yang akan mengunci versi Filament.
+                ViewEntry::make('proof_path')
                     ->hiddenLabel()
-                    ->alignCenter()
-                    ->disk('local')
-                    ->height(320)
-                    ->placeholder('Pelanggan belum mengunggah bukti.'),
+                    ->view('filament.infolists.entries.zoomable-proof'),
             ])
             ->action(function (Payment $record): void {
                 try {
@@ -144,6 +174,26 @@ class PaymentsTable
                     ->persistent()
                     ->send();
             });
+    }
+
+    /**
+     * Judul subjek pembayaran. Bukti transfer bisa datang dari sesi kios (punya
+     * unit) MAUPUN isi saldo (rental_session_id null) — tanpa cabang ini,
+     * mengakses ->rentalSession->unit pada pembayaran isi saldo membuat kasir
+     * yang memeriksa buktinya kena error "read property on null".
+     */
+    private static function subject(Payment $payment): string
+    {
+        return $payment->rentalSession?->unit?->code ?? 'Isi saldo';
+    }
+
+    private static function subjectContext(Payment $payment): string
+    {
+        if ($payment->rentalSession) {
+            return ($payment->rentalSession->customer_name ?: 'Tanpa nama').' · '.$payment->rentalSession->unit->code;
+        }
+
+        return ($payment->customer?->name ?? 'Tanpa nama').' · Isi saldo';
     }
 
     private static function rejectAction(): Action

@@ -171,3 +171,30 @@ test('settling twice never restarts a session that is already running', function
 
     expect($payment->rentalSession->fresh()->started_at->equalTo($mulaiPertama))->toBeTrue();
 });
+
+/**
+ * REGRESI: bila antara checkout dan settle unitnya direbut sesi lain, pembayaran
+ * yang lunas TIDAK boleh menabrak unique index lalu melempar QueryException yang
+ * membatalkan seluruh batch poll (uang sudah masuk, sesi macet Pending). Sesi
+ * tamu ini di-void dengan anggun; pembayarannya tetap Lunas untuk refund manual.
+ */
+test('a paid kiosk order whose unit was taken meanwhile is voided, not crashed', function () {
+    ['payment' => $payment] = app(OpenKioskCheckoutAction::class)
+        ->handle($this->unit, $this->package, PaymentMethod::Qris, 'Budi');
+    $pendingSession = $payment->rentalSession;
+
+    // Sebelum QRIS lunas, unit direbut sesi lain (kasir walk-in).
+    app(StartSessionAction::class)->handle($this->unit->fresh(), User::factory()->create(), SessionType::Open);
+
+    Http::fake(['api.sandbox.midtrans.com/v2/*/status' => Http::response([
+        'transaction_status' => 'settlement',
+        'gross_amount' => '25000.00',
+    ])]);
+
+    // Tidak melempar apa pun.
+    app(SettleQrisPaymentAction::class)->handle($payment);
+
+    expect($pendingSession->fresh()->status)->toBe(SessionStatus::Voided)
+        ->and($payment->fresh()->status)->toBe(PaymentStatus::Paid)
+        ->and($this->unit->fresh()->activeSession)->not->toBeNull(); // sesi walk-in tetap jalan
+});

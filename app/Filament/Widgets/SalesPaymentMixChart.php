@@ -63,9 +63,11 @@ class SalesPaymentMixChart extends ApexChartWidget
                 'labels' => ['rotate' => -45, 'rotateAlways' => count($series['labels']) > 12],
             ],
             // Urutan warna mengikuti urutan PaymentMethod::cases():
-            // Tunai (hijau), QRIS (biru), Transfer (kuning) — sengaja sama
-            // dengan warna badge metode bayar di tabel Riwayat Sesi.
-            'colors' => ['#22c55e', '#3b82f6', '#f59e0b'],
+            // Tunai (hijau), QRIS (biru), Transfer (kuning), Saldo (abu) —
+            // sengaja sama dengan warna badge metode bayar di tabel Riwayat
+            // Sesi. Saldo abu karena uangnya bukan uang baru di laci: sudah
+            // masuk saat isi saldo, ini cuma pemakaiannya.
+            'colors' => ['#22c55e', '#3b82f6', '#f59e0b', '#9ca3af'],
             'plotOptions' => ['bar' => ['borderRadius' => 3, 'columnWidth' => '60%']],
             'dataLabels' => ['enabled' => false],
             'legend' => ['position' => 'top', 'horizontalAlign' => 'left'],

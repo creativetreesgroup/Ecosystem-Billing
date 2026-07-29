@@ -6,9 +6,23 @@ enum SettingType: string
 {
     case Minutes = 'minutes';
     case Text = 'text';
+    case Rupiah = 'rupiah';
+    case Time = 'time';
+    case Toggle = 'toggle';
+    case Image = 'image';
 
     public function suffix(): ?string
     {
-        return $this === self::Minutes ? 'menit' : null;
+        return match ($this) {
+            self::Minutes => 'menit',
+            self::Rupiah => 'rupiah',
+            self::Text, self::Time, self::Toggle, self::Image => null,
+        };
+    }
+
+    /** Pengaturan angka (menit atau rupiah) dirender sebagai input numerik. */
+    public function isNumeric(): bool
+    {
+        return $this === self::Minutes || $this === self::Rupiah;
     }
 }

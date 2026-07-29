@@ -2,9 +2,13 @@
 
 namespace App\Filament\Resources\Settings\Schemas;
 
+use App\Domain\Settings\SettingKey;
 use App\Domain\Settings\SettingType;
 use App\Models\Setting;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\TimePicker;
+use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -25,6 +29,9 @@ class SettingForm
             Section::make(fn (?Setting $record): string => $record?->label() ?? 'Pengaturan')
                 ->description(fn (?Setting $record): ?string => $record?->key?->description())
                 ->icon(fn (?Setting $record) => $record?->key?->getIcon())
+                // Kunci sistem dan nilainya berdampingan: keduanya pendek, dan
+                // menumpuknya membuat form setinggi layar untuk dua baris isi.
+                ->columns(['md' => 2])
                 ->schema([
                     TextEntry::make('key')
                         ->label('Kunci sistem')
@@ -32,17 +39,69 @@ class SettingForm
                         ->color('gray')
                         ->copyable(),
 
+                    // Saklar dan jam punya kontrolnya sendiri. Memaksa keduanya
+                    // lewat kotak teks berarti pemilik outlet mengetik "1" atau
+                    // "22:00" dengan tangan — dan satu salah ketik di jam tutup
+                    // mematikan pemesanan tanpa ada yang tahu sebabnya.
+                    Toggle::make('value.value')
+                        ->label('Aktif')
+                        ->helperText('Nonaktifkan untuk menutup pemesanan seketika, berapa pun jamnya.')
+                        ->visible(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Toggle)
+                        ->dehydrateStateUsing(fn ($state): int => $state ? 1 : 0),
+
+                    TimePicker::make('value.value')
+                        ->label('Jam')
+                        ->seconds(false)
+                        ->format('H:i')
+                        ->displayFormat('H:i')
+                        // Boleh kosong: jam istirahat kosong = tidak ada
+                        // istirahat, dan jam buka = tutup berarti 24 jam.
+                        ->helperText(fn (?Setting $record): ?string => $record?->key?->description())
+                        ->visible(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Time),
+
+                    // Disimpan ke disk 'local', bukan 'public': unggahan di
+                    // instalasi Docker ini memang tidak bisa disajikan nginx,
+                    // dan aset merek dilewatkan route brand.asset.
+                    FileUpload::make('value.value')
+                        ->label('Berkas')
+                        ->disk('local')
+                        ->directory('brand')
+                        ->visibility('private')
+                        ->image()
+                        ->imageEditor()
+                        ->maxSize(1024)
+                        ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/svg+xml', 'image/x-icon', 'image/webp'])
+                        ->helperText(fn (?Setting $record): ?string => $record?->key?->description())
+                        ->columnSpanFull()
+                        ->visible(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Image)
+                        // Kosongkan berarti kembali ke bawaan, bukan menyimpan
+                        // null yang membuat brandAssetUrl() melempar.
+                        ->dehydrateStateUsing(fn ($state): string => is_array($state) ? (string) reset($state) : (string) $state),
+
                     TextInput::make('value.value')
                         ->label('Nilai')
-                        ->required()
+                        ->visible(fn (?Setting $record): bool => ! in_array(
+                            $record?->key?->type(),
+                            [SettingType::Toggle, SettingType::Time, SettingType::Image],
+                            true,
+                        ))
+                        // Nama usaha boleh dikosongkan: kosong = pakai APP_NAME.
+                        ->required(fn (?Setting $record): bool => $record?->key !== SettingKey::BusinessName)
                         ->suffix(fn (?Setting $record): ?string => $record?->key?->type()->suffix())
-                        // minValue(1), bukan 0: pembulatan billing 0 menit dulu
-                        // membuat setiap penutupan sesi open play melempar
-                        // DivisionByZeroError sehingga sesinya tidak bisa
-                        // diselesaikan sama sekali.
-                        ->numeric(fn (?Setting $record): bool => $record?->key?->type() === SettingType::Minutes)
-                        ->minValue(fn (?Setting $record): ?int => $record?->key?->type() === SettingType::Minutes ? 1 : null)
-                        ->maxValue(fn (?Setting $record): ?int => $record?->key?->type() === SettingType::Minutes ? 1440 : null)
+                        // Menit & rupiah = numerik. minValue menit 1 (0 menit
+                        // dulu membuat pembagian pembulatan billing melempar
+                        // DivisionByZeroError); rupiah boleh 0 (= biaya dimatikan).
+                        ->numeric(fn (?Setting $record): bool => (bool) $record?->key?->type()->isNumeric())
+                        ->minValue(fn (?Setting $record): ?int => match ($record?->key?->type()) {
+                            SettingType::Minutes => 1,
+                            SettingType::Rupiah => 0,
+                            default => null,
+                        })
+                        ->maxValue(fn (?Setting $record): ?int => match ($record?->key?->type()) {
+                            SettingType::Minutes => 1440,
+                            SettingType::Rupiah => 100_000,
+                            default => null,
+                        })
                         ->maxLength(fn (?Setting $record): ?int => $record?->key?->type() === SettingType::Text ? 191 : null),
                 ]),
         ]);

@@ -3,28 +3,27 @@
 namespace App\Policies;
 
 use App\Models\User;
-use App\Models\UserRole;
 
 class UserPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('ViewAny:User');
     }
 
     public function view(User $user, User $target): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('View:User');
     }
 
     public function create(User $user): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Create:User');
     }
 
     public function update(User $user, User $target): bool
     {
-        return $user->role === UserRole::Owner;
+        return $user->checkPermissionTo('Update:User');
     }
 
     /**

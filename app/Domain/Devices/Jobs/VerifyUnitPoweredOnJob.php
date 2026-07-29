@@ -5,8 +5,11 @@ namespace App\Domain\Devices\Jobs;
 use App\Domain\Devices\DeviceAlertType;
 use App\Domain\Devices\DeviceManager;
 use App\Domain\Devices\PowerState;
+use App\Domain\Sessions\Actions\VoidSessionAction;
 use App\Models\DeviceAlert;
 use App\Models\Unit;
+use App\Models\User;
+use App\Models\WalletTransaction;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -61,8 +64,12 @@ class VerifyUnitPoweredOnJob implements ShouldQueue
             return;
         }
 
+        $state = PowerState::Unknown;
+
         try {
-            if ($devices->driverFor($unit)->state($unit) === PowerState::On) {
+            $state = $devices->driverFor($unit)->state($unit);
+
+            if ($state === PowerState::On) {
                 return;
             }
         } catch (Throwable $e) {
@@ -80,6 +87,17 @@ class VerifyUnitPoweredOnJob implements ShouldQueue
                 "TV unit {$unit->code} tidak menyala walau sesi sudah berjalan — nyalakan manual dan cek perangkatnya.",
             );
 
+            // Standby = perangkatnya SENDIRI memastikan dirinya tidak menyala.
+            // Hanya itu yang boleh menggerakkan uang. Unreachable/Unknown berarti
+            // kita tidak tahu apa-apa: pelanggan bisa saja sedang asyik bermain
+            // sementara jaringan ke Home Assistant yang putus, dan mengembalikan
+            // saldo di situ sama dengan membagikan sesi gratis. Sama seperti
+            // aturan Batalkan saat gateway QRIS tak terjangkau: tidak tahu =
+            // jangan sentuh uangnya, panggil manusia.
+            if ($state === PowerState::Standby) {
+                $this->refundUnplayedSession($unit);
+            }
+
             return;
         }
 
@@ -89,5 +107,50 @@ class VerifyUnitPoweredOnJob implements ShouldQueue
 
         self::dispatch($unit->id, $this->attempt + 1)
             ->delay(now()->addSeconds(self::SECONDS_BETWEEN_ATTEMPTS));
+    }
+
+    /**
+     * Sesi yang sudah dibayar tapi TV-nya terbukti tak pernah menyala: batalkan
+     * dan kembalikan saldonya.
+     *
+     * Sebelum ini alert untuk staf adalah satu-satunya akibat — jam terus
+     * berjalan di layar gelap dan uang pelanggan tertahan sampai ada manusia
+     * yang kebetulan menyadarinya. Alert-nya tetap ada (perangkatnya memang
+     * rusak dan harus diperiksa); yang ditambahkan di sini cuma satu hal:
+     * uangnya tidak ikut menunggu.
+     *
+     * Dibatasi ke sesi yang benar-benar memotong dompet. Sesi tunai uangnya ada
+     * di laci, jadi tak ada yang bisa dikembalikan otomatis — void-nya keputusan
+     * kasir, bukan job ini.
+     */
+    private function refundUnplayedSession(Unit $unit): void
+    {
+        $session = $unit->activeSession;
+
+        $charged = -(int) WalletTransaction::query()
+            ->where('rental_session_id', $session->id)
+            ->sum('amount');
+
+        if ($charged <= 0) {
+            return;
+        }
+
+        try {
+            app(VoidSessionAction::class)->handle(
+                $session,
+                User::kioskOperator(),
+                "Otomatis: TV unit {$unit->code} tidak menyala, saldo dikembalikan.",
+            );
+        } catch (Throwable $e) {
+            // Gagal mengembalikan bukan alasan job ini gagal keras: alert-nya
+            // sudah dibuat, jadi stafnya tetap tahu. Jejaknya ditinggalkan di
+            // log supaya bisa ditelusuri, dan wallet:audit tetap menjaga
+            // konsistensi saldo.
+            Log::error('Gagal mengembalikan saldo sesi yang TV-nya tidak menyala.', [
+                'unit_id' => $unit->id,
+                'rental_session_id' => $session->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

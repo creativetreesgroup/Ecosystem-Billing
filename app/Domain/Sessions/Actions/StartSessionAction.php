@@ -4,10 +4,12 @@ namespace App\Domain\Sessions\Actions;
 
 use App\Domain\Billing\PaymentMethod;
 use App\Domain\Devices\DeviceManager;
+use App\Domain\Discounts\DiscountEngine;
+use App\Domain\Discounts\DiscountTarget;
 use App\Domain\Sessions\Events\SessionStarted;
 use App\Domain\Sessions\Exceptions\UnitAlreadyActiveException;
-use App\Domain\Sessions\Jobs\ExpireRentalSession;
-use App\Domain\Sessions\Jobs\WarnSessionEnding;
+use App\Domain\Sessions\Jobs\ExpireRentalSessionJob;
+use App\Domain\Sessions\Jobs\WarnSessionEndingJob;
 use App\Domain\Sessions\SessionStatus;
 use App\Domain\Sessions\SessionType;
 use App\Domain\Settings\SettingKey;
@@ -22,7 +24,10 @@ use InvalidArgumentException;
 
 class StartSessionAction
 {
-    public function __construct(private readonly DeviceManager $devices) {}
+    public function __construct(
+        private readonly DeviceManager $devices,
+        private readonly DiscountEngine $discounts,
+    ) {}
 
     public function handle(
         Unit $unit,
@@ -31,6 +36,7 @@ class StartSessionAction
         ?Package $package = null,
         ?string $customerName = null,
         ?PaymentMethod $paymentMethod = null,
+        ?string $voucherCode = null,
     ): RentalSession {
         if ($type === SessionType::Package && ! $package) {
             throw new InvalidArgumentException('Paket wajib dipilih untuk sesi tipe paket.');
@@ -48,7 +54,7 @@ class StartSessionAction
             throw new InvalidArgumentException("Paket \"{$package->name}\" bukan untuk tipe unit {$unit->code}.");
         }
 
-        $session = DB::transaction(function () use ($unit, $openedBy, $type, $package, $customerName, $paymentMethod) {
+        $session = DB::transaction(function () use ($unit, $openedBy, $type, $package, $customerName, $paymentMethod, $voucherCode): RentalSession {
             $lockedUnit = Unit::query()->whereKey($unit->id)->lockForUpdate()->firstOrFail();
 
             $alreadyActive = RentalSession::query()
@@ -81,21 +87,46 @@ class StartSessionAction
                 'paid_at' => $type === SessionType::Package ? now() : null,
             ]);
 
-            // powerOn(), bukan attempt(...powerOn): powerOn() ikut
-            // menjadwalkan verifikasi. Jawaban sukses dari Home Assistant
-            // tidak membuktikan TV menyala (lihat VerifyUnitPoweredOnJob).
-            $this->devices->powerOn($lockedUnit);
+            // Diskon paket (voucher dari kasir, atau promo otomatis bila tak ada
+            // kode). Sesi kasir tak punya akun, jadi customer null — kuota total
+            // tetap dijaga, kuota per-pelanggan tak berlaku. discount_amount
+            // disimpan → SessionTotal menguranginya, jadi harga yang ditagih &
+            // dilaporkan sudah terpotong.
+            if ($type === SessionType::Package) {
+                $redemption = $this->discounts->apply(
+                    $voucherCode,
+                    DiscountTarget::Package,
+                    $package->price,
+                    null,
+                    ['rental_session_id' => $session->id],
+                );
 
-            if ($endsAt) {
-                $warningMinutes = (int) Setting::get(SettingKey::WarningBeforeMinutes);
-
-                ExpireRentalSession::dispatch($session->id, $session->expiry_token)->delay($endsAt);
-                WarnSessionEnding::dispatch($session->id, $session->expiry_token)
-                    ->delay($endsAt->copy()->subMinutes($warningMinutes));
+                if ($redemption) {
+                    $session->update([
+                        'discount_amount' => $redemption->amount,
+                        'voucher_code' => $voucherCode,
+                    ]);
+                }
             }
 
             return $session;
         });
+
+        // Di luar transaksi: perangkat & antrean tidak boleh menahan kunci baris
+        // unit selama panggilan HTTP ke Home Assistant — samakan dengan tiga start
+        // action kios lain. powerOn() (bukan attempt) ikut menjadwalkan verifikasi:
+        // jawaban sukses HA belum membuktikan TV menyala (VerifyUnitPoweredOnJob).
+        $this->devices->powerOn($session->unit);
+        // Bersihkan QR → TV kembali ke game.
+        $this->devices->clearScreen($session->unit);
+
+        if ($session->ends_at) {
+            $warningMinutes = (int) Setting::get(SettingKey::WarningBeforeMinutes);
+
+            ExpireRentalSessionJob::dispatch($session->id, $session->expiry_token)->delay($session->ends_at);
+            WarnSessionEndingJob::dispatch($session->id, $session->expiry_token)
+                ->delay($session->ends_at->copy()->subMinutes($warningMinutes));
+        }
 
         SessionStarted::dispatch($session->id, $session->unit_id);
 

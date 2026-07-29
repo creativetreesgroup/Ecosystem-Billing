@@ -13,20 +13,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['outlet_id', 'name', 'email', 'password', 'role', 'is_active'])]
+#[Fillable(['outlet_id', 'name', 'email', 'password', 'is_active'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, HasRoles, Notifiable;
 
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
-            'role' => UserRole::class,
             'is_active' => 'boolean',
         ];
     }
@@ -34,6 +34,21 @@ class User extends Authenticatable implements FilamentUser
     public function canAccessPanel(Panel $panel): bool
     {
         return $this->is_active;
+    }
+
+    /**
+     * Operator yang dicatat sebagai pembuka sesi kios swalayan — tak ada kasir
+     * di sana, jadi transaksinya dikaitkan ke owner. Dipakai semua action kios
+     * (PlayFromWallet, StartKioskOpenPlay, checkout) supaya satu definisi saja.
+     */
+    public static function kioskOperator(): self
+    {
+        // Dicari lewat peran Shield, bukan kolom: setelah peran pindah rumah,
+        // kolomnya tidak lagi menjadi bukti apa pun tentang siapa pemilik outlet.
+        return self::query()
+            ->whereHas('roles', fn ($query) => $query->where('name', config('filament-shield.super_admin.name', 'super_admin')))
+            ->orderBy('id')
+            ->firstOrFail();
     }
 
     public function outlet(): BelongsTo

@@ -12,11 +12,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'unit_id', 'opened_by', 'customer_name', 'type', 'package_id',
     'started_at', 'ends_at', 'ended_at', 'status', 'expiry_token',
-    'base_amount', 'extra_amount', 'total_amount', 'payment_method',
+    'base_amount', 'extra_amount', 'discount_amount', 'voucher_code', 'total_amount', 'payment_method',
     'paid_at', 'voided_by', 'void_reason', 'customer_id',
 ])]
 class RentalSession extends Model
@@ -36,6 +37,7 @@ class RentalSession extends Model
             'paid_at' => 'datetime',
             'base_amount' => 'integer',
             'extra_amount' => 'integer',
+            'discount_amount' => 'integer',
             'total_amount' => 'integer',
         ];
     }

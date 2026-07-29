@@ -2,8 +2,10 @@
 
 namespace App\Domain\Wallet;
 
+use App\Domain\Wallet\Exceptions\CreditCeilingReachedException;
 use App\Domain\Wallet\Exceptions\InsufficientBalanceException;
 use App\Models\Customer;
+use App\Models\MenuOrder;
 use App\Models\Payment;
 use App\Models\RentalSession;
 use App\Models\User;
@@ -53,6 +55,25 @@ class Wallet
     }
 
     /**
+     * Pemakaian yang BOLEH menjadikan saldo minus — HANYA untuk Open Play, dan
+     * HANYA sampai batas $ceiling. Jalur terpisah dari spend() dengan sengaja:
+     * penjaga "saldo tidak boleh minus" di spend() adalah aturan paling mahal
+     * di seluruh sistem, dan tidak boleh dilonggarkan untuk semua orang demi
+     * satu fitur. Di sini minusnya dibatasi, dan setiap pemakaiannya terlihat.
+     */
+    public function spendOnCredit(Customer $customer, int $amount, int $ceiling, ?RentalSession $session = null): WalletTransaction
+    {
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Nominal pemakaian harus lebih dari nol.');
+        }
+
+        return $this->record($customer, WalletTransactionType::Spend, -$amount, [
+            'rental_session_id' => $session?->id,
+            'description' => $session?->unit?->code ? 'Main di '.$session->unit->code : 'Pemakaian saldo',
+        ], floor: -$ceiling);
+    }
+
+    /**
      * Mengembalikan saldo, mis. saat sesi yang sudah dibayar dibatalkan.
      * Dipisah dari topUp() supaya laporan bisa membedakan uang yang benar-benar
      * masuk dari uang yang cuma dikembalikan.
@@ -71,11 +92,46 @@ class Wallet
     }
 
     /**
+     * Membayar pesanan jajanan dari saldo. Floor 0 DENGAN SENGAJA: jajan tidak
+     * boleh berutang — hanya Open Play yang punya plafon kredit, dan pengecualian
+     * itu tidak boleh menular ke pembelian lain.
+     */
+    public function spendOnOrder(Customer $customer, int $amount, MenuOrder $order): WalletTransaction
+    {
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Nominal pesanan harus lebih dari nol.');
+        }
+
+        return $this->record($customer, WalletTransactionType::Spend, -$amount, [
+            'menu_order_id' => $order->id,
+            'description' => 'Pesanan di '.($order->unit?->code ?? 'kios'),
+        ]);
+    }
+
+    /** Mengembalikan uang pesanan yang dibatalkan sebelum sempat diantar. */
+    public function refundOrder(Customer $customer, int $amount, MenuOrder $order, ?User $performedBy = null): WalletTransaction
+    {
+        if ($amount <= 0) {
+            throw new InvalidArgumentException('Nominal pengembalian harus lebih dari nol.');
+        }
+
+        return $this->record($customer, WalletTransactionType::Refund, $amount, [
+            'menu_order_id' => $order->id,
+            'performed_by' => $performedBy?->id,
+            'description' => 'Pembatalan pesanan di '.($order->unit?->code ?? 'kios'),
+        ]);
+    }
+
+    /**
      * Koreksi manual oleh owner. WAJIB beralasan: angka saldo yang berubah
      * tanpa keterangan tidak bisa dipertanggungjawabkan siapa pun, dan justru
      * baris seperti inilah yang pertama dicari saat ada dugaan penyalahgunaan.
+     *
+     * $allowNegative membuka koreksi yang menjadikan saldo minus — dipakai owner
+     * untuk membebankan utang/denda secara sengaja. Default tetap tertutup
+     * supaya koreksi biasa tidak tak sengaja menjebol batas nol.
      */
-    public function adjust(Customer $customer, int $amount, string $reason, User $performedBy): WalletTransaction
+    public function adjust(Customer $customer, int $amount, string $reason, User $performedBy, bool $allowNegative = false): WalletTransaction
     {
         if ($amount === 0) {
             throw new InvalidArgumentException('Koreksi nol tidak mengubah apa pun.');
@@ -88,24 +144,29 @@ class Wallet
         return $this->record($customer, WalletTransactionType::Adjustment, $amount, [
             'performed_by' => $performedBy->id,
             'description' => $reason,
-        ]);
+        ], floor: $allowNegative ? PHP_INT_MIN : 0);
     }
 
     /**
      * @param  array<string, mixed>  $attributes
      */
-    private function record(Customer $customer, WalletTransactionType $type, int $amount, array $attributes): WalletTransaction
+    private function record(Customer $customer, WalletTransactionType $type, int $amount, array $attributes, int $floor = 0): WalletTransaction
     {
-        return DB::transaction(function () use ($customer, $type, $amount, $attributes): WalletTransaction {
+        return DB::transaction(function () use ($customer, $type, $amount, $attributes, $floor): WalletTransaction {
             $locked = Customer::query()->whereKey($customer->id)->lockForUpdate()->firstOrFail();
 
             $balanceAfter = $locked->balance + $amount;
 
-            // Saldo tidak boleh pernah negatif. Ini penjaga TERAKHIR, bukan
-            // satu-satunya: pemanggil tetap harus memeriksa lebih dulu supaya
-            // pelanggan mendapat pesan yang masuk akal, bukan exception.
-            if ($balanceAfter < 0) {
-                throw new InsufficientBalanceException('Saldo tidak cukup.');
+            // Batas bawah saldo dicek DI DALAM kunci baris supaya atomik: dua
+            // permintaan bersamaan tidak bisa sama-sama lolos lalu menembus
+            // batas. floor 0 = aturan biasa (tidak boleh minus); floor negatif
+            // = jalur kredit Open Play (boleh minus sampai plafon). Pemanggil
+            // tetap harus memeriksa lebih dulu supaya pelanggan mendapat pesan
+            // yang masuk akal, bukan exception.
+            if ($balanceAfter < $floor) {
+                throw $floor < 0
+                    ? new CreditCeilingReachedException('Batas kredit tercapai. Lunasi dulu.')
+                    : new InsufficientBalanceException('Saldo tidak cukup.');
             }
 
             $locked->update(['balance' => $balanceAfter]);

@@ -7,7 +7,7 @@ use App\Domain\Billing\SalesSummary;
 use App\Filament\Widgets\SalesPaymentMixChart;
 use App\Filament\Widgets\SalesRevenueChart;
 use App\Filament\Widgets\SalesStatsWidget;
-use App\Models\UserRole;
+use App\Filament\Widgets\SalesUnitTypeChart;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
@@ -57,7 +57,7 @@ class SalesReport extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->role === UserRole::Owner;
+        return Auth::user()?->checkPermissionTo('View:SalesReport') ?? false;
     }
 
     public function mount(): void
@@ -147,6 +147,14 @@ class SalesReport extends Page implements HasTable
                             ->valueLabel('Pendapatan')
                             ->placeholder('Tidak ada data pada rentang ini.'),
                     ]),
+            ]),
+
+            // Ditaruh SETELAH daftar tipe unit di atasnya: daftar menjawab
+            // "berapa", grafik menjawab "dibanding yang lain berapa" — dan
+            // urutan itu yang dipakai orang saat membaca.
+            Livewire::make(SalesUnitTypeChart::class, fn (): array => [
+                'startDate' => $this->data['start_date'] ?? null,
+                'endDate' => $this->data['end_date'] ?? null,
             ]),
 
             Livewire::make(SalesPaymentMixChart::class, fn (): array => [

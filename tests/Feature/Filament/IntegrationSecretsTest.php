@@ -12,7 +12,7 @@ use Livewire\Livewire;
 
 /**
  * §14 semula mensyaratkan HA_TOKEN hanya lewat .env. Pelonggarannya tercatat
- * di DECISIONS.md, TAPI syarat-syaratnya harus tetap ditegakkan mesin, bukan
+ * di README.md, TAPI syarat-syaratnya harus tetap ditegakkan mesin, bukan
  * niat baik. Berkas ini yang menegakkannya.
  */
 test('the token is encrypted at rest, never readable from a database dump', function () {
