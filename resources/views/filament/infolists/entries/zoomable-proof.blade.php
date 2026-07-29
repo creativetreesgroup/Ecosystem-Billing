@@ -17,8 +17,32 @@
     diam-diam tidak berefek.
 --}}
 @php
+    use Illuminate\Support\Facades\Storage;
+
     $path = $getState();
-    $url = filled($path) ? \Illuminate\Support\Facades\Storage::disk('local')->url($path) : null;
+    $url = null;
+
+    if (filled($path) && Storage::disk('local')->exists($path)) {
+        // temporaryUrl(), BUKAN url(). Disk 'local' memakai 'serve' => true,
+        // yang mendaftarkan route storage/{path} BER-TANDA TANGAN — url() biasa
+        // menghasilkan tautan tanpa tanda tangan dan dijawab 404. Gejalanya
+        // menyesatkan: <img> yang rusak tanpa pesan apa pun, dan kasir mengira
+        // pelanggan tidak mengunggah bukti lalu menolak pembayaran yang
+        // sebenarnya sah.
+        //
+        // Ini juga yang dilakukan ImageEntry bawaan Filament, dan alasan
+        // gambarnya dulu tampil sebelum diganti penampil ini.
+        try {
+            $url = Storage::disk('local')->temporaryUrl(
+                $path,
+                now()->addMinutes(config('filament.temporary_file_url_expiry_minutes', 30))->endOfHour(),
+            );
+        } catch (Throwable) {
+            // Driver yang tidak mendukung tautan sementara (mis. bila disk
+            // dipindah ke penyimpanan lain) tetap dapat tautan biasa.
+            $url = Storage::disk('local')->url($path);
+        }
+    }
 @endphp
 
 @if (blank($url))

@@ -101,6 +101,11 @@ test('the transfer proof image is bound to the modal width', function () {
     $view = file_get_contents(resource_path('views/filament/infolists/entries/zoomable-proof.blade.php'));
 
     expect($view)
+        // temporaryUrl, bukan url(): disk 'local' memakai 'serve' => true yang
+        // mendaftarkan route BER-TANDA TANGAN. url() biasa dijawab 404, dan
+        // gejalanya berupa gambar rusak tanpa pesan — kasir mengira pelanggan
+        // tidak mengunggah bukti lalu menolak pembayaran yang sebenarnya sah.
+        ->toContain('temporaryUrl(')
         // Wadahnya memotong apa pun yang melewati batas, berapa pun perbesarannya.
         ->toContain('overflow:hidden')
         // Menjaga rasio, supaya nominal pada struk tidak melar dan tetap terbaca.
