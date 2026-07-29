@@ -997,7 +997,10 @@ new class extends Component
     || ($this->payment->status === PaymentStatus::Pending
         && in_array($this->payment->method, [PaymentMethod::Qris, PaymentMethod::Transfer], true))
 ))
-@php($centered = ! $this->customer || ($sess && ! $mine))
+{{-- Rata tengah juga saat bermain: yang tersisa di layar hanya satu kartu
+     sesi, dan kartu tunggal yang menempel di atas dengan ruang kosong sepanjang
+     layar di bawahnya terbaca seperti halaman yang gagal memuat sisanya. --}}
+@php($centered = ! $this->customer || $playing || ($sess && ! $mine))
 
 <div class="kiosk {{ $centered ? 'kiosk--center' : '' }}">
     {{-- Langganan realtime kanal privat pelanggan (lihat kioskRealtime di layout).
@@ -1230,15 +1233,17 @@ new class extends Component
         {{-- is-open sejak dirender: pembayaran yang sedang menunggu bukan
              sesuatu yang harus dicari pelanggan. Ia muncul sendiri, dan
              tetap bisa ditutup lewat tombol di kepala panel. --}}
-        <div class="sheet is-open"
-             x-data="{ open: true }"
-             x-on:keydown.escape.window="open = false"
-             :class="{ 'is-open': open }">
+        <div @if ($playing) class="sheet is-open"
+                 x-data="{ open: true }"
+                 x-on:keydown.escape.window="open = false"
+                 :class="{ 'is-open': open }" @endif>
 
+        @if ($playing)
             <div class="sheet-head">
                 <span class="sheet-grip" aria-hidden="true"></span>
                 <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
             </div>
+        @endif
 
         @if ($this->payment?->status === PaymentStatus::Paid)
         <div class="card pay-card">
@@ -1398,7 +1403,7 @@ new class extends Component
                      berada di halaman, bukan di panel. --}}
                 <button type="button" class="quick-tile {{ $activeTab === $key ? 'is-active' : '' }} {{ $disabled ? 'quick-off' : '' }}"
                         @if ($disabled) disabled @else wire:click="$set('tab', '{{ $key }}')" @endif
-                        @if (! $disabled && $key !== 'main') x-on:click="$dispatch('kiosk-sheet')" @endif
+                        @if ($playing && ! $disabled && $key !== 'main') x-on:click="$dispatch('kiosk-sheet')" @endif
                         aria-label="{{ $labelText }}" title="{{ $labelText }}">
                     @svg($icon)
                 </button>
@@ -1459,17 +1464,27 @@ new class extends Component
              "Pilih cara main" sengaja TIDAK ikut ke dalam panel: itu langkah
              pertama pelanggan baru, dan menyembunyikannya di balik satu tekanan
              tombol menambah satu langkah tepat sebelum ia membayar. --}}
-        <div class="sheet"
-             x-data="{ open: false }"
-             x-on:kiosk-sheet.window="open = true"
-             x-on:keydown.escape.window="open = false"
-             :class="{ 'is-open': open }">
+        {{-- Panel geser HANYA saat bermain. Di luar sesi, isi tab tampil
+             menurun di halaman seperti semula: layar sedang lapang, tidak ada
+             yang perlu dilindungi dari tertutup, dan menyembunyikan isinya di
+             balik panel hanya menambah satu tekanan tombol tanpa imbalan.
+             Saat bermain keadaannya berbeda — kartu sesi dengan saldo berjalan
+             dan tombol berhenti harus tetap terlihat, dan panel satu-satunya
+             cara memberi ruang penuh tanpa mengusirnya dari layar. --}}
+        <div @if ($playing) class="sheet"
+                 x-data="{ open: false }"
+                 x-on:kiosk-sheet.window="open = true"
+                 x-on:keydown.escape.window="open = false"
+                 :class="{ 'is-open': open }" @endif>
 
+        @if ($playing)
             <div class="sheet-head">
                 <span class="sheet-grip" aria-hidden="true"></span>
                 <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
             </div>
+        @endif
 
+            @if ($playing)
             {{-- Tiga saja: "Main" tidak pernah ikut ke panel. Panel ini isinya
                  Pesan, Isi saldo, dan Riwayat; menaruh "Main" di sini berarti
                  menawarkan mulai bermain dari tempat yang justru dibuka karena
@@ -1484,6 +1499,7 @@ new class extends Component
                     </button>
                 @endforeach
             </div>
+            @endif
 
         @if ($activeTab === 'order')
         <div class="card">
