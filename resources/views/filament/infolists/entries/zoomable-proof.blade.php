@@ -64,7 +64,7 @@
         x-on:keydown.escape.window="reset()"
     >
         <div
-            style="position:relative;overflow:hidden;border-radius:.5rem;height:20rem;
+            style="position:relative;overflow:hidden;border-radius:.5rem;height:24rem;
                    background:rgba(0,0,0,.03);box-shadow:inset 0 0 0 1px rgba(17,24,39,.1)"
             x-on:wheel.prevent="zoom($event.deltaY < 0 ? 0.25 : -0.25)"
             x-on:dblclick="z > 1 ? reset() : zoom(1)"
@@ -72,7 +72,13 @@
             x-on:mousemove.window="if (drag && z > 1) { x = $event.clientX - sx; y = $event.clientY - sy }"
             x-on:mouseup.window="drag = false"
             x-on:mouseleave="drag = false"
-            :style="z > 1 ? (drag ? 'cursor:grabbing' : 'cursor:grab') : 'cursor:zoom-in'"
+            {{-- Sintaks OBJEK, bukan string. x-bind:style yang diberi string
+                 MENIMPA seluruh atribut style, bukan menggabungkannya — begitu
+                 Alpine hidup, overflow:hidden dan height di atas terhapus, dan
+                 gambar yang diperbesar menembus keluar modal menutupi tabel
+                 beserta tombol Terima di belakangnya. Sintaks objek hanya
+                 menyetel properti yang disebut. --}}
+            :style="{ cursor: z > 1 ? (drag ? 'grabbing' : 'grab') : 'zoom-in' }"
         >
             {{-- transition dimatikan saat menggeser: menganimasikan tiap langkah
                  tetikus membuat gambar terasa tertinggal dari kursor. --}}
@@ -82,8 +88,10 @@
                 draggable="false"
                 style="display:block;margin:0 auto;height:100%;width:auto;max-width:100%;
                        object-fit:contain;user-select:none;-webkit-user-drag:none"
-                :style="`transform: translate(${x}px, ${y}px) scale(${z});
-                         transition: ${drag ? 'none' : 'transform .15s ease-out'}`"
+                :style="{
+                    transform: `translate(${x}px, ${y}px) scale(${z})`,
+                    transition: drag ? 'none' : 'transform .15s ease-out',
+                }"
             >
         </div>
 
@@ -110,7 +118,7 @@
                 type="button"
                 x-on:click="reset()"
                 x-bind:disabled="z === 1"
-                x-bind:style="z === 1 ? 'opacity:.4;cursor:default' : 'cursor:pointer'"
+                x-bind:style="{ opacity: z === 1 ? .4 : 1, cursor: z === 1 ? 'default' : 'pointer' }"
                 style="height:2rem;padding:0 .625rem;border:0;border-radius:.375rem;
                        font-size:.75rem;background:rgba(17,24,39,.06);color:rgb(55 65 81)"
             >Reset</button>

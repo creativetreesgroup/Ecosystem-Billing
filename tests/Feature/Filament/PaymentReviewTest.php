@@ -120,3 +120,26 @@ test('the transfer proof image is bound to the modal width', function () {
     // Tinggi tetap yang lama justru penyebabnya: ia membiarkan lebar bebas.
     expect($php)->not->toContain('->height(320)');
 });
+
+/**
+ * x-bind:style yang diberi STRING menimpa seluruh atribut style, bukan
+ * menggabungkannya. Pada penampil bukti akibatnya nyata: begitu Alpine hidup,
+ * overflow:hidden dan batas ukuran yang ditulis statis terhapus, lalu gambar
+ * yang diperbesar menembus keluar modal dan menutupi tabel beserta tombol
+ * "Ya, uangnya sudah masuk" di belakangnya.
+ *
+ * Sintaks objek hanya menyetel properti yang disebut, jadi gaya statisnya
+ * selamat. Aturannya sederhana dan layak dikunci: di berkas ini, setiap
+ * pengikatan style harus berbentuk objek.
+ */
+test('every Alpine style binding in the proof viewer merges instead of replacing', function () {
+    $view = file_get_contents(resource_path('views/filament/infolists/entries/zoomable-proof.blade.php'));
+
+    preg_match_all('/(?::|x-bind:)style="([^"]*)"/', $view, $matches);
+
+    expect($matches[1])->not->toBeEmpty();
+
+    foreach ($matches[1] as $binding) {
+        expect(trim($binding))->toStartWith('{');
+    }
+});
