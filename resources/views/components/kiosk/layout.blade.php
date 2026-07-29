@@ -330,6 +330,41 @@
         /* Menu cepat — tombol BULAT ikon-saja. Yang aktif diisi espresso dengan
            ikon putih (tegas), yang lain putih bergaris dengan ikon cognac. */
         .quick { display: flex; justify-content: center; gap: 1.25rem; margin: 1.25rem 0; }
+        /* Baris tile DI DALAM kartu sesi: lebih rapat, tanpa jarak atas ganda. */
+        .quick-inline { gap: .9rem; margin: 1rem 0 .25rem; }
+        .quick-inline .quick-tile { width: 2.85rem; height: 2.85rem; }
+
+        /* Panel geser dari bawah layar.
+           transform, BUKAN height/top: hanya transform & opacity yang bisa
+           dianimasikan compositor tanpa memicu layout ulang tiap frame, dan HP
+           kelas bawah di outlet akan tersendat kalau salah memilih. */
+        .sheet {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+            max-height: 85vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+            background: var(--bg);
+            border-radius: 1.5rem 1.5rem 0 0;
+            box-shadow: 0 -14px 44px rgba(38, 19, 17, .22);
+            padding: .35rem 1rem calc(2rem + env(safe-area-inset-bottom));
+            transform: translateY(101%);
+            transition: transform .34s cubic-bezier(.32, .72, 0, 1);
+            /* Tertutup = tidak bisa disentuh maupun di-tab, bukan sekadar tak
+               terlihat. Panel tak terlihat yang masih menangkap sentuhan adalah
+               cara paling halus membuat tombol di bawahnya berhenti berfungsi. */
+            visibility: hidden;
+        }
+        .sheet.is-open { transform: translateY(0); visibility: visible; }
+        @media (prefers-reduced-motion: reduce) { .sheet { transition: none; } }
+
+        .sheet-head { position: sticky; top: 0; display: flex; align-items: center;
+            justify-content: center; padding: .55rem 0 .35rem; background: var(--bg); }
+        .sheet-grip { width: 2.5rem; height: .25rem; border-radius: 999px; background: var(--border-strong); }
+        .sheet-close {
+            position: absolute; right: .1rem; top: .25rem;
+            width: 2.25rem; height: 2.25rem; border: 0; border-radius: 999px;
+            background: transparent; color: var(--muted);
+            font-size: 1.6rem; line-height: 1; cursor: pointer;
+        }
+        .sheet-close:active { transform: translateY(1px); }
         .quick-tile {
             width: 3.5rem; height: 3.5rem; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;

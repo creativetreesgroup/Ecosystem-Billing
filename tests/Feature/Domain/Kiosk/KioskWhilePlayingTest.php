@@ -102,3 +102,52 @@ test('a session belonging to someone else still hides the dashboard', function (
         ->assertSee('Unit sedang dipakai')
         ->assertDontSee('aria-label="Isi saldo"', escape: false);
 });
+
+test('the quick tiles sit inside the session card, not further down the page', function () {
+    // Open Play, bukan paket: hanya kartu Open Play yang punya tombol berhenti,
+    // dan tombol itulah patokan bawah yang dipakai test ini.
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->call('startOpenPlay');
+
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    // Barisnya harus berada SETELAH waktu berjalan dan SEBELUM tombol berhenti.
+    // Menaruhnya jauh di bawah halaman sama saja menyembunyikannya: mata
+    // pelanggan sedang berada di kartu sesi, bukan di ujung layar.
+    $tiles = strpos($html, 'quick-inline');
+    // Atribut tombolnya, bukan sekadar kata "stopOpenPlay": kata itu juga
+    // muncul lebih dulu di x-init sebagai penjaga plafon saldo.
+    $stop = strpos($html, 'wire:click="stopOpenPlay"');
+
+    expect($tiles)->not->toBeFalse()
+        ->and($stop)->not->toBeFalse()
+        ->and($tiles)->toBeLessThan($stop);
+});
+
+test('the dashboard becomes a slide-up sheet while playing', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $playingHtml = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    expect($playingHtml)->toContain("open ? 'sheet is-open' : 'sheet'")
+        ->and($playingHtml)->toContain('kiosk-sheet');
+});
+
+test('outside a session the dashboard stays a plain page, not a sheet', function () {
+    // Pembungkusnya tidak boleh berkelas apa pun di luar sesi -- kalau tidak,
+    // dasbor biasa ikut tersembunyi di balik panel yang tak pernah dibuka.
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    expect($html)->not->toContain('sheet is-open')
+        ->and($html)->not->toContain('kiosk-sheet');
+});

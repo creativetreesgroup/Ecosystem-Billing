@@ -1028,6 +1028,21 @@ new class extends Component
                 <p class="label center">Sedang main · Open Play</p>
                 <p class="amount" :class="effective < 0 ? 'neg' : ''" x-text="fmtRp(effective)">—</p>
                 <p class="muted center">Sisa saldo · berjalan <span x-text="fmtTime(elapsed)">00:00:00</span></p>
+
+                {{-- Jajan & isi saldo TANPA meninggalkan kartu sesi. Ditaruh di
+                     sini, tepat di bawah waktu berjalan, karena inilah satu-satunya
+                     tempat mata pelanggan sedang berada saat ia lapar. Menaruhnya
+                     jauh di bawah halaman sama saja menyembunyikannya. --}}
+                <div class="quick quick-inline">
+                    @foreach ([['order', 'Pesan', 'heroicon-o-shopping-bag'], ['topup', 'Isi saldo', 'heroicon-o-plus'], ['history', 'Riwayat', 'heroicon-o-clock']] as [$qKey, $qLabel, $qIcon])
+                        <button type="button" class="quick-tile"
+                                wire:click="$set('tab', '{{ $qKey }}')"
+                                x-on:click="$dispatch('kiosk-sheet')"
+                                aria-label="{{ $qLabel }}" title="{{ $qLabel }}">
+                            @svg($qIcon)
+                        </button>
+                    @endforeach
+                </div>
                 @if ($error) <p class="alert">{{ $error }}</p> @endif
                 <button type="button" class="btn btn-block-gap" wire:click="stopOpenPlay"
                         wire:loading.attr="disabled" wire:target="stopOpenPlay"
@@ -1047,6 +1062,21 @@ new class extends Component
                        tick(); setInterval(tick, 1000);"
                    x-text="display">--:--:--</p>
                 <p class="muted center">Selamat bermain!</p>
+
+                {{-- Jajan & isi saldo TANPA meninggalkan kartu sesi. Ditaruh di
+                     sini, tepat di bawah waktu berjalan, karena inilah satu-satunya
+                     tempat mata pelanggan sedang berada saat ia lapar. Menaruhnya
+                     jauh di bawah halaman sama saja menyembunyikannya. --}}
+                <div class="quick quick-inline">
+                    @foreach ([['order', 'Pesan', 'heroicon-o-shopping-bag'], ['topup', 'Isi saldo', 'heroicon-o-plus'], ['history', 'Riwayat', 'heroicon-o-clock']] as [$qKey, $qLabel, $qIcon])
+                        <button type="button" class="quick-tile"
+                                wire:click="$set('tab', '{{ $qKey }}')"
+                                x-on:click="$dispatch('kiosk-sheet')"
+                                aria-label="{{ $qLabel }}" title="{{ $qLabel }}">
+                            @svg($qIcon)
+                        </button>
+                    @endforeach
+                </div>
             </div>
 
     @endif
@@ -1304,6 +1334,24 @@ new class extends Component
         @php($activeTab = ($locked || $playing) && $tab === 'main' ? 'topup' : $tab)
         @if ($locked)
             <p class="alert">Saldo minus <b>−{{ Rupiah::format(abs($this->customer->balance)) }}</b>. Lunasi dulu untuk bisa main lagi.</p>
+        @endif
+
+        {{-- Saat bermain, seluruh dasbor pindah ke panel yang menggeser naik dari
+             bawah layar. Alasannya bukan gaya: kartu sesi harus tetap terlihat
+             (saldo turun per detik, tombol berhenti), sementara memilih makanan
+             butuh ruang penuh. Panel memberi keduanya tanpa memindahkan
+             pelanggan ke halaman lain. Di luar sesi, pembungkus ini tidak
+             berkelas apa pun sehingga tata letaknya persis seperti sebelumnya. --}}
+        <div @if ($playing) x-data="{ open: false }"
+                 x-on:kiosk-sheet.window="open = true"
+                 x-on:keydown.escape.window="open = false"
+                 :class="open ? 'sheet is-open' : 'sheet'" @endif>
+
+        @if ($playing)
+            <div class="sheet-head">
+                <span class="sheet-grip" aria-hidden="true"></span>
+                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
+            </div>
         @endif
 
         {{-- Menu cepat: tombol bulat ikon-saja, tekan satu → bagiannya muncul di
@@ -1678,5 +1726,7 @@ new class extends Component
                 <button type="button" class="btn btn-ghost btn-block-gap" wire:click="cancelConfirm">Batal</button>
             </div>
         </div>
+
+        </div>{{-- /pembungkus panel geser --}}
     @endif
 </div>

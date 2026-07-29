@@ -15,7 +15,7 @@
 
 ## Status proyek
 
-**Aktif dikembangkan.** Berjalan penuh di Docker dengan 601 test otomatis lulus.
+**Aktif dikembangkan.** Berjalan penuh di Docker dengan 604 test otomatis lulus.
 Belum ada rilis bertag; `main` adalah satu-satunya versi yang didukung.
 
 Kesiapan per area diaudit dan didokumentasikan secara terbuka di
@@ -199,10 +199,14 @@ pemindaian pelanggan, bukan tindakan kasir.
 
 ### Isi saldo & pesan makanan tanpa berhenti main
 
-Pelanggan **tidak perlu** menghentikan sesinya untuk jajan. Selama bermain,
-kartu sesi berdiri di atas dasbor dan tab **Pesan** serta **Isi saldo** tetap
-bisa dibuka. Hanya tile **Main** yang dimatikan — memulai sesi kedua di unit
-yang sama tidak masuk akal.
+Pelanggan **tidak perlu** menghentikan sesinya untuk jajan. Tepat di bawah
+waktu berjalan, di dalam kartu sesi, ada tiga tombol bulat: **Pesan**,
+**Isi saldo**, dan **Riwayat**. Menekan salah satunya membuka panel yang
+menggeser naik dari bawah layar — kartu sesi tetap terlihat di belakangnya,
+lengkap dengan saldo yang turun per detik dan tombol berhenti.
+
+Tile **Main** dimatikan selama bermain; memulai sesi kedua di unit yang sama
+tidak masuk akal.
 
 Pesanan dibayar dari saldo. Kalau saldo kurang, kios mengarahkan ke isi saldo
 lebih dulu; sesi yang sedang berjalan tidak tersentuh sama sekali.
@@ -237,7 +241,7 @@ lebih dulu; sesi yang sedang berjalan tidak tersentuh sama sekali.
 docker compose --profile test run --rm test php artisan test --compact
 ```
 
-**601 test lulus, 1.508 assertion** — Unit, Feature, dan Concurrency, terakhir
+**604 test lulus, 1.515 assertion** — Unit, Feature, dan Concurrency, terakhir
 dijalankan 2026-07-28 di dalam Docker.
 
 > **Jangan pernah `docker compose exec app php artisan test`.** Service `app`
