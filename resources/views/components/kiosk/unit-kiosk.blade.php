@@ -1342,10 +1342,18 @@ new class extends Component
              butuh ruang penuh. Panel memberi keduanya tanpa memindahkan
              pelanggan ke halaman lain. Di luar sesi, pembungkus ini tidak
              berkelas apa pun sehingga tata letaknya persis seperti sebelumnya. --}}
-        <div @if ($playing) x-data="{ open: false }"
+        {{-- class="sheet" ditulis STATIS, bukan hanya lewat :class Alpine.
+             Sebelum Alpine sempat menghidupkan komponennya, wrapper tanpa kelas
+             berarti SELURUH dasbor -- kartu pelanggan, daftar paket, form isi
+             saldo, riwayat -- terender penuh tepat di bawah kartu sesi, lalu
+             mengejut hilang saat Alpine aktif. Di HP kelas bawah jeda itu
+             terlihat jelas sebagai halaman yang melompat. Alpine kini hanya
+             menambahkan is-open, tidak lagi bertanggung jawab menyembunyikan. --}}
+        <div @if ($playing) class="sheet"
+                 x-data="{ open: false }"
                  x-on:kiosk-sheet.window="open = true"
                  x-on:keydown.escape.window="open = false"
-                 :class="open ? 'sheet is-open' : 'sheet'" @endif>
+                 :class="{ 'is-open': open }" @endif>
 
         @if ($playing)
             <div class="sheet-head">

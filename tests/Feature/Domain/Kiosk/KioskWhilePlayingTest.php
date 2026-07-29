@@ -137,7 +137,10 @@ test('the dashboard becomes a slide-up sheet while playing', function () {
         ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
         ->html();
 
-    expect($playingHtml)->toContain("open ? 'sheet is-open' : 'sheet'")
+    // Kelas dasarnya statis; Alpine hanya menambahkan is-open saat dibuka.
+    // Menegaskan perilakunya, bukan bentuk ekspresi Alpine-nya.
+    expect($playingHtml)->toContain('class="sheet"')
+        ->and($playingHtml)->toContain("'is-open'")
         ->and($playingHtml)->toContain('kiosk-sheet');
 });
 
@@ -150,4 +153,22 @@ test('outside a session the dashboard stays a plain page, not a sheet', function
 
     expect($html)->not->toContain('sheet is-open')
         ->and($html)->not->toContain('kiosk-sheet');
+});
+
+test('the slide-over panel is hidden from the very first paint', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    // Kelasnya harus ada di HTML, bukan ditempelkan Alpine setelahnya. Tanpa
+    // ini seluruh dasbor terender penuh di bawah kartu sesi lebih dulu, lalu
+    // mengejut hilang begitu Alpine hidup -- halaman yang melompat di setiap
+    // muat, dan paling terasa justru di HP kelas bawah yang dipakai pelanggan.
+    expect($html)->toContain('class="sheet"')
+        ->and($html)->not->toContain("'sheet is-open' : 'sheet'");
 });
