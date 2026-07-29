@@ -15,7 +15,7 @@
 
 ## Status proyek
 
-**Aktif dikembangkan.** Berjalan penuh di Docker dengan 598 test otomatis lulus.
+**Aktif dikembangkan.** Berjalan penuh di Docker dengan 601 test otomatis lulus.
 Belum ada rilis bertag; `main` adalah satu-satunya versi yang didukung.
 
 Kesiapan per area diaudit dan didokumentasikan secara terbuka di
@@ -161,13 +161,83 @@ Panduan lengkap: [`docs/LEGACY_README.md`](docs/LEGACY_README.md).
 
 ---
 
+## Alur pemakaian
+
+Satu unit bergerak di antara dua keadaan saja. Yang memindahkannya adalah
+pemindaian pelanggan, bukan tindakan kasir.
+
+```
+        ┌──────────────────────────────────────────┐
+        │  MENGANGGUR                              │
+        │  TV menampilkan QR + kode & tipe unit    │
+        └───────────────────┬──────────────────────┘
+                            │  pelanggan memindai QR dari kursinya
+                            ▼
+        ┌──────────────────────────────────────────┐
+        │  Pilih cara main → saldo terpotong        │
+        │  TV menyala, QR HILANG dari layar         │
+        └───────────────────┬──────────────────────┘
+                            ▼
+        ┌──────────────────────────────────────────┐
+        │  SEDANG DIPAKAI                          │
+        │  Pelanggan tetap bisa isi saldo & jajan  │
+        └───────────────────┬──────────────────────┘
+                            │  waktu habis, atau "Berhenti & bayar"
+                            ▼
+                     kembali MENGANGGUR
+```
+
+### Yang dilihat pelanggan
+
+| Tahap | Di TV | Di HP pelanggan |
+|-------|-------|-----------------|
+| Menganggur | QR besar, kode unit (`PS-01`), tipe unit, harga termurah | — |
+| Memindai | masih QR | Masuk pakai nomor WhatsApp, lalu pilih paket atau Open Play |
+| Mulai main | **QR hilang**, TV menyala | Kartu "Sedang main" — hitung mundur, atau saldo yang turun per detik |
+| Sedang main | tampilan game | Kartu sesi **di atas** dasbor; tile Isi saldo & Pesan tetap hidup |
+| Selesai | QR kembali muncul | Ringkasan tagihan |
+
+### Isi saldo & pesan makanan tanpa berhenti main
+
+Pelanggan **tidak perlu** menghentikan sesinya untuk jajan. Selama bermain,
+kartu sesi berdiri di atas dasbor dan tab **Pesan** serta **Isi saldo** tetap
+bisa dibuka. Hanya tile **Main** yang dimatikan — memulai sesi kedua di unit
+yang sama tidak masuk akal.
+
+Pesanan dibayar dari saldo. Kalau saldo kurang, kios mengarahkan ke isi saldo
+lebih dulu; sesi yang sedang berjalan tidak tersentuh sama sekali.
+
+### Kapan QR muncul dan hilang
+
+| Kejadian | Yang terjadi pada TV | Dipicu oleh |
+|----------|----------------------|-------------|
+| Unit menganggur | QR ditampilkan | `tv:show-idle` (terjadwal) |
+| Sesi dimulai | TV dinyalakan, QR dihentikan | `powerOn()` + `clearScreen()` di aksi mulai sesi |
+| Sesi berjalan | QR **tidak** dikembalikan | `tv:show-idle` melewati unit yang punya sesi aktif |
+| Sesi selesai | QR muncul lagi | `tv:show-idle` pada jadwal berikutnya |
+
+> Kontrol TV membutuhkan Home Assistant di jaringan outlet **dan** Docker Engine
+> di Linux. Di macOS/Windows aplikasinya berjalan penuh, tetapi perintah ke TV
+> tidak keluar dari container — lihat [matriks dukungan](docs/LEGACY_README.md).
+
+### Menyiapkan unit baru
+
+1. Buat **Tipe unit** (mis. `XIAOMI TV A PRO 43 INC - VIP 1`) beserta tarif per jam
+2. Buat **Unit** dengan kode yang tercetak di layar (mis. `PS-01`)
+3. Sambungkan TV ke LAN berkabel, beri **reservasi DHCP**, nyalakan *Networked Standby*
+4. Isi kredensial **Home Assistant** di Pengaturan → Integrasi
+5. Uji: `docker compose exec app php artisan tv:doctor`
+6. Tempel QR-nya ke TV: `docker compose exec app php artisan tv:show-idle`
+
+---
+
 ## Pengujian
 
 ```bash
 docker compose --profile test run --rm test php artisan test --compact
 ```
 
-**598 test lulus, 1.495 assertion** — Unit, Feature, dan Concurrency, terakhir
+**601 test lulus, 1.508 assertion** — Unit, Feature, dan Concurrency, terakhir
 dijalankan 2026-07-28 di dalam Docker.
 
 > **Jangan pernah `docker compose exec app php artisan test`.** Service `app`
