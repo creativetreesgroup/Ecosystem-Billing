@@ -83,3 +83,28 @@ test('a wallet top-up is readable in the payments table', function () {
         ->assertSee('Rina Topup')   // bukan "Tanpa nama"
         ->assertSee('Isi saldo');   // bukan sel kosong
 });
+
+/**
+ * Bukti transfer diunggah PELANGGAN, jadi ukurannya tak bisa diasumsikan:
+ * potret dari HP, atau tangkapan layar 16:9 selebar 2000px.
+ *
+ * Modal ini dulu hanya membatasi TINGGI gambar. Tangkapan layar 16:9 yang
+ * diskalakan ke tinggi 320px menjadi ~570px lebar — lebih lebar dari modalnya,
+ * sehingga menembus keluar dan menutupi tabel di belakangnya beserta tombol
+ * Batal dan Terima. Kasir tidak bisa lagi menekan apa pun tanpa menggulir.
+ *
+ * Diperiksa dari source, bukan dari HTML: modal Filament dirender terpisah dari
+ * halamannya sehingga tidak ikut muncul di ->html(). Pola yang sama dipakai
+ * KioskScreenTest untuk menjaga tetapan yang tak terlihat dari hasil render.
+ */
+test('the transfer proof image is bound to the modal width', function () {
+    $source = file_get_contents(app_path('Filament/Resources/Payments/Tables/PaymentsTable.php'));
+
+    expect($source)
+        // Mengikat lebar gambar ke modal.
+        ->toContain('max-w-full')
+        // Menjaga rasio, supaya nominal pada struk tidak melar dan tetap terbaca.
+        ->toContain('object-contain')
+        // Tinggi tetap yang lama justru penyebabnya: ia membiarkan lebar bebas.
+        ->not->toContain('->height(320)');
+});
