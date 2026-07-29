@@ -172,3 +172,26 @@ test('the slide-over panel is hidden from the very first paint', function () {
     expect($html)->toContain('class="sheet"')
         ->and($html)->not->toContain("'sheet is-open' : 'sheet'");
 });
+
+test('while playing only the session card is on screen, the balance card moves into the panel', function () {
+    Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->set('packageId', $this->package->id)
+        ->call('play');
+
+    $html = Livewire::actingAs($this->customer, 'customer')
+        ->test('kiosk.unit-kiosk', ['unit' => $this->unit])
+        ->html();
+
+    $sheetAt = strpos($html, 'class="sheet"');
+    $balanceAt = strpos($html, 'balance-card');
+
+    expect($sheetAt)->not->toBeFalse('Panel geser tidak dirender saat bermain.')
+        ->and($balanceAt)->not->toBeFalse('Kartu saldo hilang sama sekali dari dasbor.');
+
+    // Kartu saldo harus berada SESUDAH pembuka panel, artinya di dalamnya.
+    // Ketika ia berdiri di luar, layar menampilkan dua kartu bertumpuk dengan
+    // dua angka saldo yang berbeda beberapa rupiah — satu berjalan per detik,
+    // satu diam — dan pelanggan tidak tahu mana yang benar.
+    expect($balanceAt)->toBeGreaterThan($sheetAt);
+});

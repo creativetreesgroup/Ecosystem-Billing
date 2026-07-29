@@ -1290,6 +1290,35 @@ new class extends Component
         </div>
 
     @else
+        {{-- Saat bermain, SELURUH dasbor -- termasuk kartu saldo -- pindah ke
+             panel yang menggeser naik dari bawah layar. Pembungkus ini karena
+             itu dibuka DI SINI, tepat setelah cabang dasbor dimulai, bukan di
+             tengah-tengahnya: sebelumnya kartu saldo berdiri di luar pembungkus
+             sehingga tetap tampil di bawah kartu sesi. Dua kartu bertumpuk
+             dengan dua angka saldo yang berbeda beberapa rupiah -- satu berjalan
+             per detik, satu diam -- membuat pelanggan ragu mana yang benar.
+
+             Yang tampil saat bermain cukup kartu sesinya saja. Sisanya muncul
+             ketika pelanggan menekan Pesan, Isi saldo, atau Riwayat.
+
+             class="sheet" ditulis STATIS, bukan hanya lewat :class Alpine.
+             Sebelum Alpine sempat menghidupkan komponennya, wrapper tanpa kelas
+             berarti seluruh isi panel terender penuh lebih dulu lalu mengejut
+             hilang -- di HP kelas bawah terlihat jelas sebagai halaman yang
+             melompat. Alpine kini hanya menambahkan is-open. --}}
+        <div @if ($playing) class="sheet"
+                 x-data="{ open: false }"
+                 x-on:kiosk-sheet.window="open = true"
+                 x-on:keydown.escape.window="open = false"
+                 :class="{ 'is-open': open }" @endif>
+
+        @if ($playing)
+            <div class="sheet-head">
+                <span class="sheet-grip" aria-hidden="true"></span>
+                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
+            </div>
+        @endif
+
         {{-- DASBOR — kartu saldo paling atas: saldonya satu-satunya angka yang
              menentukan apakah pelanggan bisa langsung main atau harus isi dulu.
              Dikemas seperti kartu pembayaran; nomor kartunya tersamar (hanya 4
@@ -1334,32 +1363,6 @@ new class extends Component
         @php($activeTab = ($locked || $playing) && $tab === 'main' ? 'topup' : $tab)
         @if ($locked)
             <p class="alert">Saldo minus <b>−{{ Rupiah::format(abs($this->customer->balance)) }}</b>. Lunasi dulu untuk bisa main lagi.</p>
-        @endif
-
-        {{-- Saat bermain, seluruh dasbor pindah ke panel yang menggeser naik dari
-             bawah layar. Alasannya bukan gaya: kartu sesi harus tetap terlihat
-             (saldo turun per detik, tombol berhenti), sementara memilih makanan
-             butuh ruang penuh. Panel memberi keduanya tanpa memindahkan
-             pelanggan ke halaman lain. Di luar sesi, pembungkus ini tidak
-             berkelas apa pun sehingga tata letaknya persis seperti sebelumnya. --}}
-        {{-- class="sheet" ditulis STATIS, bukan hanya lewat :class Alpine.
-             Sebelum Alpine sempat menghidupkan komponennya, wrapper tanpa kelas
-             berarti SELURUH dasbor -- kartu pelanggan, daftar paket, form isi
-             saldo, riwayat -- terender penuh tepat di bawah kartu sesi, lalu
-             mengejut hilang saat Alpine aktif. Di HP kelas bawah jeda itu
-             terlihat jelas sebagai halaman yang melompat. Alpine kini hanya
-             menambahkan is-open, tidak lagi bertanggung jawab menyembunyikan. --}}
-        <div @if ($playing) class="sheet"
-                 x-data="{ open: false }"
-                 x-on:kiosk-sheet.window="open = true"
-                 x-on:keydown.escape.window="open = false"
-                 :class="{ 'is-open': open }" @endif>
-
-        @if ($playing)
-            <div class="sheet-head">
-                <span class="sheet-grip" aria-hidden="true"></span>
-                <button type="button" class="sheet-close" x-on:click="open = false" aria-label="Tutup">&times;</button>
-            </div>
         @endif
 
         {{-- Menu cepat: tombol bulat ikon-saja, tekan satu → bagiannya muncul di
