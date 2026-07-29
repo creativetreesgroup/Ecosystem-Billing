@@ -203,7 +203,7 @@ Itu keberuntungan, bukan rancangan — dan itu pula sebabnya suite tampak gagal
 | Kredensial acak | **Aman** | `install.sh` membuat `APP_KEY`, password DB/root/Grafana, dan kunci Reverb secara acak |
 | Privilege Docker | **Perlu perhatian** | `cadvisor` berjalan `privileged: true`; `node-exporter` memakai PID namespace host (Linux saja) |
 | Grafana terekspos | **Perlu perhatian** | Port 3000 terbuka di host dengan kredensial admin dari `.env` |
-| Role escalation | **Sebagian** | Shield + policy ada (`RolePolicy` melindungi `super_admin`); belum ada test khusus eskalasi |
+| Role escalation | **Diuji** | Matriks penuh 11 peran x 16 resource membandingkan izin terhadap perilaku HTTP; menemukan `ChangelogEntry` tanpa policy yang terbuka untuk 9 peran |
 | Rate limiting | **Not verified** | Belum diperiksa dalam audit ini |
 | Dependency vulnerability | **Not run** | `composer audit` belum dijalankan pada siklus ini |
 
